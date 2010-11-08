@@ -382,36 +382,46 @@ void placeLine(double price){
 }
 
 
-double getLine(){
-   return(ObjectGet("last_order", OBJPROP_PRICE1));
+double getLine() {
+   double value = ObjectGet("last_order", OBJPROP_PRICE1);
+
+   int error = GetLastError();
+   if (error!=ERR_NO_ERROR && error!=ERR_OBJECT_DOES_NOT_EXIST)
+      catch("getLine()", error);
+
+   return(value);
 }
 
 
 bool lineMoved(){
+   bool result = false;
    double line = getLine();
-   if (line != last_line){
+
+   if (line != last_line) {
       // line has been moved by external forces (hello wb ;-)
-      if (MathAbs(line - last_line) < stop_distance * pip){
+      if (MathAbs(line - last_line) < stop_distance * pip) {
          // minor adjustment by user
          last_line = line;
-         return(true);
-      }else{
-         // something strange (gap? crash? line deleted?)
-         if (MathAbs(Bid - last_line) < stop_distance * pip){
-            // last_line variable still near price and thus is valid.
-            placeLine(last_line); // simply replace line
-            return(false); // no action needed
-         }else{
-            // line is far off or completely missing and last_line doesn't help also
-            // make a completely new line at Bid
-            placeLine(Bid);
-            return(true);
-         }
+         result = true;
       }
-      return(true);
-   }else{
-      return(false);
+      // something strange (gap? crash? line deleted?)
+      else if (MathAbs(Bid - last_line) < stop_distance * pip) {
+         // last_line variable still near price and thus is valid.
+         placeLine(last_line);   // simply replace line
+         result = false;         // no action needed
+      }
+      // line is far off or completely missing and last_line doesn't help also
+      else {
+         placeLine(Bid);// make a completely new line at Bid
+         result = true;
+      }
    }
+
+   int error = GetLastError();
+   if (error != ERR_NO_ERROR)
+      catch("lineMoved()");
+
+   return(result);
 }
 
 
@@ -434,7 +444,7 @@ void trade(){
    if (running){
       // are we flat?
       if (level == 0){
-         if (direction == SHORT && Ask > start){
+         if (direction == SHORT && Ask > start) {
             if (getNumOpenOrders(OP_SELLSTOP, magic) != 2){
                closeOpenOrders(OP_SELLSTOP, magic);
             }else{
@@ -448,7 +458,7 @@ void trade(){
             }
          }
 
-         if (direction == LONG && Bid < start){
+         if (direction == LONG && Bid < start) {
             if (getNumOpenOrders(OP_BUYSTOP, magic) != 2){
                closeOpenOrders(OP_BUYSTOP, magic);
             }else{
@@ -685,6 +695,8 @@ void info(){
       }
    }
 
+   catch("info(1)");
+
    int level_abs = MathAbs(getNumOpenOrders(OP_BUY, magic) - getNumOpenOrders(OP_SELL, magic));
    stop_value = MarketInfo(Symbol(), MODE_TICKVALUE) * lots * stop_distance * points_per_pip;
 
@@ -731,7 +743,7 @@ void info(){
       ObjectSetText("profit", "¯¯¯ " + DoubleToStr(MathRound(realized - getGlobal("realized") + tp), 0) + " " + AccountCurrency() + " profit projection ¯¯¯");
    }
 
-   return(catch("info()"));
+   return(catch("info(2)"));
 }
 
 
