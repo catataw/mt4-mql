@@ -6,8 +6,8 @@
 #property link      "http://sites.google.com/site/prof7bit/"
 
 #include <common_functions.mqh>
-#include <offline_charts.mqh> 
-//#include <oanda.mqh> 
+#include <offline_charts.mqh>
+//#include <oanda.mqh>
 
 extern double lots = 0.01; // lots to use per trade
 //extern double oanda_factor = 25000;
@@ -54,7 +54,7 @@ void defaults(){
    /*
    IS_ECN_BROKER = true;
    //auto_tp = 2;
-   
+
    if (IsTesting()){
       return(0);
    }
@@ -78,7 +78,7 @@ void defaults(){
       oanda_factor = 1800;
       stop_distance = 30;
    }
-   
+
    sound_grid_step = "expert.wav";
    sound_grid_trail = "alert2.wav";
    sound_stop_all = "alert.wav";
@@ -92,39 +92,39 @@ int init(){
       MessageBox("DLL imports must be allowed!", "Snowball");
       return(-1);
    }
-      
+
    IS_ECN_BROKER = is_ecn_broker;
    CLR_BUY_ARROW = clr_buy;
    CLR_SELL_ARROW = clr_sell;
    CLR_CROSSLINE_ACTIVE = clr_stopline_active;
    CLR_CROSSLINE_TRIGGERED = clr_stopline_triggered;
-   
+
    defaults();
 
    points_per_pip = pointsPerPip();
    pip = Point * points_per_pip;
-   
+
    comment = name + "_" + Symbol6();
    magic = makeMagicNumber(name + "_" + Symbol());
-   
+
    if (last_line == 0){
       last_line = getLine();
    }
-   
+
    if (IsTesting()){
       setGlobal("realized", 0);
       setGlobal("running", 0);
    }
-   
+
    readVariables();
-   
+
    if (IsTesting() && !IsVisualMode()){
       Print("!!! This is not an automated strategy! Automated backtesting is nonsense! Starting in bidirectional mode!");
       running = true;
       direction = BIDIR;
       placeLine(Bid);
    }
-      
+
    info();
 
    return(catch("init()"));
@@ -198,7 +198,7 @@ void deleteStopButtons(){
 
 
 /**
-* mark the start (or resume) of the cycle in the chart 
+* mark the start (or resume) of the cycle in the chart
 */
 void startArrow(){
    string aname = "cycle_start_" + TimeToStr(TimeCurrent());
@@ -212,7 +212,7 @@ void startArrow(){
 
 
 /**
-* mark the end (or pause) of the cycle in the chart 
+* mark the end (or pause) of the cycle in the chart
 */
 void endArrow(){
    string aname = "cycle_end_" + TimeToStr(Time[0]);
@@ -236,7 +236,7 @@ void stop(){
    if (sound_stop_all != ""){
       PlaySound(sound_stop_all);
    }
-   
+
    return(catch("stop()"));
 }
 
@@ -273,35 +273,35 @@ void pause(){
 * resume trading after we paused it.
 * Find the text label containing the level where we hit pause
 * and re-open the corresponding amounts of lots, then delete the label.
-*/ 
+*/
 void resume(){
    int i;
    double sl;
    double line = getLine();
    level = StrToInteger(ObjectDescription("paused_level"));
-   
+
    if (direction == LONG){
       level = MathAbs(level);
    }
-   
+
    if (direction == SHORT){
       level = -MathAbs(level);
    }
-   
+
    if (level > 0){
       for (i=1; i<=level; i++){
          sl = line - pip * i * stop_distance;
          buy(lots, sl, 0, magic, comment);
       }
    }
-   
+
    if (level < 0){
       for (i=1; i<=-level; i++){
          sl = line + pip * i * stop_distance;
          sell(lots, sl, 0, magic, comment);
       }
    }
-      
+
    ObjectDelete("paused_level");
 
    return(catch("resume()"));
@@ -323,7 +323,7 @@ void checkLines(){
    }
    if (crossedLine("start bidir")){
       go(BIDIR);
-   }   
+   }
    return(catch("checkLines()"));
 }
 
@@ -341,7 +341,7 @@ void checkButtons(){
          go(BIDIR);
       }
    }
-   
+
    if (running){
       deleteStartButtons();
       if (labelButton("stop", 15, 15, 1, "stop", Red)){
@@ -416,16 +416,16 @@ bool lineMoved(){
 void trade(){
    double start;
    static int last_level;
-   
+
    if (lineMoved()){
       closeOpenOrders(OP_SELLSTOP, magic);
       closeOpenOrders(OP_BUYSTOP, magic);
    }
    start = getLine();
-   
+
    // calculate global variable level here // FIXME: global variable side-effect hell.
    level = getNumOpenOrders(OP_BUY, magic) - getNumOpenOrders(OP_SELL, magic);
-   
+
    if (running){
       // are we flat?
       if (level == 0){
@@ -442,7 +442,7 @@ void trade(){
                PlaySound(sound_grid_trail);
             }
          }
-         
+
          if (direction == LONG && Bid < start){
             if (getNumOpenOrders(OP_BUYSTOP, magic) != 2){
                closeOpenOrders(OP_BUYSTOP, magic);
@@ -456,18 +456,18 @@ void trade(){
                PlaySound(sound_grid_trail);
             }
          }
-         
+
          // make sure first long orders are in place
          if (direction == BIDIR || direction == LONG){
             longOrders(start);
          }
-         
+
          // make sure first short orders are in place
          if (direction == BIDIR || direction == SHORT){
             shortOrders(start);
          }
       }
-   
+
       // are we already long?
       if (level > 0){
          // make sure the next long orders are in place
@@ -479,37 +479,37 @@ void trade(){
          // make sure the next short orders are in place
          shortOrders(start);
       }
-      
+
       // we have two different models how to move the grid line.
       // If we are *not* flat we can snap it to the nearest grid level,
-      // ths is better for handling situations where the order is triggered 
+      // ths is better for handling situations where the order is triggered
       // by the exact pip and price is immediately reversing.
-      // If we are currently flat we *must* move it only when we have reached 
-      // it *exactly*, because otherwise this would badly interfere with 
-      // the trailing of the grid in the unidirectional modes. Also in 
+      // If we are currently flat we *must* move it only when we have reached
+      // it *exactly*, because otherwise this would badly interfere with
+      // the trailing of the grid in the unidirectional modes. Also in
       // bidirectional mode this would have some unwanted effects.
       if (level != 0){
          // snap to grid
          if (Ask + (pip * stop_distance / 6) >= start + stop_distance*pip){
             jumpGrid(1);
          }
-      
+
          // snap to grid
          if (Bid - (pip * stop_distance / 6) <= start - stop_distance*pip){
             jumpGrid(-1);
          }
-      }else{   
+      }else{
          // grid reached exactly
          if (Ask  >= start + stop_distance*pip){
             jumpGrid(1);
          }
-         
+
          // grid reached exactly
          if (Bid  <= start - stop_distance*pip){
             jumpGrid(-1);
          }
       }
-      
+
       // alert on level change (order triggered, not line moved)
       if (level != last_level){
          if (sound_order_triggered != ""){
@@ -517,11 +517,11 @@ void trade(){
          }
          last_level = level;
       }
-      
+
    }else{ // not running
       placeLine(Bid);
    }
-   
+
    return(catch("trade()"));
 }
 
@@ -544,7 +544,7 @@ void jumpGrid(int dir){
 * This is done by looking for a stoploss below or above the price
 * where=-1 searches for stoploss below, where=1 for stoploss above price
 * return false if there is already an order (open or pending)
-*/ 
+*/
 bool needsOrder(double price, int where){
    //return(false);
    int i;
@@ -640,49 +640,49 @@ void info(){
    double floating;
    double pb, lp, tp;
    static int last_ticket;
-   static datetime last_be_plot = 0; 
+   static datetime last_be_plot = 0;
    int ticket;
    string dir;
-   
+
    OrderSelect(OrdersHistoryTotal()-1, SELECT_BY_POS, MODE_HISTORY);
    ticket = OrderTicket();
-   
+
    if (ticket != last_ticket){
       // history changed, need to recalculate realized profit
       realized = getProfitRealized(magic);
       last_ticket = ticket;
-      
+
       // enforce a new break-even arrow plot immediately
       last_be_plot = 0;
    }
-   
+
    floating = getProfit(magic);
-   
-   // the variable realized is the total realized of all time. 
-   // the MT4-global variable _realized is a snapshot of this value when 
+
+   // the variable realized is the total realized of all time.
+   // the MT4-global variable _realized is a snapshot of this value when
    // the EA was reset the last time. The difference is what we made
-   // during the current cycle. Add floating to it and we have the 
+   // during the current cycle. Add floating to it and we have the
    // profit of the current cycle.
    cycle_total_profit = realized - getGlobal("realized") + floating;
-   
+
    if (running == false){
       dir = "trading stopped";
    }else{
       switch(direction){
-         case LONG: 
+         case LONG:
             dir = "trading long";
             break;
-         case SHORT: 
+         case SHORT:
             dir = "trading short";
             break;
-         default: 
+         default:
             dir = "trading both directions";
       }
    }
-   
+
    int level_abs = MathAbs(getNumOpenOrders(OP_BUY, magic) - getNumOpenOrders(OP_SELL, magic));
    stop_value = MarketInfo(Symbol(), MODE_TICKVALUE) * lots * stop_distance * points_per_pip;
-   
+
    Comment("\n" + SP + name + magic + ", " + dir +
            "\n" + SP + "1 pip is " + DoubleToStr(pip, Digits) + " " + Symbol6() +
            "\n" + SP + "stop distance: " + stop_distance + " pip, lot-size: " + DoubleToStr(lots, 2) +
@@ -696,13 +696,13 @@ void info(){
       last_be_plot = TimeCurrent();
    }
 
-   // If you put a text object (not a label!) with the name "profit",  
+   // If you put a text object (not a label!) with the name "profit",
    // anywhere on the chart then this can be used as a profit calculator.
-   // The following code will find the position of this text object 
+   // The following code will find the position of this text object
    // and calculate your profit, should price reach this position
    // and then write this number into the text object. You can
    // move it around on the chart to get profit projections for
-   // any price level you want. 
+   // any price level you want.
    if (ObjectFind("profit") != -1){
       pb = getPyramidBase();
       lp = ObjectGet("profit", OBJPROP_PRICE1);
@@ -782,12 +782,12 @@ void plotBreakEvenArrow(string arrow_name, double price){
 void plotBreakEven(){
    double base = getPyramidBase();
    double be = 0;
-   
+
    // loss is roughly the amount of realized stop hits. But I can't use this number
    // directly because after resuming a paused pyramid this number is wrong. So
    // I have to estimate it with the (always accurate) total profit and the current
    // distance from base. In mose cases the outcome of this calculation is equal
-   // to the realized losses as displayed on the screen, only when resuming a pyramid 
+   // to the realized losses as displayed on the screen, only when resuming a pyramid
    // it will differ and have the value it would have if the pyramid never had been paused.
    double distance = MathAbs(Close[0] - base);
    if ((level > 0 && Close[0] < base) || (level < 0 && Close[0] > base) || level == 0){
@@ -795,7 +795,7 @@ void plotBreakEven(){
    }
    double loss = -(cycle_total_profit - getTheoreticProfit(distance));
 
-   // this value should always be positive 
+   // this value should always be positive
    // or 0 (or slightly below (rounding error)) in case we have a fresh pyramid.
    // If it is not positive (no loss yet) then we dont need to plot break even.
    if (loss <= 0 || !running){
@@ -803,7 +803,7 @@ void plotBreakEven(){
       auto_tp_profit = 0;
       return(0);
    }
-   
+
    if (direction == LONG){
       if (base==0){
          base = getLine() + stop_distance * pip;
@@ -813,7 +813,7 @@ void plotBreakEven(){
       auto_tp_price = be + pip * stop_distance * auto_tp;
       auto_tp_profit = getTheoreticProfit(MathAbs(auto_tp_price - base)) - loss;
    }
-   
+
    if (direction == SHORT){
       if (base==0){
          base = getLine() - stop_distance * pip;
@@ -823,7 +823,7 @@ void plotBreakEven(){
       auto_tp_price = be - pip * stop_distance * auto_tp;
       auto_tp_profit = getTheoreticProfit(MathAbs(auto_tp_price - base)) - loss;
    }
-   
+
    if (direction == BIDIR){
       if (base == 0){
          base = getLine() + stop_distance * pip;
@@ -846,7 +846,7 @@ void plotBreakEven(){
          }
       }
    }
-   
+
    if (auto_tp < 1){
       auto_tp_price = 0;
       auto_tp_profit = 0;
@@ -864,11 +864,11 @@ double getPyramidBase(){
    double d, max_d, sl;
    int i;
    int type=-1;
-   
+
    // find the stoploss that is farest away from current price
    // we cannot just use the order open price because we might
    // be in resume mode and then all trades would be opened at
-   // the same price. the only thing that works reliable is 
+   // the same price. the only thing that works reliable is
    // looking at the stoplossses
    for (i=0; i<OrdersTotal(); i++){
       OrderSelect(i, SELECT_BY_POS, MODE_TRADES);
@@ -881,15 +881,15 @@ double getPyramidBase(){
          }
       }
    }
-   
+
    if (type == OP_BUY){
       return(sl + pip * stop_distance);
    }
-   
+
    if (type == OP_SELL){
       return(sl - pip * stop_distance);
    }
-   
+
    return(0);
 }
 
@@ -915,7 +915,7 @@ double getPyramidBase1(){
 * return the floating profit that would result if
 * price would be the specified distance away from
 * the base of the pyramid
-*/ 
+*/
 double getTheoreticProfit(double distance){
    int n = MathFloor(distance / (stop_distance * pip));
    double remain = distance - n * stop_distance * pip;
@@ -928,18 +928,18 @@ double getTheoreticProfit(double distance){
 
 /**
 * return the price move relative to base required to compensate realized losses
-* FIXME: This algorithm does not qualify as "elegant", not even remotely. 
+* FIXME: This algorithm does not qualify as "elegant", not even remotely.
 */
 double getBreakEven(double loss){
    double i = 0;
-   
+
    while(true){
       if (getTheoreticProfit(pip * i) > loss){
          break;
       }
       i += stop_distance;
    }
-   
+
    i -= stop_distance;
    while(true){
       if (getTheoreticProfit(pip * i) > loss){
