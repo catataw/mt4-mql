@@ -151,8 +151,6 @@ void onTick(){
    recordEquity(name+Symbol6(), PERIOD_M1 , magic);
    recordEquity(name+Symbol6(), PERIOD_M5 , magic);
    recordEquity(name+Symbol6(), PERIOD_M15, magic);
-   recordEquity(name+Symbol6(), PERIOD_M30, magic);
-   recordEquity(name+Symbol6(), PERIOD_H1 , magic);
 
    //checkOanda(magic, oanda_factor);
    checkLines();
