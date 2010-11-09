@@ -87,6 +87,11 @@ void defaults(){
 }
 
 
+/**
+ * Initialisierung
+ *
+ * @return int - Fehlerstatus
+ */
 int init(){
    if (!IsDllsAllowed()){
       MessageBox("DLL imports must be allowed!", "Snowball");
@@ -131,6 +136,11 @@ int init(){
 }
 
 
+/**
+ * Deinitialisierung
+ *
+ * @return int - Fehlerstatus
+ */
 int deinit(){
    deleteStartButtons();
    deleteStopButtons();
@@ -967,6 +977,11 @@ double getBreakEven(double loss){
 }
 
 
+/**
+ * Main-Funktion
+ *
+ * @return int - Fehlerstatus
+ */
 int start(){
    static int numbars;
    onTick();
