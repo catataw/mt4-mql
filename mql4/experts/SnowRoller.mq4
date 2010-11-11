@@ -425,10 +425,7 @@ bool lineMoved(){
       }
    }
 
-   int error = GetLastError();
-   if (error != ERR_NO_ERROR)
-      catch("lineMoved()");
-
+   catch("lineMoved()");
    return(result);
 }
 
@@ -998,7 +995,6 @@ int start(){
 void setGlobal(string key, double value){
    GlobalVariableSet(name + magic + "_" + key, value);
    GetLastError();
-   return(catch("setGlobal()"));
 }
 
 
