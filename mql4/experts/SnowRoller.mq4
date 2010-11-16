@@ -5,8 +5,8 @@
 #property copyright "© Bernd Kreuss, Version 2010.6.11.1"
 #property link      "http://sites.google.com/site/prof7bit/"
 
-#include <common_functions.mqh>
-#include <offline_charts.mqh>
+#include <prof7bit/common_functions.mqh>
+#include <prof7bit/offline_charts.mqh>
 //#include <oanda.mqh>
 
 extern double lots = 0.01; // lots to use per trade
