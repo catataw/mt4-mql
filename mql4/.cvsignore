@@ -1,6 +1,7 @@
-mqlcache.dat
 *.ex4
+mqlcache.dat
 files
 logs
-templates
 presets
+templates
+config
