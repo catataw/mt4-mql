@@ -93,8 +93,11 @@ void defaults(){
  * @return int - Fehlerstatus
  */
 int init(){
+   __SCRIPT__ = WindowExpertName();
+   stdlib_init(__SCRIPT__);
+
    if (!IsDllsAllowed()){
-      MessageBox("DLL imports must be allowed!", "Snowball");
+      MessageBox("DLL imports must be allowed!", WindowExpertName());
       return(-1);
    }
 
