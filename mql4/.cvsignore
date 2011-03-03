@@ -1,6 +1,5 @@
 *.ex4
 mqlcache.dat
-config
 files
 logs
 presets
