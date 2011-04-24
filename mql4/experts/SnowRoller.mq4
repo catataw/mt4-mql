@@ -11,36 +11,38 @@
 
 extern double lots = 0.01; // lots to use per trade
 //extern double oanda_factor = 25000;
-extern int stop_distance = 20;
-extern int auto_tp = 2; // auto-takeprofit this many levels (roughly) above the BE point
-extern bool is_ecn_broker = false; // different market order procedure when resuming after pause
+extern int    stop_distance = 20;
+extern int    auto_tp = 2; // auto-takeprofit this many levels (roughly) above the BE point
+extern bool   is_ecn_broker = false; // different market order procedure when resuming after pause
 
-extern color clr_breakeven_level = Lime;
-extern color clr_buy = Blue;
-extern color clr_sell = Red;
-extern color clr_gridline = Lime;
-extern color clr_stopline_active = Magenta;
-extern color clr_stopline_triggered = Aqua;
+extern color  clr_breakeven_level = Lime;
+extern color  clr_buy = Blue;
+extern color  clr_sell = Red;
+extern color  clr_gridline = Lime;
+extern color  clr_stopline_active = Magenta;
+extern color  clr_stopline_triggered = Aqua;
 extern string sound_grid_trail = "";
 extern string sound_grid_step = "";
 extern string sound_order_triggered = "";
 extern string sound_stop_all = "";
 
+double Pip;
+int    PipDigits;
+string PriceFormat;
+
 string name = "snow";
 
-double pip;
-double points_per_pip;
 string comment;
 int magic;
 bool running;
 int direction;
 double last_line;
-int level; // current level, signed, minus=short, calculated in trade()
-double realized; // total realized (all time) (calculated in info())
-double cycle_total_profit; // total profit since cycle started (calculated in info())
-double stop_value; // dollars (account) per single level (calculated in info())
-double auto_tp_price; // the price where auto_tp should trigger, calculated during break even calc.
-double auto_tp_profit; // rough estimation of auto_tp profit, calculated during break even calc.
+int level;                    // current level, signed, minus=short, calculated in trade()
+double realized;              // total realized (all time) (calculated in info())
+double cycle_total_profit;    // total profit since cycle started (calculated in info())
+double stop_value;            // dollars (account) per single level (calculated in info())
+double auto_tp_price;         // the price where auto_tp should trigger, calculated during break even calc.
+double auto_tp_profit;        // rough estimation of auto_tp profit, calculated during break even calc.
 
 #define SP "                                    "
 
@@ -96,6 +98,10 @@ int init(){
    __SCRIPT__ = WindowExpertName();
    stdlib_init(__SCRIPT__);
 
+   PipDigits   = Digits - Digits%2;
+   Pip         = 1 / MathPow(10, PipDigits);
+   PriceFormat = "."+ PipDigits + ifString(Digits==PipDigits, "", "'");
+
    if (!IsDllsAllowed()){
       MessageBox("DLL imports must be allowed!", WindowExpertName());
       return(-1);
@@ -108,9 +114,6 @@ int init(){
    CLR_CROSSLINE_TRIGGERED = clr_stopline_triggered;
 
    defaults();
-
-   points_per_pip = pointsPerPip();
-   pip = Point * points_per_pip;
 
    comment = name + "_" + Symbol6();
    magic = makeMagicNumber(name + "_" + Symbol());
@@ -306,14 +309,14 @@ void resume(){
 
    if (level > 0){
       for (i=1; i<=level; i++){
-         sl = line - pip * i * stop_distance;
+         sl = line - Pip * i * stop_distance;
          buy(lots, sl, 0, magic, comment);
       }
    }
 
    if (level < 0){
       for (i=1; i<=-level; i++){
-         sl = line + pip * i * stop_distance;
+         sl = line + Pip * i * stop_distance;
          sell(lots, sl, 0, magic, comment);
       }
    }
@@ -410,13 +413,13 @@ bool lineMoved(){
 
    if (line != last_line) {
       // line has been moved by external forces (hello wb ;-)
-      if (MathAbs(line - last_line) < stop_distance * pip) {
+      if (MathAbs(line - last_line) < stop_distance * Pip) {
          // minor adjustment by user
          last_line = line;
          result = true;
       }
       // something strange (gap? crash? line deleted?)
-      else if (MathAbs(Bid - last_line) < stop_distance * pip) {
+      else if (MathAbs(Bid - last_line) < stop_distance * Pip) {
          // last_line variable still near price and thus is valid.
          placeLine(last_line);   // simply replace line
          result = false;         // no action needed
@@ -513,22 +516,22 @@ void trade(){
       // bidirectional mode this would have some unwanted effects.
       if (level != 0){
          // snap to grid
-         if (Ask + (pip * stop_distance / 6) >= start + stop_distance*pip){
+         if (Ask + (Pip * stop_distance / 6) >= start + stop_distance*Pip){
             jumpGrid(1);
          }
 
          // snap to grid
-         if (Bid - (pip * stop_distance / 6) <= start - stop_distance*pip){
+         if (Bid - (Pip * stop_distance / 6) <= start - stop_distance*Pip){
             jumpGrid(-1);
          }
       }else{
          // grid reached exactly
-         if (Ask  >= start + stop_distance*pip){
+         if (Ask  >= start + stop_distance*Pip){
             jumpGrid(1);
          }
 
          // grid reached exactly
-         if (Bid  <= start - stop_distance*pip){
+         if (Bid  <= start - stop_distance*Pip){
             jumpGrid(-1);
          }
       }
@@ -554,7 +557,7 @@ void trade(){
 * 1 means up, -1 means down.
 */
 void jumpGrid(int dir){
-   placeLine(getLine() + pip * stop_distance * dir);
+   placeLine(getLine() + Pip * stop_distance * dir);
    if (sound_grid_step != ""){
       PlaySound(sound_grid_step);
    }
@@ -579,14 +582,14 @@ bool needsOrder(double price, int where){
       type = OrderType();
       if (where < 0){ // look only for buy orders (stop below)
          if (OrderMagicNumber() == magic && (type == OP_BUY || type == OP_BUYSTOP)){
-            if (isEqualPrice(OrderStopLoss(), price + where * pip * stop_distance)){
+            if (isEqualPrice(OrderStopLoss(), price + where * Pip * stop_distance)){
                return(false);
             }
          }
       }
       if (where > 0){ // look only for sell orders (stop above)
          if (OrderMagicNumber() == magic && (type == OP_SELL || type == OP_SELLSTOP)){
-            if (isEqualPrice(OrderStopLoss(), price + where * pip * stop_distance)){
+            if (isEqualPrice(OrderStopLoss(), price + where * Pip * stop_distance)){
                return(false);
             }
          }
@@ -601,8 +604,8 @@ bool needsOrder(double price, int where){
 * If they are already there do nothing, else replace the missing ones.
 */
 void longOrders(double start){
-   double a = start + stop_distance * pip;
-   double b = start + 2 * stop_distance * pip;
+   double a = start + stop_distance * Pip;
+   double b = start + 2 * stop_distance * Pip;
    if (needsOrder(a, -1)){
       buyStop(lots, a, start, 0, magic, comment);
    }
@@ -619,8 +622,8 @@ void longOrders(double start){
 * If they are already there do nothing, else replace the missing ones.
 */
 void shortOrders(double start){
-   double a = start - stop_distance * pip;
-   double b = start - 2 * stop_distance * pip;
+   double a = start - stop_distance * Pip;
+   double b = start - 2 * stop_distance * Pip;
    if (needsOrder(a, 1)){
       sellStop(lots, a, start, 0, magic, comment);
    }
@@ -640,7 +643,7 @@ void moveOrders(double d){
    for(i=0; i<OrdersTotal(); i++){
       OrderSelect(i, SELECT_BY_POS, MODE_TRADES);
       if (OrderMagicNumber() == magic){
-         if (MathAbs(OrderOpenPrice() - getLine()) > 3 * stop_distance * pip){
+         if (MathAbs(OrderOpenPrice() - getLine()) > 3 * stop_distance * Pip){
             orderDeleteReliable(OrderTicket());
          }else{
             orderModifyReliable(
@@ -705,11 +708,13 @@ void info(){
 
    catch("info(1)");
 
-   int level_abs = MathAbs(getNumOpenOrders(OP_BUY, magic) - getNumOpenOrders(OP_SELL, magic));
-   stop_value = MarketInfo(Symbol(), MODE_TICKVALUE) * lots * stop_distance * points_per_pip;
+   int    level_abs  = MathAbs(getNumOpenOrders(OP_BUY, magic) - getNumOpenOrders(OP_SELL, magic));
+   double pointValue = MarketInfo(Symbol(), MODE_TICKVALUE) / (MarketInfo(Symbol(), MODE_TICKSIZE)/Point);
+   double pipValue   = pointValue * MathPow(10, Digits-PipDigits);
+   stop_value        = stop_distance * pipValue * lots;
 
    Comment("\n" + SP + name + magic + ", " + dir +
-           "\n" + SP + "1 pip is " + DoubleToStr(pip, Digits) + " " + Symbol6() +
+           "\n" + SP + "1 pip is " + DoubleToStr(Pip, Digits) + " " + Symbol6() +
            "\n" + SP + "stop distance: " + stop_distance + " pip, lot-size: " + DoubleToStr(lots, 2) +
            "\n" + SP + "every stop equals " + DoubleToStr(stop_value, 2) + " " + AccountCurrency() +
            "\n" + SP + "realized: " + DoubleToStr(realized - getGlobal("realized"), 2) + "  floating: " + DoubleToStr(floating, 2) +
@@ -733,17 +738,17 @@ void info(){
       lp = ObjectGet("profit", OBJPROP_PRICE1);
       if (pb ==0){
          if (direction == SHORT){
-            pb = getLine() - stop_distance * pip;
+            pb = getLine() - stop_distance * Pip;
          }
          if (direction == LONG){
-            pb = getLine() + stop_distance * pip;
+            pb = getLine() + stop_distance * Pip;
          }
          if (direction == BIDIR){
             if (lp < getLine()){
-               pb = getLine() - stop_distance * pip;
+               pb = getLine() - stop_distance * Pip;
             }
             if (lp >= getLine()){
-               pb = getLine() + stop_distance * pip;
+               pb = getLine() + stop_distance * Pip;
             }
          }
       }
@@ -831,29 +836,29 @@ void plotBreakEven(){
 
    if (direction == LONG){
       if (base==0){
-         base = getLine() + stop_distance * pip;
+         base = getLine() + stop_distance * Pip;
       }
       be = base + getBreakEven(loss);
       plotBreakEvenArrow("breakeven_long", be);
-      auto_tp_price = be + pip * stop_distance * auto_tp;
+      auto_tp_price = be + Pip * stop_distance * auto_tp;
       auto_tp_profit = getTheoreticProfit(MathAbs(auto_tp_price - base)) - loss;
    }
 
    if (direction == SHORT){
       if (base==0){
-         base = getLine() - stop_distance * pip;
+         base = getLine() - stop_distance * Pip;
       }
       be = base - getBreakEven(loss);
       plotBreakEvenArrow("breakeven_short", be);
-      auto_tp_price = be - pip * stop_distance * auto_tp;
+      auto_tp_price = be - Pip * stop_distance * auto_tp;
       auto_tp_profit = getTheoreticProfit(MathAbs(auto_tp_price - base)) - loss;
    }
 
    if (direction == BIDIR){
       if (base == 0){
-         base = getLine() + stop_distance * pip;
+         base = getLine() + stop_distance * Pip;
          plotBreakEvenArrow("breakeven_long", base + getBreakEven(loss));
-         base = getLine() - stop_distance * pip;
+         base = getLine() - stop_distance * Pip;
          plotBreakEvenArrow("breakeven_short", base - getBreakEven(loss));
          auto_tp_price = 0;
          auto_tp_profit = 0;
@@ -861,12 +866,12 @@ void plotBreakEven(){
          if (getLotsOnTableSigned(magic) > 0){
             be = base + getBreakEven(loss);
             plotBreakEvenArrow("breakeven_long", be);
-            auto_tp_price = be + pip * stop_distance * auto_tp;
+            auto_tp_price = be + Pip * stop_distance * auto_tp;
             auto_tp_profit = getTheoreticProfit(MathAbs(auto_tp_price - base)) - loss;
          }else{
             be = base - getBreakEven(loss);
             plotBreakEvenArrow("breakeven_short", be);
-            auto_tp_price = be - pip * stop_distance * auto_tp;
+            auto_tp_price = be - Pip * stop_distance * auto_tp;
             auto_tp_profit = getTheoreticProfit(MathAbs(auto_tp_price - base)) - loss;
          }
       }
@@ -908,11 +913,11 @@ double getPyramidBase(){
    }
 
    if (type == OP_BUY){
-      return(sl + pip * stop_distance);
+      return(sl + Pip * stop_distance);
    }
 
    if (type == OP_SELL){
-      return(sl - pip * stop_distance);
+      return(sl - Pip * stop_distance);
    }
 
    return(0);
@@ -942,11 +947,15 @@ double getPyramidBase1(){
 * the base of the pyramid
 */
 double getTheoreticProfit(double distance){
-   int n = MathFloor(distance / (stop_distance * pip));
-   double remain = distance - n * stop_distance * pip;
+   int n = MathFloor(distance / (stop_distance * Pip));
+   double remain = distance - n * stop_distance * Pip;
    int mult = n * (n + 1) / 2;
-   double profit = MarketInfo(Symbol(), MODE_TICKVALUE) * lots * stop_distance * points_per_pip * mult;
-   profit = profit + MarketInfo(Symbol(), MODE_TICKVALUE) * lots * (remain/Point) * (n + 1);
+
+   double pointValue = MarketInfo(Symbol(), MODE_TICKVALUE) / (MarketInfo(Symbol(), MODE_TICKSIZE)/Point);
+   double pipValue   = pointValue * MathPow(10, Digits-PipDigits);
+   double profit     = stop_distance * pipValue * lots * mult;
+
+   profit = profit + MarketInfo(Symbol(), MODE_TICKVALUE) * lots * (remain/Point) * (n + 1);    // pewa: Bug
    return(profit);
 }
 
@@ -959,7 +968,7 @@ double getBreakEven(double loss){
    double i = 0;
 
    while(true){
-      if (getTheoreticProfit(pip * i) > loss){
+      if (getTheoreticProfit(Pip * i) > loss){
          break;
       }
       i += stop_distance;
@@ -967,13 +976,13 @@ double getBreakEven(double loss){
 
    i -= stop_distance;
    while(true){
-      if (getTheoreticProfit(pip * i) > loss){
+      if (getTheoreticProfit(Pip * i) > loss){
          break;
       }
       i += 0.1;
    }
 
-   return(pip * i);
+   return(Pip * i);
 }
 
 
