@@ -1,9 +1,9 @@
 *.htm
-AUD-Index.tpl
-CAD-Index.tpl
-CHF-Index.tpl
-EUR-Index.tpl
-GBP-Index.tpl
-JPY-Index.tpl
-NZD-Index.tpl
-USD-Index.tpl
+AUD-Index*.tpl
+CAD-Index*.tpl
+CHF-Index*.tpl
+EUR-Index*.tpl
+GBP-Index*.tpl
+JPY-Index*.tpl
+NZD-Index*.tpl
+USD-Index*.tpl
