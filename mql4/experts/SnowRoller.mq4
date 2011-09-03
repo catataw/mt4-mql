@@ -1,7 +1,12 @@
-//+------------------------------------------------------------------+
-//|                                   Copyright © 2010, Bernd Kreuss |
-//|                        PayPal donations go here -> 7bit@arcor.de |
-//+------------------------------------------------------------------+
+/**
+ * @see Snowball Homepage      - 7bit: http://sites.google.com/site/prof7bit/snowball
+ *      Snowball @ForexFactory - 7bit: http://www.forexfactory.com/showthread.php?t=226059      (Snowballs and the anti-grid)
+ *      Snowball Journal:      - 7bit: http://www.forexfactory.com/showthread.php?t=239717      (Trading the anti-grid with the snowball EA)
+ *
+ *      SnowRoller Homepage    - FXEZ: http://sites.google.com/site/marketformula/snowroller
+ *      SnowRoller             - FXEZ: http://www.forexfactory.com/showthread.php?t=286352      (Snow Roller Basket - an avalanche of profits)
+ */
+
 #property copyright "© Bernd Kreuss, Version 2010.6.11.1"
 #property link      "http://sites.google.com/site/prof7bit/"
 
