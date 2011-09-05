@@ -5,29 +5,29 @@
  *
  *      SnowRoller Strategy  - FXEZ: http://www.forexfactory.com/showthread.php?t=286352
  *      SnowRoller code base - FXEZ: http://sites.google.com/site/marketformula/snowroller
+ *
+ *
+ * Ausgangsversion: 2010.6.11.1
  */
-
-#property copyright "© Bernd Kreuss, Version 2010.6.11.1"
-#property link      "http://sites.google.com/site/prof7bit/"
-
 #include <prof7bit/common_functions.mqh>
 #include <prof7bit/offline_charts.mqh>
 
-extern double lots          = 0.01;                   // lots to use per trade
-extern int    stop_distance = 20;
-extern int    auto_tp       = 2;                      // auto-takeprofit this many levels (roughly) above the BE point
-extern bool   is_ecn_broker = false;                  // different market order procedure when resuming after pause
 
-extern color  clr_breakeven_level      = Lime;
-extern color  clr_buy                  = Blue;
-extern color  clr_sell                 = Red;
-extern color  clr_gridline             = Lime;
-extern color  clr_stopline_active      = Magenta;
-extern color  clr_stopline_triggered   = Aqua;
-extern string sound_grid_step          = "expert.wav";
-extern string sound_grid_trail         = "alert2.wav";
-extern string sound_order_triggered    = "alert.wav";
-extern string sound_stop_all           = "alert.wav";
+extern double lots          = 0.01;          // lots to use per trade
+extern int    stop_distance = 20;
+extern int    auto_tp       = 2;             // auto-takeprofit this many levels (roughly) above the BE point
+extern bool   is_ecn_broker = false;         // different market order procedure when resuming after pause
+
+extern color  clr_breakeven_level    = Lime;
+extern color  clr_buy                = Blue;
+extern color  clr_sell               = Red;
+extern color  clr_gridline           = Lime;
+extern color  clr_stopline_active    = Magenta;
+extern color  clr_stopline_triggered = Aqua;
+extern string sound_grid_step        = "expert.wav";
+extern string sound_grid_trail       = "alert2.wav";
+extern string sound_order_triggered  = "alert.wav";
+extern string sound_stop_all         = "alert.wav";
 
 
 double Pip;
@@ -38,16 +38,16 @@ string PriceFormat;
 string name = "snow";
 
 string comment;
-int magic;
-bool running;
-int direction;
+int    magic;
+bool   running;
+int    direction;
 double last_line;
-int level;                    // current level, signed, minus=short, calculated in trade()
-double realized;              // total realized (all time) (calculated in info())
-double cycle_total_profit;    // total profit since cycle started (calculated in info())
-double stop_value;            // dollars (account) per single level (calculated in info())
-double auto_tp_price;         // the price where auto_tp should trigger, calculated during break even calc.
-double auto_tp_profit;        // rough estimation of auto_tp profit, calculated during break even calc.
+int    level;                                // current level, signed, minus=short, calculated in trade()
+double realized;                             // total realized (all time) (calculated in info())
+double cycle_total_profit;                   // total profit since cycle started (calculated in info())
+double stop_value;                           // dollars (account) per single level (calculated in info())
+double auto_tp_price;                        // the price where auto_tp should trigger, calculated during break even calc.
+double auto_tp_profit;                       // rough estimation of auto_tp profit, calculated during break even calc.
 
 #define SP "                                    "
 
@@ -64,17 +64,14 @@ double auto_tp_profit;        // rough estimation of auto_tp profit, calculated 
  */
 int init() {
    __SCRIPT__ = WindowExpertName();
+   if (!IsLibrariesAllowed()) { PlaySound("notify.wav"); MessageBox("MQL library imports must be allowed!", __SCRIPT__, MB_ICONEXCLAMATION|MB_OK); return(ERR_EXTERNAL_CALLS_NOT_ALLOWED); }
+   if (!IsDllsAllowed())      { PlaySound("notify.wav"); MessageBox("DLL imports must be allowed!"        , __SCRIPT__, MB_ICONEXCLAMATION|MB_OK); return(ERR_DLL_CALLS_NOT_ALLOWED     ); }
    stdlib_init(__SCRIPT__);
 
    PipDigits   = Digits & (~1);
    PipPoints   = MathPow(10, Digits-PipDigits) + 0.1;
    Pip         = 1/MathPow(10, PipDigits);
    PriceFormat = "."+ PipDigits + ifString(Digits==PipDigits, "", "'");
-
-   if (!IsDllsAllowed()){
-      MessageBox("DLL imports must be allowed!", WindowExpertName());
-      return(-1);
-   }
 
    IS_ECN_BROKER = is_ecn_broker;
    CLR_BUY_ARROW = clr_buy;
@@ -772,7 +769,7 @@ void info() {
          }
       }
       tp = getTheoreticProfit(MathAbs(lp - pb));
-      ObjectSetText("profit", "¯¯¯ " + DoubleToStr(MathRound(realized - getGlobal("realized") + tp), 0) + " " + AccountCurrency() + " profit projection ¯¯¯");
+      ObjectSetText("profit", "ï¿½ï¿½ï¿½ " + DoubleToStr(MathRound(realized - getGlobal("realized") + tp), 0) + " " + AccountCurrency() + " profit projection ï¿½ï¿½ï¿½");
    }
 
    return(catch("info(2)"));
