@@ -1,10 +1,10 @@
 /**
- * @see Snowball Homepage      - 7bit: http://sites.google.com/site/prof7bit/snowball
- *      Snowball @ForexFactory - 7bit: http://www.forexfactory.com/showthread.php?t=226059      (Snowballs and the anti-grid)
- *      Snowball Journal:      - 7bit: http://www.forexfactory.com/showthread.php?t=239717      (Trading the anti-grid with the snowball EA)
+ * @see Snowball Strategy    - 7bit: http://www.forexfactory.com/showthread.php?t=226059
+ *      Snowball Journal     - 7bit: http://www.forexfactory.com/showthread.php?t=239717
+ *      Snowball code base   - 7bit: http://sites.google.com/site/prof7bit/snowball
  *
- *      SnowRoller Homepage    - FXEZ: http://sites.google.com/site/marketformula/snowroller
- *      SnowRoller             - FXEZ: http://www.forexfactory.com/showthread.php?t=286352      (Snow Roller Basket - an avalanche of profits)
+ *      SnowRoller Strategy  - FXEZ: http://www.forexfactory.com/showthread.php?t=286352
+ *      SnowRoller code base - FXEZ: http://sites.google.com/site/marketformula/snowroller
  */
 
 #property copyright "© Bernd Kreuss, Version 2010.6.11.1"
@@ -12,24 +12,23 @@
 
 #include <prof7bit/common_functions.mqh>
 #include <prof7bit/offline_charts.mqh>
-//#include <oanda.mqh>
 
-extern double lots = 0.01; // lots to use per trade
-//extern double oanda_factor = 25000;
+extern double lots          = 0.01;                   // lots to use per trade
 extern int    stop_distance = 20;
-extern int    auto_tp = 2; // auto-takeprofit this many levels (roughly) above the BE point
-extern bool   is_ecn_broker = false; // different market order procedure when resuming after pause
+extern int    auto_tp       = 2;                      // auto-takeprofit this many levels (roughly) above the BE point
+extern bool   is_ecn_broker = false;                  // different market order procedure when resuming after pause
 
-extern color  clr_breakeven_level = Lime;
-extern color  clr_buy = Blue;
-extern color  clr_sell = Red;
-extern color  clr_gridline = Lime;
-extern color  clr_stopline_active = Magenta;
-extern color  clr_stopline_triggered = Aqua;
-extern string sound_grid_trail = "";
-extern string sound_grid_step = "";
-extern string sound_order_triggered = "";
-extern string sound_stop_all = "";
+extern color  clr_breakeven_level      = Lime;
+extern color  clr_buy                  = Blue;
+extern color  clr_sell                 = Red;
+extern color  clr_gridline             = Lime;
+extern color  clr_stopline_active      = Magenta;
+extern color  clr_stopline_triggered   = Aqua;
+extern string sound_grid_step          = "expert.wav";
+extern string sound_grid_trail         = "alert2.wav";
+extern string sound_order_triggered    = "alert.wav";
+extern string sound_stop_all           = "alert.wav";
+
 
 double Pip;
 int    PipDigits;
@@ -58,49 +57,12 @@ double auto_tp_profit;        // rough estimation of auto_tp profit, calculated 
 #define SHORT 2
 
 
-void defaults(){
-   /*
-   IS_ECN_BROKER = true;
-   //auto_tp = 2;
-
-   if (IsTesting()){
-      return(0);
-   }
-   if (Symbol6() == "GBPUSD"){
-      lots = 0.1;
-      oanda_factor = 900;
-      stop_distance = 30;
-   }
-   if (Symbol6() == "EURUSD"){
-      lots = 0.1;
-      oanda_factor = 1800;
-      stop_distance = 30;
-   }
-   if (Symbol6() == "USDCHF"){
-      lots = 0.1;
-      oanda_factor = 1800;
-      stop_distance = 20;
-   }
-   if (Symbol6() == "USDJPY"){
-      lots = 0.1;
-      oanda_factor = 1800;
-      stop_distance = 30;
-   }
-
-   sound_grid_step = "expert.wav";
-   sound_grid_trail = "alert2.wav";
-   sound_stop_all = "alert.wav";
-   sound_order_triggered = "alert.wav";
-   */
-}
-
-
 /**
  * Initialisierung
  *
  * @return int - Fehlerstatus
  */
-int init(){
+int init() {
    __SCRIPT__ = WindowExpertName();
    stdlib_init(__SCRIPT__);
 
@@ -120,8 +82,6 @@ int init(){
    CLR_CROSSLINE_ACTIVE = clr_stopline_active;
    CLR_CROSSLINE_TRIGGERED = clr_stopline_triggered;
 
-   defaults();
-
    comment = name + "_" + Symbol6();
    magic = makeMagicNumber(name + "_" + Symbol());
 
@@ -137,7 +97,7 @@ int init(){
    readVariables();
 
    if (IsTesting() && !IsVisualMode()){
-      Print("!!! This is not an automated strategy! Automated backtesting is nonsense! Starting in bidirectional mode!");
+      Print("This is not an automated strategy! Automated backtesting is nonsense! Starting in bidirectional mode...");
       running = true;
       direction = BIDIR;
       placeLine(Bid);
@@ -154,7 +114,7 @@ int init(){
  *
  * @return int - Fehlerstatus
  */
-int deinit(){
+int deinit() {
    deleteStartButtons();
    deleteStopButtons();
    storeVariables();
@@ -170,12 +130,28 @@ int deinit(){
 }
 
 
-void onTick(){
+/**
+ * Main-Funktion
+ *
+ * @return int - Fehlerstatus
+ */
+int start() {
+   static int numbars;
+   onTick();
+   numbars = Bars;
+
+   return(catch("start()"));
+}
+
+
+/**
+ *
+ */
+void onTick() {
    recordEquity(name+Symbol6(), PERIOD_M1 , magic);
    recordEquity(name+Symbol6(), PERIOD_M5 , magic);
    recordEquity(name+Symbol6(), PERIOD_M15, magic);
 
-   //checkOanda(magic, oanda_factor);
    checkLines();
    checkButtons();
    trade();
@@ -190,11 +166,10 @@ void onTick(){
 }
 
 
-void onOpen(){
-}
-
-
-void storeVariables(){
+/**
+ *
+ */
+void storeVariables() {
    setGlobal("running", running);
    setGlobal("direction", direction);
 
@@ -202,31 +177,40 @@ void storeVariables(){
 }
 
 
-void readVariables(){
-   running = getGlobal("running");
+/**
+ *
+ */
+void readVariables() {
+   running   = getGlobal("running");
    direction = getGlobal("direction");
 
    return(catch("readVariables()"));
 }
 
 
-void deleteStartButtons(){
+/**
+ *
+ */
+void deleteStartButtons() {
    ObjectDelete("start_long");
    ObjectDelete("start_short");
    ObjectDelete("start_bidir");
 }
 
 
-void deleteStopButtons(){
+/**
+ *
+ */
+void deleteStopButtons() {
    ObjectDelete("stop");
    ObjectDelete("pause");
 }
 
 
 /**
-* mark the start (or resume) of the cycle in the chart
-*/
-void startArrow(){
+ * mark the start (or resume) of the cycle in the chart
+ */
+void startArrow() {
    string aname = "cycle_start_" + TimeToStr(TimeCurrent());
    ObjectCreate(aname, OBJ_ARROW, 0, TimeCurrent(), Close[0]);
    ObjectSet(aname, OBJPROP_ARROWCODE, 5);
@@ -238,9 +222,9 @@ void startArrow(){
 
 
 /**
-* mark the end (or pause) of the cycle in the chart
-*/
-void endArrow(){
+ * mark the end (or pause) of the cycle in the chart
+ */
+void endArrow() {
    string aname = "cycle_end_" + TimeToStr(Time[0]);
    ObjectCreate(aname, OBJ_ARROW, 0, TimeCurrent(), Close[0]);
    ObjectSet(aname, OBJPROP_ARROWCODE, 6);
@@ -251,14 +235,16 @@ void endArrow(){
 }
 
 
-void stop(){
+/**
+ *
+ */
+void stop() {
    endArrow();
    deleteStopButtons();
    closeOpenOrders(-1, magic);
    running = false;
    storeVariables();
    setGlobal("realized", getProfitRealized(magic)); // store this only on pyramid close
-   //checkOanda(magic, oanda_factor);
    if (sound_stop_all != ""){
       PlaySound(sound_stop_all);
    }
@@ -267,7 +253,10 @@ void stop(){
 }
 
 
-void go(int mode){
+/**
+ *
+ */
+void go(int mode) {
    startArrow();
    deleteStartButtons();
    running = true;
@@ -279,14 +268,16 @@ void go(int mode){
 }
 
 
-void pause(){
+/**
+ *
+ */
+void pause() {
    endArrow();
    deleteStopButtons();
    label("paused_level", 15, 100, 1, level, Yellow);
    closeOpenOrders(-1, magic);
    running = false;
    storeVariables();
-   //checkOanda(magic, oanda_factor);
    if (sound_stop_all != ""){
       PlaySound(sound_stop_all);
    }
@@ -296,11 +287,11 @@ void pause(){
 
 
 /**
-* resume trading after we paused it.
-* Find the text label containing the level where we hit pause
-* and re-open the corresponding amounts of lots, then delete the label.
-*/
-void resume(){
+ * resume trading after we paused it.
+ * Find the text label containing the level where we hit pause
+ * and re-open the corresponding amounts of lots, then delete the label.
+ */
+void resume() {
    int i;
    double sl;
    double line = getLine();
@@ -334,7 +325,10 @@ void resume(){
 }
 
 
-void checkLines(){
+/**
+ *
+ */
+void checkLines() {
    if (crossedLine("stop")){
       stop();
    }
@@ -354,7 +348,10 @@ void checkLines(){
 }
 
 
-void checkButtons(){
+/**
+ *
+ */
+void checkButtons() {
    if(!running){
       deleteStopButtons();
       if (labelButton("start_long", 15, 15, 1, "start long", Lime)){
@@ -381,7 +378,10 @@ void checkButtons(){
 }
 
 
-void checkAutoTP(){
+/**
+ *
+ */
+void checkAutoTP() {
    if (auto_tp > 0 && auto_tp_price > 0){
       if (level > 0 && Close[0] >= auto_tp_price){
          stop();
@@ -394,7 +394,10 @@ void checkAutoTP(){
 }
 
 
-void placeLine(double price){
+/**
+ *
+ */
+void placeLine(double price) {
    horizLine("last_order", price, clr_gridline, SP + "grid position");
    last_line = price;
    WindowRedraw();
@@ -403,6 +406,9 @@ void placeLine(double price){
 }
 
 
+/**
+ *
+ */
 double getLine() {
    double value = ObjectGet("last_order", OBJPROP_PRICE1);
 
@@ -414,7 +420,10 @@ double getLine() {
 }
 
 
-bool lineMoved(){
+/**
+ *
+ */
+bool lineMoved() {
    bool result = false;
    double line = getLine();
 
@@ -444,9 +453,9 @@ bool lineMoved(){
 
 
 /**
-* manage all the entry order placement
-*/
-void trade(){
+ * manage all the entry order placement
+ */
+void trade() {
    double start;
    static int last_level;
 
@@ -560,10 +569,10 @@ void trade(){
 
 
 /**
-* move the line 1 stop_didtance up or down.
-* 1 means up, -1 means down.
-*/
-void jumpGrid(int dir){
+ * move the line 1 stop_didtance up or down.
+ * 1 means up, -1 means down.
+ */
+void jumpGrid(int dir) {
    placeLine(getLine() + Pip * stop_distance * dir);
    if (sound_grid_step != ""){
       PlaySound(sound_grid_step);
@@ -573,12 +582,12 @@ void jumpGrid(int dir){
 
 
 /**
-* do we need to place a new entry order at this price?
-* This is done by looking for a stoploss below or above the price
-* where=-1 searches for stoploss below, where=1 for stoploss above price
-* return false if there is already an order (open or pending)
-*/
-bool needsOrder(double price, int where){
+ * do we need to place a new entry order at this price?
+ * This is done by looking for a stoploss below or above the price
+ * where=-1 searches for stoploss below, where=1 for stoploss above price
+ * return false if there is already an order (open or pending)
+ */
+bool needsOrder(double price, int where) {
    //return(false);
    int i;
    int total = OrdersTotal();
@@ -607,10 +616,10 @@ bool needsOrder(double price, int where){
 
 
 /**
-* Make sure there are the next two long orders above start in place.
-* If they are already there do nothing, else replace the missing ones.
-*/
-void longOrders(double start){
+ * Make sure there are the next two long orders above start in place.
+ * If they are already there do nothing, else replace the missing ones.
+ */
+void longOrders(double start) {
    double a = start + stop_distance * Pip;
    double b = start + 2 * stop_distance * Pip;
    if (needsOrder(a, -1)){
@@ -625,10 +634,10 @@ void longOrders(double start){
 
 
 /**
-* Make sure there are the next two short orders below start in place.
-* If they are already there do nothing, else replace the missing ones.
-*/
-void shortOrders(double start){
+ * Make sure there are the next two short orders below start in place.
+ * If they are already there do nothing, else replace the missing ones.
+ */
+void shortOrders(double start) {
    double a = start - stop_distance * Pip;
    double b = start - 2 * stop_distance * Pip;
    if (needsOrder(a, 1)){
@@ -643,9 +652,9 @@ void shortOrders(double start){
 
 
 /**
-* move all entry orders by the amount of d
-*/
-void moveOrders(double d){
+ * move all entry orders by the amount of d
+ */
+void moveOrders(double d) {
    int i;
    for(i=0; i<OrdersTotal(); i++){
       OrderSelect(i, SELECT_BY_POS, MODE_TRADES);
@@ -669,7 +678,10 @@ void moveOrders(double d){
 }
 
 
-void info(){
+/**
+ *
+ */
+void info() {
    double floating;
    double pb, lp, tp;
    static int last_ticket;
@@ -768,10 +780,10 @@ void info(){
 
 
 /**
-* Plot an arrow. Default is the price-exact dash symbol
-* This function might be moved into common_functions soon
-*/
-string arrow(string name="", double price=0, datetime time=0, color clr=Red, int arrow_code=4){
+ * Plot an arrow. Default is the price-exact dash symbol
+ * This function might be moved into common_functions soon
+ */
+string arrow(string name="", double price=0, datetime time=0, color clr=Red, int arrow_code=4) {
    if (time == 0){
       time = TimeCurrent();
    }
@@ -796,9 +808,9 @@ string arrow(string name="", double price=0, datetime time=0, color clr=Red, int
 
 
 /**
-* plot the break even price into the chart
-*/
-void plotBreakEvenArrow(string arrow_name, double price){
+ * plot the break even price into the chart
+ */
+void plotBreakEvenArrow(string arrow_name, double price) {
    arrow(arrow_name + TimeCurrent(), price, 0, clr_breakeven_level);
 
    return(catch("plotBreakEvenArrow()"));
@@ -806,17 +818,17 @@ void plotBreakEvenArrow(string arrow_name, double price){
 
 
 /**
-* plot the break-even Point (only a rough estimate plusminus less than one stop_distance,
-* it will be most inaccurate just before hitting a stoploss (last trade negative).
-* and this will be more obvious at the beginning of a new cycle when losses are still small
-* and break even steps increments are still be big.
-*
-* Side effects: This function will also calculate auto-tp price and profit.
-*
-* FIXME: This whole break even calculation sucks comets through drinking straws!
-* FIXME: Isn't there a more elegant way to calculate break even?
-*/
-void plotBreakEven(){
+ * plot the break-even Point (only a rough estimate plusminus less than one stop_distance,
+ * it will be most inaccurate just before hitting a stoploss (last trade negative).
+ * and this will be more obvious at the beginning of a new cycle when losses are still small
+ * and break even steps increments are still be big.
+ *
+ * Side effects: This function will also calculate auto-tp price and profit.
+ *
+ * FIXME: This whole break even calculation sucks comets through drinking straws!
+ * FIXME: Isn't there a more elegant way to calculate break even?
+ */
+void plotBreakEven() {
    double base = getPyramidBase();
    double be = 0;
 
@@ -894,10 +906,10 @@ void plotBreakEven(){
 
 
 /**
-* return the entry price of the first order of the pyramid.
-* return 0 if we are flat.
-*/
-double getPyramidBase(){
+ * return the entry price of the first order of the pyramid.
+ * return 0 if we are flat.
+ */
+double getPyramidBase() {
    double d, max_d, sl;
    int i;
    int type=-1;
@@ -931,7 +943,10 @@ double getPyramidBase(){
 }
 
 
-double getPyramidBase1(){
+/**
+ *
+ */
+double getPyramidBase1() {
    int i;
    double pmax = -999999;
    double base = 0;
@@ -949,11 +964,11 @@ double getPyramidBase1(){
 
 
 /**
-* return the floating profit that would result if
-* price would be the specified distance away from
-* the base of the pyramid
-*/
-double getTheoreticProfit(double distance){
+ * return the floating profit that would result if
+ * price would be the specified distance away from
+ * the base of the pyramid
+ */
+double getTheoreticProfit(double distance) {
    int n = MathFloor(distance / (stop_distance * Pip));
    double remain = distance - n * stop_distance * Pip;
    int mult = n * (n + 1) / 2;
@@ -968,10 +983,10 @@ double getTheoreticProfit(double distance){
 
 
 /**
-* return the price move relative to base required to compensate realized losses
-* FIXME: This algorithm does not qualify as "elegant", not even remotely.
-*/
-double getBreakEven(double loss){
+ * return the price move relative to base required to compensate realized losses
+ * FIXME: This algorithm does not qualify as "elegant", not even remotely.
+ */
+double getBreakEven(double loss) {
    double i = 0;
 
    while(true){
@@ -994,30 +1009,18 @@ double getBreakEven(double loss){
 
 
 /**
- * Main-Funktion
  *
- * @return int - Fehlerstatus
  */
-int start(){
-   static int numbars;
-   onTick();
-   if (Bars == numbars){
-      return(0);
-   }
-   numbars = Bars;
-   onOpen();
-
-   return(catch("start()"));
-}
-
-
-void setGlobal(string key, double value){
+void setGlobal(string key, double value) {
    GlobalVariableSet(name + magic + "_" + key, value);
    GetLastError();
 }
 
 
-double getGlobal(string key){
+/**
+ *
+ */
+double getGlobal(string key) {
    double value = GlobalVariableGet(name + magic + "_" + key);
    GetLastError();
    return(value);
