@@ -1,7 +1,9 @@
 /**
- * @see Snowball Strategy    - 7bit: http://www.forexfactory.com/showthread.php?t=226059
- *      Snowball Journal     - 7bit: http://www.forexfactory.com/showthread.php?t=239717
- *      Snowball code base   - 7bit: http://sites.google.com/site/prof7bit/snowball
+ * Snow Roller Anti-Martingale EA
+ *
+ * @see SnowRoller Strategy  - 7bit: http://www.forexfactory.com/showthread.php?t=226059
+ *      SnowRoller Journal   - 7bit: http://www.forexfactory.com/showthread.php?t=239717
+ *      SnowRoller code base - 7bit: http://sites.google.com/site/prof7bit/snowball
  *
  *      SnowRoller Strategy  - FXEZ: http://www.forexfactory.com/showthread.php?t=286352
  *      SnowRoller code base - FXEZ: http://sites.google.com/site/marketformula/snowroller
