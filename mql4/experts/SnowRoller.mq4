@@ -105,8 +105,12 @@ int init() {
    }
 
    info();
-
    return(catch("init()"));
+
+   // pewa: dummy calls to avoid compiler warnings about unreferenced functions
+   print(NULL);
+   forceFileClose();
+   getPyramidBase1();
 }
 
 
