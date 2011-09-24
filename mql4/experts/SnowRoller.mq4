@@ -7,9 +7,9 @@
  *
  *      SnowRoller Strategy  - FXEZ: http://www.forexfactory.com/showthread.php?t=286352
  *      SnowRoller code base - FXEZ: http://sites.google.com/site/marketformula/snowroller
- *
- * Ausgangsversion: 2010.6.11.1
  */
+
+// Ausgangsversion: 2010.6.11.1
 #include <prof7bit/common_functions.mqh>
 #include <prof7bit/offline_charts.mqh>
 
