@@ -65,8 +65,8 @@ double auto_tp_profit;                       // rough estimation of auto_tp prof
  */
 int init() {
    __SCRIPT__ = WindowExpertName();
-   if (!IsLibrariesAllowed()) { PlaySound("notify.wav"); MessageBox("MQL library imports must be allowed!", __SCRIPT__, MB_ICONEXCLAMATION|MB_OK); return(ERR_EXTERNAL_CALLS_NOT_ALLOWED); }
-   if (!IsDllsAllowed())      { PlaySound("notify.wav"); MessageBox("DLL imports must be allowed!"        , __SCRIPT__, MB_ICONEXCLAMATION|MB_OK); return(ERR_DLL_CALLS_NOT_ALLOWED     ); }
+   if (!IsLibrariesAllowed()) { PlaySound("notify.wav"); MessageBox("MQL library imports must be allowed!", __SCRIPT__ +" - init()", MB_ICONEXCLAMATION|MB_OK); return(ERR_EXTERNAL_CALLS_NOT_ALLOWED); }
+   if (!IsDllsAllowed())      { PlaySound("notify.wav"); MessageBox("DLL imports must be allowed!"        , __SCRIPT__ +" - init()", MB_ICONEXCLAMATION|MB_OK); return(ERR_DLL_CALLS_NOT_ALLOWED     ); }
    stdlib_init(__SCRIPT__);
 
    PipDigits   = Digits & (~1);
