@@ -14,7 +14,7 @@
 #include <prof7bit/offline_charts.mqh>
 
 
-extern double lots          = 0.01;          // lots to use per trade
+extern double lots          = 0.1;          // lots to use per trade
 extern int    stop_distance = 20;
 extern int    auto_tp       = 2;             // auto-takeprofit this many levels (roughly) above the BE point
 extern bool   is_ecn_broker = false;         // different market order procedure when resuming after pause
@@ -22,7 +22,7 @@ extern bool   is_ecn_broker = false;         // different market order procedure
 extern color  clr_breakeven_level    = Lime;
 extern color  clr_buy                = Blue;
 extern color  clr_sell               = Red;
-extern color  clr_gridline           = Lime;
+extern color  clr_gridline           = DeepSkyBlue;
 extern color  clr_stopline_active    = Magenta;
 extern color  clr_stopline_triggered = Aqua;
 extern string sound_grid_step        = "expert.wav";
@@ -297,6 +297,10 @@ void resume() {
    int i;
    double sl;
    double line = getLine();
+
+   if (ObjectFind("paused_level") == -1)
+      return(catch("resume(1)"));
+
    level = StrToInteger(ObjectDescription("paused_level"));
 
    if (direction == LONG){
@@ -322,8 +326,7 @@ void resume() {
    }
 
    ObjectDelete("paused_level");
-
-   return(catch("resume()"));
+   return(catch("resume(2)"));
 }
 
 
@@ -356,23 +359,23 @@ void checkLines() {
 void checkButtons() {
    if(!running){
       deleteStopButtons();
-      if (labelButton("start_long", 15, 15, 1, "start long", Lime)){
+      if (labelButton("start_long", 15, 60, 1, "start long", Blue)){
          go(LONG);
       }
-      if (labelButton("start_short", 15, 30, 1, "start short", Lime)){
+      if (labelButton("start_short", 15, 75, 1, "start short", Blue)){
          go(SHORT);
       }
-      if (labelButton("start_bidir", 15, 45, 1, "start bidirectional", Lime)){
+      if (labelButton("start_bidir", 15, 90, 1, "start bidirectional", Blue)){
          go(BIDIR);
       }
    }
 
    if (running){
       deleteStartButtons();
-      if (labelButton("stop", 15, 15, 1, "stop", Red)){
+      if (labelButton("stop", 15, 60, 1, "stop", Red)){
          stop();
       }
-      if (labelButton("pause", 15, 30, 1, "pause", Yellow)){
+      if (labelButton("pause", 15, 75, 1, "pause", Red)){
          pause();
       }
    }
@@ -735,12 +738,11 @@ void info() {
    stop_value        = stop_distance * pipValue * lots;
 
    Comment("\n" + SP + name + magic + ", " + dir +
-           "\n" + SP + "1 pip is " + DoubleToStr(Pip, Digits) + " " + Symbol6() +
-           "\n" + SP + "stop distance: " + stop_distance + " pip, lot-size: " + DoubleToStr(lots, 2) +
+           "\n" + SP + "stop distance: " + stop_distance + " pips, lot size: " + DoubleToStr(lots, 2) +
            "\n" + SP + "every stop equals " + DoubleToStr(stop_value, 2) + " " + AccountCurrency() +
            "\n" + SP + "realized: " + DoubleToStr(realized - getGlobal("realized"), 2) + "  floating: " + DoubleToStr(floating, 2) +
            "\n" + SP + "profit: " + DoubleToStr(cycle_total_profit, 2) + " " + AccountCurrency() + "  current level: " + level_abs +
-           "\n" + SP + "auto-tp: " + auto_tp + " levels (" + DoubleToStr(auto_tp_price, Digits) + ", " + DoubleToStr(auto_tp_profit, 2) + " " + AccountCurrency() + ")");
+           "\n" + SP + "auto-tp: " + auto_tp + " levels (" + NumberToStr(auto_tp_price, PriceFormat) + ", " + DoubleToStr(auto_tp_profit, 2) + " " + AccountCurrency() + ")");
 
    if (last_be_plot == 0 || TimeCurrent() - last_be_plot > 300){ // every 5 minutes
       plotBreakEven();
