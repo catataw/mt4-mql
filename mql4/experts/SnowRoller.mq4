@@ -537,12 +537,12 @@ void trade() {
       // bidirectional mode this would have some unwanted effects.
       if (level != 0){
          // snap to grid
-         if (Ask + (Pip * stop_distance / 6) >= start + stop_distance*Pip){
+         if (Ask + (stop_distance*Pip / 6) >= start + stop_distance*Pip){
             jumpGrid(1);
          }
 
          // snap to grid
-         if (Bid - (Pip * stop_distance / 6) <= start - stop_distance*Pip){
+         if (Bid - (stop_distance*Pip / 6) <= start - stop_distance*Pip){
             jumpGrid(-1);
          }
       }else{
