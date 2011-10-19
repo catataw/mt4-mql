@@ -1,5 +1,5 @@
 /**
- * Snow Roller Anti-Martingale EA
+ * SnowRoller Anti-Martingale EA
  *
  * @see SnowRoller Strategy  - 7bit: http://www.forexfactory.com/showthread.php?t=226059
  *      SnowRoller Journal   - 7bit: http://www.forexfactory.com/showthread.php?t=239717
@@ -14,10 +14,10 @@
 #include <prof7bit/offline_charts.mqh>
 
 
-extern double lots          = 0.1;          // lots to use per trade
+extern double lots          = 0.1;                 // lots to use per trade
 extern int    stop_distance = 20;
-extern int    auto_tp       = 2;             // auto-takeprofit this many levels (roughly) above the BE point
-extern bool   is_ecn_broker = false;         // different market order procedure when resuming after pause
+extern int    auto_tp       = 2;                   // TakeProfit (roughly) this many levels above Breakeven
+extern bool   is_ecn_broker = false;
 
 extern color  clr_breakeven_level    = Lime;
 extern color  clr_buy                = Blue;
@@ -65,8 +65,6 @@ double auto_tp_profit;                       // rough estimation of auto_tp prof
  */
 int init() {
    __SCRIPT__ = WindowExpertName();
-   if (!IsLibrariesAllowed()) { PlaySound("notify.wav"); MessageBox("MQL library imports must be allowed!", __SCRIPT__ +" - init()", MB_ICONEXCLAMATION|MB_OK); return(ERR_EXTERNAL_CALLS_NOT_ALLOWED); }
-   if (!IsDllsAllowed())      { PlaySound("notify.wav"); MessageBox("DLL imports must be allowed!"        , __SCRIPT__ +" - init()", MB_ICONEXCLAMATION|MB_OK); return(ERR_DLL_CALLS_NOT_ALLOWED     ); }
    stdlib_init(__SCRIPT__);
 
    PipDigits   = Digits & (~1);
@@ -74,14 +72,14 @@ int init() {
    Pip         = 1/MathPow(10, PipDigits);
    PriceFormat = "."+ PipDigits + ifString(Digits==PipDigits, "", "'");
 
-   IS_ECN_BROKER = is_ecn_broker;
-   CLR_BUY_ARROW = clr_buy;
-   CLR_SELL_ARROW = clr_sell;
-   CLR_CROSSLINE_ACTIVE = clr_stopline_active;
+   IS_ECN_BROKER           = is_ecn_broker;
+   CLR_BUY_ARROW           = clr_buy;
+   CLR_SELL_ARROW          = clr_sell;
+   CLR_CROSSLINE_ACTIVE    = clr_stopline_active;
    CLR_CROSSLINE_TRIGGERED = clr_stopline_triggered;
 
-   comment = name + "_" + Symbol6();
-   magic = makeMagicNumber(name + "_" + Symbol());
+   comment = name +"_"+ Symbol6();
+   magic   = makeMagicNumber(name + "_" + Symbol());
 
    if (last_line == 0){
       last_line = getLine();
@@ -95,8 +93,8 @@ int init() {
    readVariables();
 
    if (IsTesting() && !IsVisualMode()){
-      Print("This is not an automated strategy! Automated backtesting is nonsense! Starting in bidirectional mode...");
-      running = true;
+      Print("This is not an automated strategy! Starting in bidirectional mode...");
+      running   = true;
       direction = BIDIR;
       placeLine(Bid);
    }
@@ -105,9 +103,7 @@ int init() {
    return(catch("init()"));
 
    // pewa: dummy calls to avoid compiler warnings about unreferenced functions
-   print(NULL);
-   forceFileClose();
-   getPyramidBase1();
+   print(NULL); forceFileClose(); getPyramidBase1();
 }
 
 
@@ -120,11 +116,13 @@ int deinit() {
    deleteStartButtons();
    deleteStopButtons();
    storeVariables();
-   if (UninitializeReason() == REASON_PARAMETERS){
+
+   if (UninitializeReason() == REASON_PARAMETERS) {
       Comment("Parameters changed, pending orders deleted, will be replaced with the next tick");
       closeOpenOrders(OP_SELLSTOP, magic);
       closeOpenOrders(OP_BUYSTOP, magic);
-   }else{
+   }
+   else {
       Comment("EA removed, open orders, trades and status untouched!");
    }
 
@@ -138,33 +136,21 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int start() {
-   static int numbars;
-   onTick();
-   numbars = Bars;
-
-   return(catch("start()"));
-}
-
-
-/**
- *
- */
-void onTick() {
-   recordEquity(name+Symbol6(), PERIOD_M1 , magic);
-   recordEquity(name+Symbol6(), PERIOD_M5 , magic);
-   recordEquity(name+Symbol6(), PERIOD_M15, magic);
+   recordEquity(name+Symbol6(), PERIOD_M1, magic);
+   recordEquity(name+Symbol6(), PERIOD_M5, magic);
 
    checkLines();
    checkButtons();
    trade();
    info();
    checkAutoTP();
+
    if(!IsTesting()){
       plotNewOpenTrades(magic);
       plotNewClosedTrades(magic);
    }
 
-   return(catch("onTick()"));
+   return(catch("start()"));
 }
 
 
