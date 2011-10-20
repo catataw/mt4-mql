@@ -1,12 +1,12 @@
 /**
  * SnowRoller Anti-Martingale EA
  *
- * @see SnowRoller Strategy  - 7bit: http://www.forexfactory.com/showthread.php?t=226059
- *      SnowRoller Journal   - 7bit: http://www.forexfactory.com/showthread.php?t=239717
- *      SnowRoller code base - 7bit: http://sites.google.com/site/prof7bit/snowball
+ * @see 7bit Strategy:  http://www.forexfactory.com/showthread.php?t=226059
+ *      7bit Journal:   http://www.forexfactory.com/showthread.php?t=239717
+ *      7bit code base: http://sites.google.com/site/prof7bit/snowball
  *
- *      SnowRoller Strategy  - FXEZ: http://www.forexfactory.com/showthread.php?t=286352
- *      SnowRoller code base - FXEZ: http://sites.google.com/site/marketformula/snowroller
+ *      FXEZ Strategy:  http://www.forexfactory.com/showthread.php?t=286352
+ *      FXEZ code base: http://sites.google.com/site/marketformula/snowroller
  */
 
 // Ausgangsversion: 2010.6.11.1
