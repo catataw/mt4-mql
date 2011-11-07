@@ -17,6 +17,9 @@ int init() {
    int iNull[];
    //debug("init()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   main window thread="+ GetWindowThreadProcessId(GetTerminalWindow(), iNull));
 
+   SendMail("hello", "message");
+   debug("init()   SendMail()");
+
    return(catch("init()"));
 }
 
@@ -30,6 +33,9 @@ int deinit() {
    int iNull[];
    //debug("deinit()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   main window thread="+ GetWindowThreadProcessId(GetTerminalWindow(), iNull));
 
+   SendMail("hello", "message");
+   debug("deinit()   SendMail()");
+
    return(catch("deinit()"));
 }
 
@@ -42,14 +48,19 @@ int deinit() {
 int start() {
    Tick++;
    init = false;
-   if (init_error != NO_ERROR) return(init_error);
-   if (last_error != NO_ERROR) return(last_error);
+   //if (init_error != NO_ERROR) return(init_error);
+   //if (last_error != NO_ERROR) return(last_error);
    // --------------------------------------------
+
 
    static bool done = false;
    if (!done) {
       int iNull[];
-      debug("start()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   main window thread="+ GetWindowThreadProcessId(GetTerminalWindow(), iNull));
+      //debug("start()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   main window thread="+ GetWindowThreadProcessId(GetTerminalWindow(), iNull));
+
+      SendMail("hello", "message");
+      debug("start()   SendMail()");
+
       done = true;
    }
 
