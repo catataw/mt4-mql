@@ -17,8 +17,7 @@ int init() {
    init = true; init_error = NO_ERROR; __SCRIPT__ = WindowExpertName();
    stdlib_init(__SCRIPT__);
 
-   int iNull[];
-   //debug("init()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   main window thread="+ GetWindowThreadProcessId(GetTerminalWindow(), iNull));
+   debug("init()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
 
    return(catch("init()"));
 }
@@ -30,8 +29,8 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
-   int iNull[];
-   //debug("deinit()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   main window thread="+ GetWindowThreadProcessId(GetTerminalWindow(), iNull));
+
+   debug("deinit()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
 
    return(catch("deinit()"));
 }
@@ -48,8 +47,7 @@ int start() {
 
    static bool done = false;
    if (!done) {
-      int iNull[];
-      //debug("start()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   main window thread="+ GetWindowThreadProcessId(GetTerminalWindow(), iNull));
+      debug("start()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
       done = true;
    }
 
