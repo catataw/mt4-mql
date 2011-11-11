@@ -43,7 +43,7 @@ int deinit() {
  */
 int start() {
    init = false;
-   stdlib_onTick(0);
+   stdlib_start(0);
 
    static bool done = false;
    if (!done) {
