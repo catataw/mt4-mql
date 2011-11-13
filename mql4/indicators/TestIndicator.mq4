@@ -47,7 +47,11 @@ int start() {
 
    static bool done = false;
    if (!done) {
-      //debug("start()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
+      debug("start()    vor ForceMessageBox(), thread = "+ GetCurrentThreadId());
+
+      ForceMessageBox("hello", __SCRIPT__, MB_OK);
+
+      debug("start()   nach ForceMessageBox(), thread = "+ GetCurrentThreadId());
       done = true;
    }
 
