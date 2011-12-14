@@ -64,7 +64,7 @@ double auto_tp_profit;                       // rough estimation of auto_tp prof
  * @return int - Fehlerstatus
  */
 int init() {
-   __SCRIPT__ = WindowExpertName();
+   is_expert = true; __SCRIPT__ = WindowExpertName();
    stdlib_init(__SCRIPT__);
 
    PipDigits   = Digits & (~1);
@@ -135,7 +135,7 @@ int deinit() {
  *
  * @return int - Fehlerstatus
  */
-int start() {
+int onTick() {
    recordEquity(name+Symbol6(), PERIOD_M1, magic);
    recordEquity(name+Symbol6(), PERIOD_M5, magic);
 
@@ -150,7 +150,7 @@ int start() {
       plotNewClosedTrades(magic);
    }
 
-   return(catch("start()"));
+   return(catch("onTick()"));
 }
 
 
