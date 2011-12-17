@@ -11,8 +11,8 @@
  * @return int - Fehlerstatus
  */
 int init() {
-   is_expert = true; __SCRIPT__ = WindowExpertName();
-   stdlib_init(__SCRIPT__);
+   __TYPE__ = T_EXPERT; __SCRIPT__ = WindowExpertName();
+   stdlib_init(__TYPE__, __SCRIPT__);
 
    debug("init()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
 
