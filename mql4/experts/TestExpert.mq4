@@ -11,8 +11,7 @@
  * @return int - Fehlerstatus
  */
 int init() {
-   __TYPE__ = T_EXPERT; __SCRIPT__ = WindowExpertName();
-   stdlib_init(__TYPE__, __SCRIPT__);
+   onInit(T_EXPERT, WindowExpertName());
 
    debug("init()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
 
@@ -26,9 +25,7 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
-
    debug("deinit()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
-
    return(catch("deinit()"));
 }
 
@@ -44,6 +41,5 @@ int onTick() {
       debug("onTick()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
       done = true;
    }
-
    return(catch("onTick()"));
 }

@@ -31,11 +31,6 @@ extern string sound_order_triggered  = "alert.wav";
 extern string sound_stop_all         = "alert.wav";
 
 
-double Pip;
-int    PipDigits;
-int    PipPoints;
-string PriceFormat;
-
 string name = "snow";
 
 string comment;
@@ -64,13 +59,7 @@ double auto_tp_profit;                       // rough estimation of auto_tp prof
  * @return int - Fehlerstatus
  */
 int init() {
-   __TYPE__ = T_EXPERT; __SCRIPT__ = WindowExpertName();
-   stdlib_init(__TYPE__, __SCRIPT__);
-
-   PipDigits   = Digits & (~1);
-   PipPoints   = MathPow(10, Digits-PipDigits) +0.1;                 // (int) double
-   Pip         = 1/MathPow(10, PipDigits);
-   PriceFormat = "."+ PipDigits + ifString(Digits==PipDigits, "", "'");
+   onInit(T_EXPERT, WindowExpertName());
 
    IS_ECN_BROKER           = is_ecn_broker;
    CLR_BUY_ARROW           = clr_buy;
