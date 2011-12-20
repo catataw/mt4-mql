@@ -36,20 +36,13 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int onTick() {
+   int    bar = 0;
+   double ohlc[4];
+   int error = iOHLC(NULL, PERIOD_D1, bar, ohlc);
 
-
-
-   GetTradeServerTimezone();
-
+   debug("onTick()   ohlc = "+ PriceArrayToStr(ohlc, PriceFormat, NULL) + ifString(error==NO_ERROR, "", "   error = "+ ErrorToStr(error)));
 
    return(catch("onTick()"));
-
-   double ohlc[];
-
-   int bar = 1;
-   int error = iOHLC(NULL, NULL, bar, ohlc);
-
-   debug("onTick()   ohlc = "+ PriceArrayToStr(ohlc, PriceFormat, NULL));
 }
 
 
@@ -61,20 +54,41 @@ int onTick() {
  * @param  int    period     - Periode (default: aktuelle Periode)
  * @param  int    bar        - Bar-Offset
  * @param  double results[4] - Ergebnisarray {Open, Low, High, Close}
- * @param  string timezone   - Zeitzone der Bars, nur relevant für period > PERIOD_H1 (default: Tradeserver-Zeitzone)
+ * @param  string timezone   - Zeitzone der Bars, falls period > PERIOD_H1 (default: Tradeserver-Zeitzone)
  *
  * @return int - Fehlerstatus; ERR_NO_RESULT, wenn die angegebene Bar nicht existiert (ggf. ERR_HISTORY_UPDATE)
  *
  */
 int iOHLC(string symbol, int period, int bar, double& results[4], string timezone="0") {
-   if (symbol == "0")            // NULL ist Integer (0)
+   if (symbol == "0")                     // NULL ist Integer (0)
       symbol = Symbol();
    if (bar < 0)
       return(catch("iOHLC(1)  invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE));
+   if (ArraySize(results) != 4)
+      ArrayResize(results, 4);
 
-   if (timezone == "0") {
-      timezone = GetTradeServerTimezone();
+
+   if (timezone == "0") {              // Tradeserver-Timezone, umrechnen nicht nötig
    }
+   else {
+      string zone = GetTradeServerTimezone();
+      if (zone == "") return(stdlib_PeekLastError());
+
+      if (zone == timezone) {          // Tradeserver-Timezone, umrechnen nicht nötig
+      }
+      else {
+         // andere als die Tradeserver-Zeitzone angegeben
+      }
+   }
+
+
+
+
+
+
+
+
+
 
    // TODO: um ERR_HISTORY_UPDATE zu vermeiden, möglichst die aktuelle Periode benutzen
 
@@ -92,8 +106,5 @@ int iOHLC(string symbol, int period, int bar, double& results[4], string timezon
    else if (error != ERR_HISTORY_UPDATE) {
       catch("iOHLCBar(2)", error);
    }
-
-   // TODO: bei ERR_HISTORY_UPDATE muß bei weiteren Abfragen derselben Periode während desselben Ticks ebenfalls
-   //       ERR_HISTORY_UPDATE zurückgegeben werden
    return(error);
 }
