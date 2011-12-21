@@ -13,8 +13,7 @@
  * @return int - Fehlerstatus
  */
 int init() {
-   onInit(T_INDICATOR, WindowExpertName());
-   //debug("init()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
+   onInit(T_INDICATOR, WindowExpertName());  // INIT_TIMEZONE
    return(catch("init()"));
 }
 
@@ -25,7 +24,6 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
-   //debug("deinit()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
    return(catch("deinit()"));
 }
 
@@ -36,75 +34,167 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int onTick() {
-   int    bar = 0;
-   double ohlc[4];
-   int error = iOHLC(NULL, PERIOD_D1, bar, ohlc);
 
-   debug("onTick()   ohlc = "+ PriceArrayToStr(ohlc, PriceFormat, NULL) + ifString(error==NO_ERROR, "", "   error = "+ ErrorToStr(error)));
+   // Ermittlung von OHLC der letzten Session
+   // ---------------------------------------
+
+   // (1) Beginn- und Endzeit der letzten Session ermitteln
+   datetime time = TimeCurrent();
+   datetime sessionStart = GetServerSessionStartTime(time);
+   while (sessionStart == -1) {
+      if (last_error != ERR_MARKET_CLOSED)
+         return(last_error);
+      time -= 1*DAY;
+      sessionStart = GetServerSessionStartTime(time);
+   }
+   datetime sessionEnd = sessionStart + 1*DAY;
+   debug("onTick()   sessionStart = "+ TimeToStr(sessionStart, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"   sessionEnd = "+ TimeToStr(sessionEnd, TIME_DATE|TIME_MINUTES|TIME_SECONDS));
+
+   // (2) geeignete Periode wählen
+   int period = Period();
+   if (period==PERIOD_M1 || period > PERIOD_H1)    // M1-History-Update ist unzuverlässig, größer als H1 ist ungeeignet
+      period = PERIOD_H1;
+
+   // (3) Beginn- und Endbar der Session ermitteln
+   int startBar = iBarShiftNext(Symbol(), period, sessionStart);
+
+
+   // (4) OHLC-Werte ermitteln
+   /*
+   Open  = iOpen (NULL, period, BeginBar);
+   High  = iHigh (NULL, period, iHighest(NULL, period, MODE_HIGH, BeginBar-EndBar+1, EndBar));
+   Low   = iLow  (NULL, period, iLowest (NULL, period, MODE_LOW,  BeginBar-EndBar+1, EndBar));
+   Close = iClose(NULL, period, EndBar);
+   */
 
    return(catch("onTick()"));
 }
 
 
 /**
- * Ermittelt die OHLC-Werte eines Symbols für eine einzelne Bar einer Periode. Im Unterschied zu den eingebauten Funktionen iHigh(), iLow() etc.
- * ermittelt diese Funktion alle 4 Werte mit einem einzigen Funktionsaufruf.
+ * Gibt die Tradeserver-Startzeit der Handelssession für den angegebenen Zeitpunkt zurück.
  *
- * @param  string symbol     - Symbol  (default: aktuelles Symbol)
- * @param  int    period     - Periode (default: aktuelle Periode)
- * @param  int    bar        - Bar-Offset
- * @param  double results[4] - Ergebnisarray {Open, Low, High, Close}
- * @param  string timezone   - Zeitzone der Bars, falls period > PERIOD_H1 (default: Tradeserver-Zeitzone)
+ * @param  datetime serverTime - Tradeserver-Zeitpunkt
  *
- * @return int - Fehlerstatus; ERR_NO_RESULT, wenn die angegebene Bar nicht existiert (ggf. ERR_HISTORY_UPDATE)
- *
+ * @return datetime - Startzeit oder -1, falls ein Fehler auftrat
  */
-int iOHLC(string symbol, int period, int bar, double& results[4], string timezone="0") {
-   if (symbol == "0")                     // NULL ist Integer (0)
-      symbol = Symbol();
-   if (bar < 0)
-      return(catch("iOHLC(1)  invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE));
-   if (ArraySize(results) != 4)
-      ArrayResize(results, 4);
-
-
-   if (timezone == "0") {              // Tradeserver-Timezone, umrechnen nicht nötig
-   }
-   else {
-      string zone = GetTradeServerTimezone();
-      if (zone == "") return(stdlib_PeekLastError());
-
-      if (zone == timezone) {          // Tradeserver-Timezone, umrechnen nicht nötig
-      }
-      else {
-         // andere als die Tradeserver-Zeitzone angegeben
-      }
+datetime GetServerSessionStartTime(datetime serverTime) {
+   if (serverTime < 1) {
+      catch("GetServerSessionStartTime(1)  invalid parameter serverTime: "+ serverTime, ERR_INVALID_FUNCTION_PARAMVALUE);
+      return(-1);
    }
 
+   int fxtOffset = GetServerToFxtOffset(datetime serverTime);
+   if (fxtOffset == EMPTY_VALUE)
+      return(-1);
 
+   datetime fxt  = serverTime - fxtOffset;
+   int dayOfWeek = TimeDayOfWeek(fxt);
 
+   if (dayOfWeek==SATURDAY || dayOfWeek==SUNDAY) {
+      SetLastError(ERR_MARKET_CLOSED);
+      return(-1);
+   }
 
-
-
-
-
-
-
-   // TODO: um ERR_HISTORY_UPDATE zu vermeiden, möglichst die aktuelle Periode benutzen
-
-   results[MODE_OPEN ] = iOpen (symbol, period, bar);
-   results[MODE_HIGH ] = iHigh (symbol, period, bar);
-   results[MODE_LOW  ] = iLow  (symbol, period, bar);
-   results[MODE_CLOSE] = iClose(symbol, period, bar);
+   fxt       -= TimeHour(fxt)*HOURS + TimeMinute(fxt)*MINUTES + TimeSeconds(fxt)*SECONDS;
+   serverTime = fxt + fxtOffset;
 
    int error = GetLastError();
-
-   if (error == NO_ERROR) {
-      if (EQ(results[MODE_OPEN], 0))
-         error = ERR_NO_RESULT;
+   if (error != NO_ERROR) {
+      catch("GetServerSessionStartTime(2)", error);
+      return(-1);
    }
-   else if (error != ERR_HISTORY_UPDATE) {
-      catch("iOHLCBar(2)", error);
-   }
-   return(error);
+   return(serverTime);
 }
+
+
+/**
+ * Gibt den Offset der angegebenen Serverzeit zu FXT (Forex Standard Time) zurück (positive Werte für östlich von FXT liegende Zeitzonen).
+ *
+ * @param  datetime serverTime - Tradeserver-Zeitpunkt
+ *
+ * @return int - Offset in Sekunden oder EMPTY_VALUE, falls ein Fehler auftrat
+ */
+int GetServerToFxtOffset(datetime serverTime) {
+   if (serverTime < 1) {
+      catch("GetServerToFxtOffset(1)   invalid parameter serverTime = "+ serverTime, ERR_INVALID_FUNCTION_PARAMVALUE);
+      return(EMPTY_VALUE);
+   }
+
+   string zone = GetServerTimezone();
+   if (StringLen(zone) == 0)
+      return(EMPTY_VALUE);
+
+   // schnelle Rückkehr, wenn der Tradeserver unter FXT läuft
+   if (zone == "FXT")
+      return(0);
+
+   // Offset von Server zu GMT ermitteln
+   int serverToGmtOffset;
+   if (zone != "GMT") {
+      serverToGmtOffset = GetServerToGmtOffset(serverTime);
+      if (serverToGmtOffset == EMPTY_VALUE)
+         return(EMPTY_VALUE);
+   }
+   datetime gmt = serverTime - serverToGmtOffset;
+
+   // Offset von GMT zu FXT ermitteln
+   int gmtToFxtOffset = GetGmtToFxtOffset(gmt);
+   if (gmtToFxtOffset == EMPTY_VALUE)
+      return(EMPTY_VALUE);
+
+   int error = GetLastError();
+   if (error != NO_ERROR) {
+      catch("GetServerToFxtOffset(2)", error);
+      return(EMPTY_VALUE);
+   }
+   return(serverToGmtOffset + gmtToFxtOffset);
+}
+
+
+#include <timezones.mqh>
+
+
+/**
+ * Gibt den Offset der angegebenen GMT-Zeit zu FXT (Forex Standard Time) zurück (entgegengesetzter Wert des Offsets von FXT zu GMT).
+ *
+ * @param  datetime gmtTime - GMT-Zeitpunkt
+ *
+ * @return int - Offset in Sekunden oder EMPTY_VALUE, falls ein Fehler auftrat
+ */
+int GetGmtToFxtOffset(datetime gmtTime) {
+   if (gmtTime < 1) {
+      catch("GetGmtToFxtOffset(1)  invalid parameter gmtTime = "+ gmtTime, ERR_INVALID_FUNCTION_PARAMVALUE);
+      return(EMPTY_VALUE);
+   }
+
+   int offset, year = TimeYear(gmtTime)-1970;
+
+   // FXT                                       GMT+0200,GMT+0300
+   if      (gmtTime < FXT_transitions[year][2]) offset = -2 * HOURS;
+   else if (gmtTime < FXT_transitions[year][3]) offset = -3 * HOURS;
+   else                                         offset = -2 * HOURS;
+
+   if (catch("GetGmtToFxtOffset(2)") != NO_ERROR)
+      return(EMPTY_VALUE);
+
+   return(offset);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+double ohlc[4];
+int bar   = 4000;
+int error = iOHLC(NULL, PERIOD_H1, bar, ohlc);
+debug("onTick()   ohlc = "+ PriceArrayToStr(ohlc, PriceFormat, NULL) + ifString(error==NO_ERROR, "", "   error = "+ ErrorToStr(error)));
+*/
