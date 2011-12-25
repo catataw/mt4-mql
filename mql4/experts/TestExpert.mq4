@@ -11,7 +11,8 @@
  * @return int - Fehlerstatus
  */
 int init() {
-   onInit(T_EXPERT, WindowExpertName());
+   if (onInit(T_EXPERT, WindowExpertName()) != NO_ERROR)
+      return(last_error);
 
    debug("init()   IsTesting()="+ IsTesting() +"   current thread="+ GetCurrentThreadId() +"   UI thread="+ GetUIThreadId());
 

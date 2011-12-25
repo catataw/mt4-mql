@@ -59,7 +59,8 @@ double auto_tp_profit;                       // rough estimation of auto_tp prof
  * @return int - Fehlerstatus
  */
 int init() {
-   onInit(T_EXPERT, WindowExpertName());
+   if (onInit(T_EXPERT, WindowExpertName()) != NO_ERROR)
+      return(last_error);
 
    IS_ECN_BROKER           = is_ecn_broker;
    CLR_BUY_ARROW           = clr_buy;

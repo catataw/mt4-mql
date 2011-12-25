@@ -13,8 +13,7 @@
  * @return int - Fehlerstatus
  */
 int init() {
-   onInit(T_INDICATOR, WindowExpertName());  // INIT_TIMEZONE
-   return(catch("init()"));
+   return(onInit(T_INDICATOR, WindowExpertName()));
 }
 
 
@@ -38,17 +37,18 @@ int onTick() {
    // Ermittlung von OHLC der letzten Session
    // ---------------------------------------
 
-   // (1) Beginn- und Endzeit der letzten Session ermitteln
+   // (1) Beginn- und Endzeit der aktuellen Session ermitteln
    datetime time = TimeCurrent();
    datetime sessionStart = GetServerSessionStartTime(time);
    while (sessionStart == -1) {
+      last_error = stdlib_GetLastError();
       if (last_error != ERR_MARKET_CLOSED)
          return(last_error);
       time -= 1*DAY;
       sessionStart = GetServerSessionStartTime(time);
    }
    datetime sessionEnd = sessionStart + 1*DAY;
-   debug("onTick()   sessionStart = "+ TimeToStr(sessionStart, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"   sessionEnd = "+ TimeToStr(sessionEnd, TIME_DATE|TIME_MINUTES|TIME_SECONDS));
+   //debug("onTick()   sessionStart = "+ TimeToStr(sessionStart, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"   sessionEnd = "+ TimeToStr(sessionEnd, TIME_DATE|TIME_MINUTES|TIME_SECONDS));
 
    // (2) geeignete Periode wählen
    int period = Period();
@@ -69,127 +69,6 @@ int onTick() {
 
    return(catch("onTick()"));
 }
-
-
-/**
- * Gibt die Tradeserver-Startzeit der Handelssession für den angegebenen Zeitpunkt zurück.
- *
- * @param  datetime serverTime - Tradeserver-Zeitpunkt
- *
- * @return datetime - Startzeit oder -1, falls ein Fehler auftrat
- */
-datetime GetServerSessionStartTime(datetime serverTime) {
-   if (serverTime < 1) {
-      catch("GetServerSessionStartTime(1)  invalid parameter serverTime: "+ serverTime, ERR_INVALID_FUNCTION_PARAMVALUE);
-      return(-1);
-   }
-
-   int fxtOffset = GetServerToFxtOffset(datetime serverTime);
-   if (fxtOffset == EMPTY_VALUE)
-      return(-1);
-
-   datetime fxt  = serverTime - fxtOffset;
-   int dayOfWeek = TimeDayOfWeek(fxt);
-
-   if (dayOfWeek==SATURDAY || dayOfWeek==SUNDAY) {
-      SetLastError(ERR_MARKET_CLOSED);
-      return(-1);
-   }
-
-   fxt       -= TimeHour(fxt)*HOURS + TimeMinute(fxt)*MINUTES + TimeSeconds(fxt)*SECONDS;
-   serverTime = fxt + fxtOffset;
-
-   int error = GetLastError();
-   if (error != NO_ERROR) {
-      catch("GetServerSessionStartTime(2)", error);
-      return(-1);
-   }
-   return(serverTime);
-}
-
-
-/**
- * Gibt den Offset der angegebenen Serverzeit zu FXT (Forex Standard Time) zurück (positive Werte für östlich von FXT liegende Zeitzonen).
- *
- * @param  datetime serverTime - Tradeserver-Zeitpunkt
- *
- * @return int - Offset in Sekunden oder EMPTY_VALUE, falls ein Fehler auftrat
- */
-int GetServerToFxtOffset(datetime serverTime) {
-   if (serverTime < 1) {
-      catch("GetServerToFxtOffset(1)   invalid parameter serverTime = "+ serverTime, ERR_INVALID_FUNCTION_PARAMVALUE);
-      return(EMPTY_VALUE);
-   }
-
-   string zone = GetServerTimezone();
-   if (StringLen(zone) == 0)
-      return(EMPTY_VALUE);
-
-   // schnelle Rückkehr, wenn der Tradeserver unter FXT läuft
-   if (zone == "FXT")
-      return(0);
-
-   // Offset von Server zu GMT ermitteln
-   int serverToGmtOffset;
-   if (zone != "GMT") {
-      serverToGmtOffset = GetServerToGmtOffset(serverTime);
-      if (serverToGmtOffset == EMPTY_VALUE)
-         return(EMPTY_VALUE);
-   }
-   datetime gmt = serverTime - serverToGmtOffset;
-
-   // Offset von GMT zu FXT ermitteln
-   int gmtToFxtOffset = GetGmtToFxtOffset(gmt);
-   if (gmtToFxtOffset == EMPTY_VALUE)
-      return(EMPTY_VALUE);
-
-   int error = GetLastError();
-   if (error != NO_ERROR) {
-      catch("GetServerToFxtOffset(2)", error);
-      return(EMPTY_VALUE);
-   }
-   return(serverToGmtOffset + gmtToFxtOffset);
-}
-
-
-#include <timezones.mqh>
-
-
-/**
- * Gibt den Offset der angegebenen GMT-Zeit zu FXT (Forex Standard Time) zurück (entgegengesetzter Wert des Offsets von FXT zu GMT).
- *
- * @param  datetime gmtTime - GMT-Zeitpunkt
- *
- * @return int - Offset in Sekunden oder EMPTY_VALUE, falls ein Fehler auftrat
- */
-int GetGmtToFxtOffset(datetime gmtTime) {
-   if (gmtTime < 1) {
-      catch("GetGmtToFxtOffset(1)  invalid parameter gmtTime = "+ gmtTime, ERR_INVALID_FUNCTION_PARAMVALUE);
-      return(EMPTY_VALUE);
-   }
-
-   int offset, year = TimeYear(gmtTime)-1970;
-
-   // FXT                                       GMT+0200,GMT+0300
-   if      (gmtTime < FXT_transitions[year][2]) offset = -2 * HOURS;
-   else if (gmtTime < FXT_transitions[year][3]) offset = -3 * HOURS;
-   else                                         offset = -2 * HOURS;
-
-   if (catch("GetGmtToFxtOffset(2)") != NO_ERROR)
-      return(EMPTY_VALUE);
-
-   return(offset);
-}
-
-
-
-
-
-
-
-
-
-
 
 
 /*
