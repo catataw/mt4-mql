@@ -10,8 +10,8 @@
  */
 
 // Ausgangsversion: 2010.6.11.1
-#include <prof7bit/common_functions.mqh>
-#include <prof7bit/offline_charts.mqh>
+#include <7bit/common_functions.mqh>
+#include <7bit/offline_charts.mqh>
 
 
 extern double lots          = 0.1;                 // lots to use per trade
