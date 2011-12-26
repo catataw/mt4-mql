@@ -10,6 +10,8 @@
  */
 
 // Ausgangsversion: 2010.6.11.1
+string objects[];
+
 #include <7bit/common_functions.mqh>
 #include <7bit/offline_charts.mqh>
 
@@ -90,9 +92,21 @@ int init() {
    }
 
    info();
+
+
+   // ggf. EA's aktivieren
+   int reasons1[] = { REASON_REMOVE, REASON_CHARTCLOSE, REASON_APPEXIT };
+   if (IntInArray(UninitializeReason(), reasons1)) /*&&*/ if (!IsExpertEnabled())
+      SwitchExperts(true);                                        // TODO: Bug, wenn mehrere EA's den EA-Modus gleichzeitig einschalten
+
+   // nach Reload nicht auf den nächsten Tick warten (nur bei REASON_CHARTCHANGE oder REASON_ACCOUNT)
+   int reasons2[] = { REASON_REMOVE, REASON_CHARTCLOSE, REASON_APPEXIT, REASON_PARAMETERS, REASON_RECOMPILE };
+   if (IntInArray(UninitializeReason(), reasons2)) /*&&*/ if (!IsTesting())
+      SendTick(false);
+
    return(catch("init()"));
 
-   // pewa: dummy calls to avoid compiler warnings about unreferenced functions
+   // dummy calls to avoid compiler warnings about unreferenced functions
    print(NULL); forceFileClose(); getPyramidBase1();
 }
 
@@ -116,6 +130,9 @@ int deinit() {
       Comment("EA removed, open orders, trades and status untouched!");
    }
 
+   int reasons[] = { REASON_REMOVE, REASON_CHARTCLOSE };
+   if (IntInArray(UninitializeReason(), reasons))
+      RemoveChartObjects(objects);
    return(catch("deinit()"));
 }
 
@@ -126,8 +143,8 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int onTick() {
-   recordEquity(name+Symbol6(), PERIOD_M1, magic);
-   recordEquity(name+Symbol6(), PERIOD_M5, magic);
+   //recordEquity(name+Symbol6(), PERIOD_M1, magic);
+   //recordEquity(name+Symbol6(), PERIOD_M5, magic);
 
    checkLines();
    checkButtons();
@@ -194,6 +211,7 @@ void startArrow() {
    ObjectSet(aname, OBJPROP_ARROWCODE, 5);
    ObjectSet(aname, OBJPROP_COLOR, clr_gridline);
    ObjectSet(aname, OBJPROP_BACK, true);
+   ArrayPushString(objects, name);
 
    return(catch("startArrow()"));
 }
@@ -208,6 +226,7 @@ void endArrow() {
    ObjectSet(aname, OBJPROP_ARROWCODE, 6);
    ObjectSet(aname, OBJPROP_COLOR, clr_gridline);
    ObjectSet(aname, OBJPROP_BACK, true);
+   ArrayPushString(objects, name);
 
    return(catch("endArrow()"));
 }
@@ -667,11 +686,15 @@ void info() {
    double pb, lp, tp;
    static int last_ticket;
    static datetime last_be_plot = 0;
-   int ticket;
    string dir;
 
-   OrderSelect(OrdersHistoryTotal()-1, SELECT_BY_POS, MODE_HISTORY);
-   ticket = OrderTicket();
+   int ticket = last_ticket;
+
+   int orders = OrdersHistoryTotal();
+   if (orders > 0) {
+      OrderSelect(orders-1, SELECT_BY_POS, MODE_HISTORY);
+      ticket = OrderTicket();
+   }
 
    if (ticket != last_ticket){
       // history changed, need to recalculate realized profit
@@ -705,7 +728,6 @@ void info() {
             dir = "trading both directions";
       }
    }
-
    catch("info(1)");
 
    int    level_abs  = MathAbs(getNumOpenOrders(OP_BUY, magic) - getNumOpenOrders(OP_SELL, magic));
@@ -752,7 +774,7 @@ void info() {
          }
       }
       tp = getTheoreticProfit(MathAbs(lp - pb));
-      ObjectSetText("profit", "ï¿½ï¿½ï¿½ " + DoubleToStr(MathRound(realized - getGlobal("realized") + tp), 0) + " " + AccountCurrency() + " profit projection ï¿½ï¿½ï¿½");
+      ObjectSetText("profit", "¯¯¯ " + DoubleToStr(MathRound(realized - getGlobal("realized") + tp), 0) + " " + AccountCurrency() + " profit projection ¯¯¯");
    }
 
    return(catch("info(2)"));
@@ -773,9 +795,11 @@ string arrow(string name="", double price=0, datetime time=0, color clr=Red, int
    if (price == 0){
       price = Bid;
    }
-   if (ObjectFind(name) < 0){
+   if (ObjectFind(name) < 0) {
       ObjectCreate(name, OBJ_ARROW, 0, time, price);
-   }else{
+      ArrayPushString(objects, name);
+   }
+   else {
       ObjectSet(name, OBJPROP_PRICE1, price);
       ObjectSet(name, OBJPROP_TIME1, time);
    }
