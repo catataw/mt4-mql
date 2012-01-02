@@ -13,7 +13,7 @@
  * @return int - Fehlerstatus
  */
 int init() {
-   return(onInit(T_INDICATOR, WindowExpertName()));
+   return(onInit(T_INDICATOR));
 }
 
 

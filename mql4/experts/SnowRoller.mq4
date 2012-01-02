@@ -7,13 +7,13 @@
  *
  *      FXEZ Strategy:  http://www.forexfactory.com/showthread.php?t=286352
  *      FXEZ code base: http://sites.google.com/site/marketformula/snowroller
+ *
+ * Ausgangsversion: 2010.6.11.1
  */
 
-// Ausgangsversion: 2010.6.11.1
 string objects[];
 
 #include <7bit/common_functions.mqh>
-#include <7bit/offline_charts.mqh>
 
 
 extern double lots          = 0.1;                 // lots to use per trade
@@ -47,8 +47,6 @@ double stop_value;                           // dollars (account) per single lev
 double auto_tp_price;                        // the price where auto_tp should trigger, calculated during break even calc.
 double auto_tp_profit;                       // rough estimation of auto_tp profit, calculated during break even calc.
 
-#define SP "                                    "
-
 // trading direction
 #define BIDIR 0
 #define LONG  1
@@ -61,7 +59,7 @@ double auto_tp_profit;                       // rough estimation of auto_tp prof
  * @return int - Fehlerstatus
  */
 int init() {
-   if (onInit(T_EXPERT, WindowExpertName()) != NO_ERROR)
+   if (onInit(T_EXPERT) != NO_ERROR)
       return(last_error);
 
    IS_ECN_BROKER           = is_ecn_broker;
@@ -70,7 +68,7 @@ int init() {
    CLR_CROSSLINE_ACTIVE    = clr_stopline_active;
    CLR_CROSSLINE_TRIGGERED = clr_stopline_triggered;
 
-   comment = name +"_"+ Symbol6();
+   comment = name +"_"+ GetStandardSymbol(Symbol());
    magic   = makeMagicNumber(name + "_" + Symbol());
 
    if (last_line == 0){
@@ -105,9 +103,6 @@ int init() {
       SendTick(false);
 
    return(catch("init()"));
-
-   // dummy calls to avoid compiler warnings about unreferenced functions
-   print(NULL); forceFileClose(); getPyramidBase1();
 }
 
 
@@ -143,8 +138,7 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int onTick() {
-   //recordEquity(name+Symbol6(), PERIOD_M1, magic);
-   //recordEquity(name+Symbol6(), PERIOD_M5, magic);
+   //recordEquity(name+ GetStandardSymbol(Symbol()), PERIOD_M1, magic);
 
    checkLines();
    checkButtons();
@@ -152,7 +146,7 @@ int onTick() {
    info();
    checkAutoTP();
 
-   if(!IsTesting()){
+   if (!IsTesting()) {
       plotNewOpenTrades(magic);
       plotNewClosedTrades(magic);
    }
@@ -167,7 +161,6 @@ int onTick() {
 void storeVariables() {
    setGlobal("running", running);
    setGlobal("direction", direction);
-
    return(catch("storeVariables()"));
 }
 
@@ -178,7 +171,6 @@ void storeVariables() {
 void readVariables() {
    running   = getGlobal("running");
    direction = getGlobal("direction");
-
    return(catch("readVariables()"));
 }
 
@@ -329,21 +321,12 @@ void resume() {
  *
  */
 void checkLines() {
-   if (crossedLine("stop")){
-      stop();
-   }
-   if (crossedLine("pause")){
-      pause();
-   }
-   if (crossedLine("start long")){
-      go(LONG);
-   }
-   if (crossedLine("start short")){
-      go(SHORT);
-   }
-   if (crossedLine("start bidir")){
-      go(BIDIR);
-   }
+   if (crossedLine("stop"       )) stop();
+   if (crossedLine("pause"      )) pause();
+   if (crossedLine("start long" )) go(LONG);
+   if (crossedLine("start short")) go(SHORT);
+   if (crossedLine("start bidir")) go(BIDIR);
+
    return(catch("checkLines()"));
 }
 
@@ -398,10 +381,9 @@ void checkAutoTP() {
  *
  */
 void placeLine(double price) {
-   horizLine("last_order", price, clr_gridline, SP + "grid position");
+   horizLine("last_order", price, clr_gridline, "grid position");
    last_line = price;
    WindowRedraw();
-
    return(catch("placeLine()"));
 }
 
@@ -429,13 +411,13 @@ bool lineMoved() {
 
    if (line != last_line) {
       // line has been moved by external forces (hello wb ;-)
-      if (MathAbs(line - last_line) < stop_distance * Pip) {
+      if (MathAbs(line - last_line) < stop_distance*Pip) {
          // minor adjustment by user
          last_line = line;
          result = true;
       }
       // something strange (gap? crash? line deleted?)
-      else if (MathAbs(Bid - last_line) < stop_distance * Pip) {
+      else if (MathAbs(Bid - last_line) < stop_distance*Pip) {
          // last_line variable still near price and thus is valid.
          placeLine(last_line);   // simply replace line
          result = false;         // no action needed
@@ -468,9 +450,9 @@ void trade() {
    // calculate global variable level here // FIXME: global variable side-effect hell.
    level = getNumOpenOrders(OP_BUY, magic) - getNumOpenOrders(OP_SELL, magic);
 
-   if (running){
+   if (running) {
       // are we flat?
-      if (level == 0){
+      if (level == 0) {
          if (direction == SHORT && Ask > start) {
             if (getNumOpenOrders(OP_SELLSTOP, magic) != 2){
                closeOpenOrders(OP_SELLSTOP, magic);
@@ -560,7 +542,8 @@ void trade() {
          last_level = level;
       }
 
-   }else{ // not running
+   }
+   else { // not running
       placeLine(Bid);
    }
 
@@ -598,16 +581,14 @@ bool needsOrder(double price, int where) {
       type = OrderType();
       if (where < 0){ // look only for buy orders (stop below)
          if (OrderMagicNumber() == magic && (type == OP_BUY || type == OP_BUYSTOP)){
-            if (isEqualPrice(OrderStopLoss(), price + where * Pip * stop_distance)){
+            if (EQ(OrderStopLoss(), price + where * stop_distance*Pip))
                return(false);
-            }
          }
       }
       if (where > 0){ // look only for sell orders (stop above)
          if (OrderMagicNumber() == magic && (type == OP_SELL || type == OP_SELLSTOP)){
-            if (isEqualPrice(OrderStopLoss(), price + where * Pip * stop_distance)){
+            if (EQ(OrderStopLoss(), price + where * stop_distance*Pip))
                return(false);
-            }
          }
       }
    }
@@ -700,7 +681,6 @@ void info() {
       // history changed, need to recalculate realized profit
       realized = getProfitRealized(magic);
       last_ticket = ticket;
-
       // enforce a new break-even arrow plot immediately
       last_be_plot = 0;
    }
@@ -714,16 +694,15 @@ void info() {
    // profit of the current cycle.
    cycle_total_profit = realized - getGlobal("realized") + floating;
 
-   if (running == false){
+   if (!running) {
       dir = "trading stopped";
-   }else{
-      switch(direction){
+   }
+   else {
+      switch (direction) {
          case LONG:
-            dir = "trading long";
-            break;
+            dir = "trading long";  break;
          case SHORT:
-            dir = "trading short";
-            break;
+            dir = "trading short"; break;
          default:
             dir = "trading both directions";
       }
@@ -735,14 +714,15 @@ void info() {
    double pipValue   = pointValue * MathPow(10, Digits-PipDigits);
    stop_value        = stop_distance * pipValue * lots;
 
-   Comment("\n" + SP + name + magic + ", " + dir +
-           "\n" + SP + "stop distance: " + stop_distance + " pips, lot size: " + DoubleToStr(lots, 2) +
-           "\n" + SP + "every stop equals " + DoubleToStr(stop_value, 2) + " " + AccountCurrency() +
-           "\n" + SP + "realized: " + DoubleToStr(realized - getGlobal("realized"), 2) + "  floating: " + DoubleToStr(floating, 2) +
-           "\n" + SP + "profit: " + DoubleToStr(cycle_total_profit, 2) + " " + AccountCurrency() + "  current level: " + level_abs +
-           "\n" + SP + "auto-tp: " + auto_tp + " levels (" + NumberToStr(auto_tp_price, PriceFormat) + ", " + DoubleToStr(auto_tp_profit, 2) + " " + AccountCurrency() + ")");
+   Comment(StringConcatenate(NL, NL, NL, NL, NL, NL,
+                             name, magic, ", ", dir,                                                                                                                        NL,
+                             "stop distance: ", stop_distance, " pips, lot size: ", NumberToStr(lots, ".+"),                                                                NL,
+                             "every stop equals ", DoubleToStr(stop_value, 2), " ", AccountCurrency(),                                                                      NL,
+                             "realized: ", DoubleToStr(realized - getGlobal("realized"), 2), "  floating: ", DoubleToStr(floating, 2),                                      NL,
+                             "profit: ", DoubleToStr(cycle_total_profit, 2), " ", AccountCurrency(), "  current level: ", level_abs,                                        NL,
+                             "auto-tp: ", auto_tp, " levels (", NumberToStr(auto_tp_price, PriceFormat), ", ", DoubleToStr(auto_tp_profit, 2), " ", AccountCurrency(), ")", NL));
 
-   if (last_be_plot == 0 || TimeCurrent() - last_be_plot > 300){ // every 5 minutes
+   if (last_be_plot==0 || TimeCurrent()-last_be_plot > 300) { // every 5 minutes
       plotBreakEven();
       last_be_plot = TimeCurrent();
    }
@@ -916,54 +896,33 @@ void plotBreakEven() {
 double getPyramidBase() {
    double d, max_d, sl;
    int i;
-   int type=-1;
+   int type   = -1;
+   int orders = OrdersTotal();
 
    // find the stoploss that is farest away from current price
    // we cannot just use the order open price because we might
    // be in resume mode and then all trades would be opened at
    // the same price. the only thing that works reliable is
    // looking at the stoplossses
-   for (i=0; i<OrdersTotal(); i++){
+   for (i=0; i < orders; i++) {
       OrderSelect(i, SELECT_BY_POS, MODE_TRADES);
-      if (OrderMagicNumber() == magic && OrderType() < 2){
+      if (OrderMagicNumber()==magic && OrderType() < 2){
          d = MathAbs(Close[0] - OrderStopLoss());
          if (d > max_d){
             max_d = d;
-            sl = OrderStopLoss();
+            sl   = OrderStopLoss();
             type = OrderType();
          }
       }
    }
 
-   if (type == OP_BUY){
-      return(sl + Pip * stop_distance);
-   }
+   if (type == OP_BUY)
+      return(sl + stop_distance*Pip);
 
-   if (type == OP_SELL){
-      return(sl - Pip * stop_distance);
-   }
+   if (type == OP_SELL)
+      return(sl - stop_distance*Pip);
 
    return(0);
-}
-
-
-/**
- *
- */
-double getPyramidBase1() {
-   int i;
-   double pmax = -999999;
-   double base = 0;
-   for (i=0; i<OrdersTotal(); i++){
-      OrderSelect(i, SELECT_BY_POS, MODE_TRADES);
-      if (OrderMagicNumber() == magic && OrderType() < 2){
-         if (OrderProfit() > pmax){
-            base = OrderOpenPrice();
-            pmax = OrderProfit();
-         }
-      }
-   }
-   return(base);
 }
 
 
@@ -993,22 +952,19 @@ double getTheoreticProfit(double distance) {
 double getBreakEven(double loss) {
    double i = 0;
 
-   while(true){
-      if (getTheoreticProfit(Pip * i) > loss){
+   while (true) {
+      if (getTheoreticProfit(i*Pip) > loss)
          break;
-      }
       i += stop_distance;
    }
 
    i -= stop_distance;
-   while(true){
-      if (getTheoreticProfit(Pip * i) > loss){
+   while (true) {
+      if (getTheoreticProfit(i*Pip) > loss)
          break;
-      }
       i += 0.1;
    }
-
-   return(Pip * i);
+   return(i*Pip);
 }
 
 
