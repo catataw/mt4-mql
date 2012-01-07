@@ -8,16 +8,23 @@
 #include <stdlib.mqh>
 
 
-int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereich 101-1023)
+int Strategy.Id = 103;                                   // eindeutige ID der Strategie (Bereich 101-1023)
 
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
 
-extern string Entry.Condition                = "BollingerBands(35xM15, EMA, 2.0)";        // {LimitValue} | [Bollinger]Bands(35xM5,EMA,2.0) | Env[elopes](75xM15,ALMA,2.0)
-extern int    TakeProfit                     = 50;
-extern double Lotsize                        = 0.1;
+extern string Entry.Condition  = "BollingerBands(35xM15, EMA, 2.0)";    // {LimitValue} | [Bollinger]Bands(35xM5,EMA,2.0) | Env[elopes](75xM15,ALMA,2.0)
+extern double Lotsize          =  0.1;
+extern int    Gridsize         = 20;
+extern int    TakeProfitLevels =  5;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+string   intern.Entry.Condition;                                     // Werden die Input-Parameter aus einer Preset-Datei geladen, werden sie bei REASON_CHARTCHANGE
+double   intern.Lotsize;                                             // mit den obigen Default-Werten überschrieben. Um dies zu verhindern, werden sie in deinit()
+int      intern.Gridsize;                                            // in intern.* zwischengespeichert und in init() wieder daraus restauriert.
+int      intern.TakeProfitLevels;
 
 
 /**
@@ -28,6 +35,13 @@ extern double Lotsize                        = 0.1;
 int init() {
    if (onInit(T_EXPERT) != NO_ERROR)
       return(last_error);
+
+   if (UninitializeReason() == REASON_CHARTCHANGE) {
+      Entry.Condition  = intern.Entry.Condition;                     // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
+      Lotsize          = intern.Lotsize;                             // Inputvariablen restauriert.
+      Gridsize         = intern.Gridsize;
+      TakeProfitLevels = intern.TakeProfitLevels;
+   }
    return(catch("init()"));
 }
 
@@ -38,6 +52,11 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
+   // Input-Parameter sind nicht statisch: für's nächste init() intern.* speichern
+   intern.Entry.Condition  = Entry.Condition;
+   intern.Lotsize          = Lotsize;
+   intern.Gridsize         = Gridsize;
+   intern.TakeProfitLevels = TakeProfitLevels;
    return(catch("deinit()"));
 }
 
