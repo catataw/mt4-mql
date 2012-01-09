@@ -157,6 +157,6 @@ int ShowStatus() {
    Comment(StringConcatenate(NL, NL, NL, NL, NL, NL, msg));
 
    if (catch("ShowStatus(2)") == NO_ERROR)
-      last_error = error;                                            // bei Funktionseintritt bereits existierenden Fehler ggf. restaurieren
+      last_error = error;                                            // bei Funktionseintritt bereits existierenden Fehler restaurieren
    return(last_error);
 }
