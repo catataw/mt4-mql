@@ -20,16 +20,16 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
 
 extern string Entry.Condition  = "BollingerBands(35xM15, EMA, 2.0)";    // {LimitValue} | [Bollinger]Bands(35xM5,EMA,2.0) | Env[elopes](75xM15,ALMA,2.0)
-extern double Lotsize          =  0.1;
 extern int    Gridsize         = 20;
+extern double Lotsize          =  0.1;
 extern int    TakeProfitLevels =  5;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 string   intern.Entry.Condition;                                     // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
-double   intern.Lotsize;                                             // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
-int      intern.Gridsize;                                            // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
+int      intern.Gridsize;                                            // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
+double   intern.Lotsize;                                             // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
 int      intern.TakeProfitLevels;                                    // und in init() wieder daraus restauriert.
 
 int      sequenceId;
@@ -75,8 +75,8 @@ int init() {
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_CHARTCHANGE) {
       Entry.Condition  = intern.Entry.Condition;                     // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
-      Lotsize          = intern.Lotsize;                             // Inputvariablen restauriert.
-      Gridsize         = intern.Gridsize;
+      Gridsize         = intern.Gridsize;                            // Inputvariablen restauriert.
+      Lotsize          = intern.Lotsize;
       TakeProfitLevels = intern.TakeProfitLevels;
    }
 
@@ -86,7 +86,7 @@ int init() {
 
    // (2) Status anzeigen
    ShowStatus();
-   if (last_error != NO_ERROR)
+   if (IsLastError())
       return(last_error);
 
 
@@ -111,10 +111,10 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
-   // Input-Parameter sind nicht statisch: für's nächste init() in intern.* speichern
+   // Input-Parameter sind nicht statisch: für's nächste init() in intern.* zwischenspeichern
    intern.Entry.Condition  = Entry.Condition;
-   intern.Lotsize          = Lotsize;
    intern.Gridsize         = Gridsize;
+   intern.Lotsize          = Lotsize;
    intern.TakeProfitLevels = TakeProfitLevels;
    return(catch("deinit()"));
 }
@@ -137,26 +137,49 @@ int onTick() {
  */
 int ShowStatus() {
    int error = last_error;                                           // bei Funktionseintritt bereits existierenden Fehler zwischenspeichern
-   if (last_error != NO_ERROR)
+   if (IsLastError())
       sequenceStatus = STATUS_DISABLED;
 
    string msg = "";
+
    switch (sequenceStatus) {
-      case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting for ", Entry.Condition); break;
-      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing...");                break;
-      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                      break;
+      case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting"/* for ", Entry.Condition*/);                      break;
+      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", IntToSignedStr(progressionLevel)); break;
+      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                                break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled");
-                               if (last_error != NO_ERROR)
-                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");             break;
+                               if (IsLastError())
+                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                       break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ sequenceStatus, ERR_RUNTIME_ERROR));
    }
-   msg = StringConcatenate(__SCRIPT__, msg);
+
+   msg = StringConcatenate(__SCRIPT__, msg,                                                     NL,
+                                                                                                NL,
+                           "GridSize:       ", Gridsize, " pip",                                NL,
+                           "LotSize:         ", NumberToStr(Lotsize, ".+"), " = 12.00 / stop",  NL,
+                           "Realized:       12 stops = -144.00  (-12/+4)",                      NL,
+                           "TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)", NL,
+                           "Breakeven:   1.5956'5",                                             NL,
+                           "Profit/Loss:    147.95",                                            NL);
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
-   Comment(StringConcatenate(NL, NL, NL, NL, NL, NL, msg));
+   Comment(StringConcatenate(NL, NL, msg));
 
    if (catch("ShowStatus(2)") == NO_ERROR)
       last_error = error;                                            // bei Funktionseintritt bereits existierenden Fehler restaurieren
    return(last_error);
+}
+
+
+/**
+ * Gibt die vorzeichenbehaftete String-Repräsentation eines Integers zurück.
+ *
+ * @param  int value
+ *
+ * @return string
+ */
+string IntToSignedStr(int value) {
+   if (value > 0)
+      return(StringConcatenate("+", value));
+   return(value);
 }
