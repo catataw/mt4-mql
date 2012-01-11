@@ -64,12 +64,13 @@ int init() {
       }
 
       // (1.2) Recompilation ----------------------------------------------------------------------------------------------------------------------------------
-      else {                                                         // Externe Referenz immer vorhanden: restaurieren und validieren.
+      else if (RestoreSequenceId()) {                                // externe Referenz immer vorhanden: restaurieren und validieren
       }
+      else catch("init(1)   REASON_RECOMPILE, no stored sequence id found in chart", ERR_RUNTIME_ERROR);
    }
 
    // (1.3) Parameter‰nderung ---------------------------------------------------------------------------------------------------------------------------------
-   else if (UninitializeReason() == REASON_PARAMETERS) {             // Alle internen Daten sind vorhanden.
+   else if (UninitializeReason() == REASON_PARAMETERS) {             // alle internen Daten sind vorhanden
    }
 
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
@@ -111,11 +112,17 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
-   // Input-Parameter sind nicht statisch: f¸r's n‰chste init() in intern.* zwischenspeichern
-   intern.Entry.Condition  = Entry.Condition;
-   intern.Gridsize         = Gridsize;
-   intern.Lotsize          = Lotsize;
-   intern.TakeProfitLevels = TakeProfitLevels;
+   // vor Recompile aktuelle Sequenze-ID im Chart speichern
+   if (UninitializeReason() == REASON_RECOMPILE) {
+      StoreSequenceId();
+   }
+   else {
+      // Input-Parameter sind nicht statisch: f¸r's n‰chste init() in intern.* zwischenspeichern
+      intern.Entry.Condition  = Entry.Condition;
+      intern.Gridsize         = Gridsize;
+      intern.Lotsize          = Lotsize;
+      intern.TakeProfitLevels = TakeProfitLevels;
+   }
    return(catch("deinit()"));
 }
 
@@ -158,8 +165,8 @@ int ShowStatus() {
                            "GridSize:       ", Gridsize, " pip",                                NL,
                            "LotSize:         ", NumberToStr(Lotsize, ".+"), " = 12.00 / stop",  NL,
                            "Realized:       12 stops = -144.00  (-12/+4)",                      NL,
-                           "TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)", NL,
-                           "Breakeven:   1.5956'5",                                             NL,
+                         //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)", NL,
+                           "Breakeven:   1.5956'5 / 1.6047'5",                                  NL,
                            "Profit/Loss:    147.95",                                            NL);
 
    // einige Zeilen Abstand nach oben f¸r Instrumentanzeige und ggf. vorhandene Legende
@@ -179,7 +186,52 @@ int ShowStatus() {
  * @return string
  */
 string IntToSignedStr(int value) {
+   string strValue = value;
    if (value > 0)
-      return(StringConcatenate("+", value));
-   return(value);
+      return(StringConcatenate("+", strValue));
+   return(strValue);
+}
+
+
+/**
+ * Speichert die ID der aktuellen Sequenz im Chart, sodaﬂ sie nach einem Recompile-Event restauriert werden kann.
+ *
+ * @return int - Fehlerstatus
+ */
+int StoreSequenceId() {
+   int    hWnd  = WindowHandle(Symbol(), Period());
+   string label = __SCRIPT__ +".stored_sequence_id";
+
+   if (ObjectFind(label) != -1)
+      ObjectDelete(label);
+   ObjectCreate(label, OBJ_LABEL, 0, 0, 0);
+   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                 // negative Werte (im nicht sichtbaren Bereich)
+   ObjectSet(label, OBJPROP_YDISTANCE, -hWnd);
+
+   //debug("StoreSequenceId()     sequenceId="+ sequenceId +"   hWnd="+ hWnd);
+   return(catch("StoreSequenceId()"));
+}
+
+
+/**
+ * Restauriert eine im Chart ggf. gespeicherte Sequenz-ID.
+ *
+ * @return bool - ob eine Sequenz-ID gefunden und restauriert wurde
+ */
+bool RestoreSequenceId() {
+   string label = __SCRIPT__ +".stored_sequence_id";
+
+   if (ObjectFind(label)!=-1) /*&&*/ if (ObjectType(label)==OBJ_LABEL) {
+      int storedHWnd       = MathAbs(ObjectGet(label, OBJPROP_YDISTANCE)) +0.1;
+      int storedSequenceId = MathAbs(ObjectGet(label, OBJPROP_XDISTANCE)) +0.1;  // (int) double
+
+      if (WindowHandle(Symbol(), NULL) == storedHWnd) {
+         sequenceId = storedSequenceId;
+         //debug("RestoreSequenceId()   restored sequenceId="+ storedSequenceId +" for hWnd="+ storedHWnd);
+         return(!IsError(catch("RestoreSequenceId(1)")));
+      }
+   }
+
+   catch("RestoreSequenceId(2)");
+   return(false);
 }
