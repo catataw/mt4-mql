@@ -6,6 +6,7 @@
  *      7bit code base: http://sites.google.com/site/prof7bit/snowball
  */
 #include <stdlib.mqh>
+#include <win32api.mqh>
 
 
 #define STATUS_WAITING        0           // mögliche Sequenzstatus-Werte
@@ -20,9 +21,9 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
 
 extern int    Gridsize                       = 20;
-extern double Lotsize                        =  0.1;
-extern string StartCondition                 = "BollingerBands(35xM15, EMA, 2.0)";    // {LimitValue} | [Bollinger]Bands(35xM5,EMA,2.0) | Env[elopes](75xM15,ALMA,2.0)
-extern int    TakeProfitLevels               =  5;
+extern double Lotsize                        = 0.1;
+extern string StartCondition                 = "";    // BollingerBands(35xM15, EMA, 2.0) // {LimitValue} | [Bollinger]Bands(35xM5,EMA,2.0) | Env[elopes](75xM15,ALMA,2.0)
+extern int    TakeProfitLevels               = 5;
 extern string ______________________________ = "==== Sequence to Manage =============";
 extern string Sequence.ID                    = "";
 
@@ -50,7 +51,7 @@ int init() {
       return(ShowStatus());
 
    /*
-   Zuerst wird die aktuelle Sequenz-ID bestimmt. Danach wird deren Konfiguration geladen. Zum Schluß werden die Sequenzdaten restauriert.
+   Zuerst wird die aktuelle Sequenz-ID bestimmt, dann deren Konfiguration geladen und validiert. Zum Schluß werden die Daten der ggf. laufenden Sequenz restauriert.
    Es gibt 4 unterschiedliche init()-Szenarien:
 
    (1.1) Neustart des EA, evt. im Tester (keine internen Daten, externe Sequenz-ID evt. vorhanden)
@@ -65,23 +66,41 @@ int init() {
       // (1.1) Neustart ---------------------------------------------------------------------------------------------------------------------------------------
       if (UninitializeReason() != REASON_RECOMPILE) {
          if (IsInputSequenceId()) {                                  // Zuerst eine ausdrücklich angegebene Sequenz-ID restaurieren...
-            if (RestoreInputSequenceId()) {
-            }
+            if (RestoreInputSequenceId())
+               if (RestoreConfiguration())
+                  if (ValidateConfiguration())
+                     ReadSequence();
          }
          else if (RestoreChartSequenceId()) {                        // ...dann ggf. eine im Chart gespeicherte Sequenz-ID restaurieren...
+            if (RestoreConfiguration())
+               if (ValidateConfiguration())
+                  ReadSequence();
          }
          else if (RestoreRunningSequenceId()) {                      // ...dann ID aus laufender Sequenz restaurieren.
+            if (RestoreConfiguration())
+               if (ValidateConfiguration())
+                  ReadSequence();
+         }
+         else if (ValidateConfiguration()) {                            // Zum Schluß neue Sequenz anlegen.
+            sequenceId = CreateSequenceId();
+            //if (StartCondition != "")                              // Ohne StartCondition erfolgt sofortiger Einstieg, in diesem Fall wird die
+               SaveConfiguration();                                  // Konfiguration erst nach Sicherheitsabfrage in StartSequence() gespeichert.
          }
       }
 
       // (1.2) Recompilation ----------------------------------------------------------------------------------------------------------------------------------
       else if (RestoreChartSequenceId()) {                           // externe Referenz immer vorhanden: restaurieren und validieren
+         if (RestoreConfiguration())
+            if (ValidateConfiguration())
+               ReadSequence();
       }
       else catch("init(1)   REASON_RECOMPILE, no stored sequence id found in chart", ERR_RUNTIME_ERROR);
    }
 
    // (1.3) Parameteränderung ---------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_PARAMETERS) {             // alle internen Daten sind vorhanden
+      if (ValidateConfiguration())
+         SaveConfiguration();                                        // TODO: die manuelle Sequence.ID kann geändert worden sein
    }
 
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
@@ -163,7 +182,9 @@ int ShowStatus() {
    string msg = "";
 
    switch (sequenceStatus) {
-      case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting"/* for ", StartCondition*/);                       break;
+      case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting");
+                               if (StringLen(StartCondition) > 0)
+                                  msg = StringConcatenate(msg, " for ", StartCondition);                                                        break;
       case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", IntToSignedStr(progressionLevel)); break;
       case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                                break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled");
@@ -247,7 +268,7 @@ bool RestoreInputSequenceId() {
  */
 int StoreSequenceId() {
    int    hWnd  = WindowHandle(Symbol(), Period());
-   string label = __SCRIPT__ +".stored_sequence_id";
+   string label = __SCRIPT__ +".sequence_id";
 
    if (ObjectFind(label) != -1)
       ObjectDelete(label);
@@ -255,7 +276,6 @@ int StoreSequenceId() {
    ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                 // negative Werte (im nicht sichtbaren Bereich)
    ObjectSet(label, OBJPROP_YDISTANCE, -hWnd);
 
-   //debug("StoreSequenceId()     sequenceId="+ sequenceId +"   hWnd="+ hWnd);
    return(catch("StoreSequenceId()"));
 }
 
@@ -266,7 +286,7 @@ int StoreSequenceId() {
  * @return bool - ob eine Sequenz-ID gefunden und restauriert wurde
  */
 bool RestoreChartSequenceId() {
-   string label = __SCRIPT__ +".stored_sequence_id";
+   string label = __SCRIPT__ +".sequence_id";
 
    if (ObjectFind(label)!=-1) /*&&*/ if (ObjectType(label)==OBJ_LABEL) {
       int storedHWnd       = MathAbs(ObjectGet(label, OBJPROP_YDISTANCE)) +0.1;
@@ -325,4 +345,236 @@ bool IsMyOrder(int sequenceId = NULL) {
       }
    }
    return(false);
+}
+
+
+/**
+ * Generiert eine neue Sequenz-ID.
+ *
+ * @return int - Sequenz-ID im Bereich 1000-16383 (14 bit)
+ */
+int CreateSequenceId() {
+   MathSrand(GetTickCount());
+   int id;
+   while (id < 2000) {                                               // Das abschließende Shiften halbiert den Wert und wir wollen mindestens eine 4-stellige ID haben.
+      id = MathRand();
+   }
+   return(id >> 1);
+}
+
+
+/**
+ * Validiert die aktuelle Konfiguration.
+ *
+ * @return bool - ob die Konfiguration gültig ist
+ */
+bool ValidateConfiguration() {
+   // Gridsize
+   if (Gridsize < 1)   return(catch("ValidateConfiguration(1)  Invalid input parameter Gridsize = "+ Gridsize, ERR_INVALID_INPUT_PARAMVALUE)==NO_ERROR);
+
+   // Lotsize
+   if (LE(Lotsize, 0)) return(catch("ValidateConfiguration(2)  Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)==NO_ERROR);
+
+   double minLot  = MarketInfo(Symbol(), MODE_MINLOT);
+   double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT);
+   double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
+   int error = GetLastError();
+   if (IsError(error))                      return(catch("ValidateConfiguration(3)   symbol=\""+ Symbol() +"\"", error)==NO_ERROR);
+   if (LT(Lotsize, minLot))                 return(catch("ValidateConfiguration(4)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE));
+   if (GT(Lotsize, maxLot))                 return(catch("ValidateConfiguration(5)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE));
+   if (NE(MathModFix(Lotsize, lotStep), 0)) return(catch("ValidateConfiguration(6)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE));
+
+
+   // StartCondition
+   StartCondition = StringTrim(StartCondition);                      // zur Zeit noch keine Validierung
+
+   // TakeProfitLevels
+   if (TakeProfitLevels < 1) return(catch("ValidateConfiguration(7)  Invalid input parameter TakeProfitLevels = "+ TakeProfitLevels, ERR_INVALID_INPUT_PARAMVALUE)==NO_ERROR);
+
+   // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
+
+   // TODO: Nach Parameteränderung die neue Konfiguration mit einer evt. bereits laufenden Sequenz abgleichen
+   //       oder Parameter werden geändert, ohne vorher im Input-Dialog die Konfigurationsdatei der Sequenz zu laden.
+
+   return(catch("ValidateConfiguration(8)")==NO_ERROR);
+}
+
+
+/**
+ * Speichert aktuelle Konfiguration und Laufzeitdaten der Instanz, um die nahtlose Wiederauf- und Übernahme durch eine
+ * andere Instanz im selben oder einem anderen Terminal zu ermöglichen.
+ *
+ * @return int - Fehlerstatus
+ */
+int SaveConfiguration() {
+   if (sequenceId == 0)
+      return(catch("SaveConfiguration(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR));
+
+   // (1) Daten zusammenstellen
+   string lines[];  ArrayResize(lines, 0);
+   ArrayPushString(lines, /*string*/ "Sequence.ID="     +             sequenceId      );
+   ArrayPushString(lines, /*int   */ "Gridsize="        +             Gridsize        );
+   ArrayPushString(lines, /*double*/ "Lotsize="         + NumberToStr(Lotsize, ".+")  );
+   ArrayPushString(lines, /*string*/ "StartCondition="  +             StartCondition  );
+   ArrayPushString(lines, /*int   */ "TakeProfitLevels="+             TakeProfitLevels);
+
+
+   // (2) Daten in lokale Datei schreiben
+   string filename = "presets\\SR."+ sequenceId +".set";             // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch ist
+                                                                     // das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+   int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);
+   if (hFile < 0)
+      return(catch("SaveConfiguration(2)  FileOpen(file=\""+ filename +"\")"));
+
+   for (int i=0; i < ArraySize(lines); i++) {
+      if (FileWrite(hFile, lines[i]) < 0) {
+         int error = GetLastError();
+         FileClose(hFile);
+         return(catch("SaveConfiguration(3)  FileWrite(line #"+ (i+1) +")", error));
+      }
+   }
+   FileClose(hFile);
+
+
+   // (3) Datei auf Server laden
+   if (!IsTesting()) {
+      error = UploadConfiguration(ShortAccountCompany(), AccountNumber(), GetStandardSymbol(Symbol()), filename);
+      if (IsError(error))
+         return(error);
+   }
+   return(catch("SaveConfiguration(4)"));
+}
+
+
+/**
+ * Lädt die angegebene Konfigurationsdatei auf den Server.
+ *
+ * @param  string company     - Account-Company
+ * @param  int    account     - Account-Number
+ * @param  string symbol      - Symbol der Konfiguration
+ * @param  string presetsFile - Dateiname, relativ zu "{terminal-directory}\experts"
+ *
+ * @return int - Fehlerstatus
+ */
+int UploadConfiguration(string company, int account, string symbol, string presetsFile) {
+   if (IsTesting()) {
+      debug("UploadConfiguration()   skipping in tester");
+      return(NO_ERROR);
+   }
+
+   // TODO: Existenz von wget.exe prüfen
+
+   string parts[]; int size = Explode(presetsFile, "\\", parts, NULL);
+   string file = parts[size-1];                                         // einfacher Dateiname ohne Verzeichnisse
+
+   // Befehlszeile für Shellaufruf zusammensetzen
+   string presetsPath  = TerminalPath() +"\\experts\\" + presetsFile;   // Dateinamen mit vollständigen Pfaden
+   string responsePath = presetsPath +".response";
+   string logPath      = presetsPath +".log";
+   string url          = "http://sub.domain.tld/uploadSRConfiguration.php?company="+ UrlEncode(company) +"&account="+ account +"&symbol="+ UrlEncode(symbol) +"&name="+ UrlEncode(file);
+   string cmdLine      = "wget.exe -b \""+ url +"\" --post-file=\""+ presetsPath +"\" --header=\"Content-Type: text/plain\" -O \""+ responsePath +"\" -a \""+ logPath +"\"";
+
+   // Existenz der Datei prüfen
+   if (!IsFile(presetsPath))
+      return(catch("UploadConfiguration(1)   file not found: \""+ presetsPath +"\"", ERR_FILE_NOT_FOUND));
+
+   // Datei hochladen, WinExec() kehrt ohne zu warten zurück, wget -b beschleunigt zusätzlich
+   int error = WinExec(cmdLine, SW_HIDE);                               // SW_SHOWNORMAL|SW_HIDE
+   if (error < 32)
+      return(catch("UploadConfiguration(2) ->kernel32.WinExec(cmdLine=\""+ cmdLine +"\"), error="+ error +" ("+ ShellExecuteErrorToStr(error) +")", ERR_WIN32_ERROR));
+
+   return(catch("UploadConfiguration(3)"));
+}
+
+
+/**
+ * Liest die Konfiguration einer Sequenz ein und setzt die internen Variablen entsprechend. Ohne lokale Konfiguration
+ * wird die Konfiguration vom Server geladen und lokal gespeichert.
+ *
+ * @return bool - ob die Konfiguration erfolgreich restauriert wurde
+ */
+bool RestoreConfiguration() {
+   if (sequenceId == 0)
+      return(!IsError(catch("RestoreConfiguration(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+
+   // TODO: Existenz von wget.exe prüfen
+
+   // (1) bei nicht existierender lokaler Konfiguration die Datei vom Server laden
+   string filesDir = TerminalPath() +"\\experts\\files\\";           // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
+   string fileName = "presets\\SR."+ sequenceId +".set";             // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+
+   if (!IsFile(filesDir + fileName)) {
+      // Befehlszeile für Shellaufruf zusammensetzen
+      string url        = "http://sub.domain.tld/downloadSRConfiguration.php?company="+ UrlEncode(ShortAccountCompany()) +"&account="+ AccountNumber() +"&symbol="+ UrlEncode(GetStandardSymbol(Symbol())) +"&sequence="+ sequenceId;
+      string targetFile = filesDir +"\\"+ fileName;
+      string logFile    = filesDir +"\\"+ fileName +".log";
+      string cmdLine    = "wget.exe \""+ url +"\" -O \""+ targetFile +"\" -o \""+ logFile +"\"";
+
+      debug("RestoreConfiguration()   downloading configuration for sequence "+ sequenceId);
+
+      int error = WinExecAndWait(cmdLine, SW_HIDE);                  // SW_SHOWNORMAL|SW_HIDE
+      if (IsError(error))
+         return(SetLastError(error)==NO_ERROR);
+
+      debug("RestoreConfiguration()   configuration for sequence "+ sequenceId +" successfully downloaded");
+      FileDelete(fileName +".log");
+   }
+
+   // (2) Datei einlesen
+   string config[];
+   int lines = FileReadLines(fileName, config, true);
+   if (lines < 0)
+      return(SetLastError(stdlib_PeekLastError())==NO_ERROR);
+   if (lines == 0) {
+      FileDelete(fileName);
+      return(catch("RestoreConfiguration(2)   no configuration found for sequence "+ sequenceId, ERR_RUNTIME_ERROR)==NO_ERROR);
+   }
+
+   // (3) Zeilen in Schlüssel-Wert-Paare aufbrechen, Datentypen validieren und Daten übernehmen
+   int keys[4]; ArrayInitialize(keys, 0);
+   #define I_GRIDSIZE          0
+   #define I_LOTSIZE           1
+   #define I_START_CONDITION   2
+   #define I_TAKEPROFIT_LEVELS 3
+
+   string parts[];
+   for (int i=0; i < lines; i++) {
+      if (Explode(config[i], "=", parts, 2) != 2) return(catch("RestoreConfiguration(3)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)==NO_ERROR);
+      string key=parts[0], value=parts[1];
+
+      Sequence.ID = sequenceId;
+
+      if (key == "Gridsize") {
+         if (!StringIsDigit(value))               return(catch("RestoreConfiguration(4)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)==NO_ERROR);
+         Gridsize = StrToInteger(value);
+         keys[I_GRIDSIZE] = 1;
+      }
+      else if (key == "Lotsize") {
+         if (!StringIsNumeric(value))             return(catch("RestoreConfiguration(5)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)==NO_ERROR);
+         Lotsize = StrToDouble(value);
+         keys[I_LOTSIZE] = 1;
+      }
+      else if (key == "StartCondition") {
+         StartCondition = value;
+         keys[I_START_CONDITION] = 1;
+      }
+      else if (key == "TakeProfitLevels") {
+         if (!StringIsDigit(value))               return(catch("RestoreConfiguration(6)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)==NO_ERROR);
+         TakeProfitLevels = StrToInteger(value);
+         keys[I_TAKEPROFIT_LEVELS] = 1;
+      }
+   }
+   if (IntInArray(0, keys))                       return(catch("RestoreConfiguration(7)   one or more configuration values missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)==NO_ERROR);
+
+   return(catch("RestoreConfiguration(8)")==NO_ERROR);
+}
+
+
+/**
+ * Liest die aktuelle Sequenz neu ein. Die Variable sequenceId und die Konfiguration der Sequenz sind beim Aufruf immer gültig.
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool ReadSequence() {
+   return(catch("ReadSequence()")==NO_ERROR);
 }
