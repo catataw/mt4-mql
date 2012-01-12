@@ -40,6 +40,8 @@ int    sequenceId;
 int    sequenceStatus = STATUS_WAITING;
 int    progressionLevel;
 
+bool   firstTick = true;
+
 
 /**
  * Initialisierung
@@ -100,7 +102,8 @@ int init() {
    // (1.3) Parameteränderung ---------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_PARAMETERS) {             // alle internen Daten sind vorhanden
       if (ValidateConfiguration())
-         SaveConfiguration();                                        // TODO: die manuelle Sequence.ID kann geändert worden sein
+         SaveConfiguration();
+      // TODO: die manuelle Sequence.ID kann geändert worden sein
    }
 
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
@@ -165,6 +168,18 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int onTick() {
+   if (sequenceStatus==STATUS_FINISHED || sequenceStatus==STATUS_DISABLED)
+      return(last_error);
+
+
+   firstTick = false;
+
+
+   // Status anzeigen
+   ShowStatus();
+
+   if (IsLastError())
+      return(last_error);
    return(catch("onTick()"));
 }
 
