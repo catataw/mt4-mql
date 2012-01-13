@@ -385,33 +385,33 @@ int CreateSequenceId() {
  */
 bool ValidateConfiguration() {
    // Gridsize
-   if (Gridsize < 1)   return(catch("ValidateConfiguration(1)  Invalid input parameter Gridsize = "+ Gridsize, ERR_INVALID_INPUT_PARAMVALUE)==NO_ERROR);
+   if (Gridsize < 1)   return(_false(catch("ValidateConfiguration(1)  Invalid input parameter Gridsize = "+ Gridsize, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // Lotsize
-   if (LE(Lotsize, 0)) return(catch("ValidateConfiguration(2)  Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)==NO_ERROR);
+   if (LE(Lotsize, 0)) return(_false(catch("ValidateConfiguration(2)  Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
 
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT);
    double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT);
    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
    int error = GetLastError();
-   if (IsError(error))                      return(catch("ValidateConfiguration(3)   symbol=\""+ Symbol() +"\"", error)==NO_ERROR);
-   if (LT(Lotsize, minLot))                 return(catch("ValidateConfiguration(4)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE));
-   if (GT(Lotsize, maxLot))                 return(catch("ValidateConfiguration(5)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE));
-   if (NE(MathModFix(Lotsize, lotStep), 0)) return(catch("ValidateConfiguration(6)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE));
+   if (IsError(error))                      return(_false(catch("ValidateConfiguration(3)   symbol=\""+ Symbol() +"\"", error)));
+   if (LT(Lotsize, minLot))                 return(_false(catch("ValidateConfiguration(4)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (GT(Lotsize, maxLot))                 return(_false(catch("ValidateConfiguration(5)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (NE(MathModFix(Lotsize, lotStep), 0)) return(_false(catch("ValidateConfiguration(6)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
 
 
    // StartCondition
    StartCondition = StringTrim(StartCondition);                      // zur Zeit noch keine Validierung
 
    // TakeProfitLevels
-   if (TakeProfitLevels < 1) return(catch("ValidateConfiguration(7)  Invalid input parameter TakeProfitLevels = "+ TakeProfitLevels, ERR_INVALID_INPUT_PARAMVALUE)==NO_ERROR);
+   if (TakeProfitLevels < 1) return(_false(catch("ValidateConfiguration(7)  Invalid input parameter TakeProfitLevels = "+ TakeProfitLevels, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
 
    // TODO: Nach Parameteränderung die neue Konfiguration mit einer evt. bereits laufenden Sequenz abgleichen
    //       oder Parameter werden geändert, ohne vorher im Input-Dialog die Konfigurationsdatei der Sequenz zu laden.
 
-   return(catch("ValidateConfiguration(8)")==NO_ERROR);
+   return(IsNoError(catch("ValidateConfiguration(8)")));
 }
 
 
@@ -472,10 +472,8 @@ int SaveConfiguration() {
  * @return int - Fehlerstatus
  */
 int UploadConfiguration(string company, int account, string symbol, string presetsFile) {
-   if (IsTesting()) {
-      debug("UploadConfiguration()   skipping in tester");
-      return(NO_ERROR);
-   }
+   if (IsTesting())
+      return(_NO_ERROR(debug("UploadConfiguration()   skipping in tester")));
 
    // TODO: Existenz von wget.exe prüfen
 
@@ -510,7 +508,7 @@ int UploadConfiguration(string company, int account, string symbol, string prese
  */
 bool RestoreConfiguration() {
    if (sequenceId == 0)
-      return(!IsError(catch("RestoreConfiguration(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+      return(_false(catch("RestoreConfiguration(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
    // TODO: Existenz von wget.exe prüfen
 
@@ -529,7 +527,7 @@ bool RestoreConfiguration() {
 
       int error = WinExecAndWait(cmdLine, SW_HIDE);                  // SW_SHOWNORMAL|SW_HIDE
       if (IsError(error))
-         return(SetLastError(error)==NO_ERROR);
+         return(_false(SetLastError(error)));
 
       debug("RestoreConfiguration()   configuration for sequence "+ sequenceId +" successfully downloaded");
       FileDelete(fileName +".log");
@@ -539,10 +537,10 @@ bool RestoreConfiguration() {
    string config[];
    int lines = FileReadLines(fileName, config, true);
    if (lines < 0)
-      return(SetLastError(stdlib_PeekLastError())==NO_ERROR);
+      return(_false(SetLastError(stdlib_PeekLastError())));
    if (lines == 0) {
       FileDelete(fileName);
-      return(catch("RestoreConfiguration(2)   no configuration found for sequence "+ sequenceId, ERR_RUNTIME_ERROR)==NO_ERROR);
+      return(_false(catch("RestoreConfiguration(2)   no configuration found for sequence "+ sequenceId, ERR_RUNTIME_ERROR)));
    }
 
    // (3) Zeilen in Schlüssel-Wert-Paare aufbrechen, Datentypen validieren und Daten übernehmen
@@ -554,18 +552,18 @@ bool RestoreConfiguration() {
 
    string parts[];
    for (int i=0; i < lines; i++) {
-      if (Explode(config[i], "=", parts, 2) != 2) return(catch("RestoreConfiguration(3)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)==NO_ERROR);
+      if (Explode(config[i], "=", parts, 2) != 2) return(_false(catch("RestoreConfiguration(3)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
       string key=parts[0], value=parts[1];
 
       Sequence.ID = sequenceId;
 
       if (key == "Gridsize") {
-         if (!StringIsDigit(value))               return(catch("RestoreConfiguration(4)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)==NO_ERROR);
+         if (!StringIsDigit(value))               return(_false(catch("RestoreConfiguration(4)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
          Gridsize = StrToInteger(value);
          keys[I_GRIDSIZE] = 1;
       }
       else if (key == "Lotsize") {
-         if (!StringIsNumeric(value))             return(catch("RestoreConfiguration(5)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)==NO_ERROR);
+         if (!StringIsNumeric(value))             return(_false(catch("RestoreConfiguration(5)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
          Lotsize = StrToDouble(value);
          keys[I_LOTSIZE] = 1;
       }
@@ -574,14 +572,14 @@ bool RestoreConfiguration() {
          keys[I_START_CONDITION] = 1;
       }
       else if (key == "TakeProfitLevels") {
-         if (!StringIsDigit(value))               return(catch("RestoreConfiguration(6)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)==NO_ERROR);
+         if (!StringIsDigit(value))               return(_false(catch("RestoreConfiguration(6)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
          TakeProfitLevels = StrToInteger(value);
          keys[I_TAKEPROFIT_LEVELS] = 1;
       }
    }
-   if (IntInArray(0, keys))                       return(catch("RestoreConfiguration(7)   one or more configuration values missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)==NO_ERROR);
+   if (IntInArray(0, keys))                       return(_false(catch("RestoreConfiguration(7)   one or more configuration values missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
 
-   return(catch("RestoreConfiguration(8)")==NO_ERROR);
+   return(IsNoError(catch("RestoreConfiguration(8)")));
 }
 
 
@@ -591,5 +589,5 @@ bool RestoreConfiguration() {
  * @return bool - Erfolgsstatus
  */
 bool ReadSequence() {
-   return(catch("ReadSequence()")==NO_ERROR);
+   return(IsNoError(catch("ReadSequence()")));
 }
