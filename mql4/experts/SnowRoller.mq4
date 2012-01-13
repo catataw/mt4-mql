@@ -83,7 +83,7 @@ int init() {
                if (ValidateConfiguration())
                   ReadSequence();
          }
-         else if (ValidateConfiguration()) {                            // Zum Schluß neue Sequenz anlegen.
+         else if (ValidateConfiguration()) {                         // Zum Schluß neue Sequenz anlegen.
             sequenceId = CreateSequenceId();
             //if (StartCondition != "")                              // Ohne StartCondition erfolgt sofortiger Einstieg, in diesem Fall wird die
                SaveConfiguration();                                  // Konfiguration erst nach Sicherheitsabfrage in StartSequence() gespeichert.
@@ -146,17 +146,17 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
-   // vor Recompile aktuelle Sequenze-ID im Chart speichern
-   if (UninitializeReason() == REASON_RECOMPILE) {
-      StoreSequenceId();
-   }
-   else {
+   if (UninitializeReason() == REASON_CHARTCHANGE) {
       // Input-Parameter sind nicht statisch: für's nächste init() in intern.* zwischenspeichern
       intern.Gridsize         = Gridsize;
       intern.Lotsize          = Lotsize;
       intern.StartCondition   = StartCondition;
       intern.TakeProfitLevels = TakeProfitLevels;
       intern.Sequence.ID      = Sequence.ID;
+   }
+   else {
+      // aktuelle Sequenze-ID im Chart speichern
+      StoreChartSequenceId();
    }
    return(catch("deinit()"));
 }
@@ -171,7 +171,25 @@ int onTick() {
    if (sequenceStatus==STATUS_FINISHED || sequenceStatus==STATUS_DISABLED)
       return(last_error);
 
+   //checkButtonsAndLines();       // start(LONG|SHORT|BIDIR) | pause() | stop()
+   //trade();
+   //checkAutoTP();                // stop()
 
+
+   //// Orders prüfen und Sequenzdaten aktualisieren
+   //if (CheckStatus()) {
+
+   //   // Handelslogik ausführen
+   //   if (progressionLevel == 0) {
+   //      if (IsEntrySignal())                   StartSequence();
+   //   }
+   //   else if (IsProfitTargetReached()) {
+   //                                             FinishSequence();
+   //   }
+   //   else if (IsStopLossReached()) {
+   //      if (progressionLevel < sequenceLength) IncreaseProgression();
+   //   }
+   //}
    firstTick = false;
 
 
@@ -277,21 +295,19 @@ bool RestoreInputSequenceId() {
 
 
 /**
- * Speichert die ID der aktuellen Sequenz im Chart, sodaß sie nach einem Recompile-Event restauriert werden kann.
+ * Speichert die aktuelle Sequenz-ID im Chart, sodaß sie nach einem deinit() restauriert werden kann.
  *
  * @return int - Fehlerstatus
  */
-int StoreSequenceId() {
-   int    hWnd  = WindowHandle(Symbol(), Period());
+int StoreChartSequenceId() {
    string label = __SCRIPT__ +".sequence_id";
 
    if (ObjectFind(label) != -1)
       ObjectDelete(label);
    ObjectCreate(label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                 // negative Werte (im nicht sichtbaren Bereich)
-   ObjectSet(label, OBJPROP_YDISTANCE, -hWnd);
+   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                 // negativer Wert (nicht sichtbarer Bereich)
 
-   return(catch("StoreSequenceId()"));
+   return(catch("StoreChartSequenceId()"));
 }
 
 
@@ -304,19 +320,10 @@ bool RestoreChartSequenceId() {
    string label = __SCRIPT__ +".sequence_id";
 
    if (ObjectFind(label)!=-1) /*&&*/ if (ObjectType(label)==OBJ_LABEL) {
-      int storedHWnd       = MathAbs(ObjectGet(label, OBJPROP_YDISTANCE)) +0.1;
-      int storedSequenceId = MathAbs(ObjectGet(label, OBJPROP_XDISTANCE)) +0.1;  // (int) double
-
-      if (WindowHandle(Symbol(), NULL) == storedHWnd) {
-         sequenceId = storedSequenceId;
-         //debug("RestoreChartSequenceId()   restored sequenceId="+ storedSequenceId +" for hWnd="+ storedHWnd);
-         catch("RestoreChartSequenceId(1)");
-         return(true);
-      }
+      sequenceId = MathAbs(ObjectGet(label, OBJPROP_XDISTANCE)) +0.1;   // (int) double
+      return(_true(catch("RestoreChartSequenceId(1)")));
    }
-
-   catch("RestoreChartSequenceId(2)");
-   return(false);
+   return(_false(catch("RestoreChartSequenceId(2)")));
 }
 
 
