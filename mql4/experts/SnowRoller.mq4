@@ -30,17 +30,31 @@ extern string Sequence.ID                    = "";
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int    intern.Gridsize;                                              // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
-double intern.Lotsize;                                               // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
-string intern.StartCondition;                                        // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
-int    intern.TakeProfitLevels;                                      // und in init() wieder daraus restauriert.
-string intern.Sequence.ID;
+int      intern.Gridsize;                             // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
+double   intern.Lotsize;                              // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
+string   intern.StartCondition;                       // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
+int      intern.TakeProfitLevels;                     // und in init() wieder daraus restauriert.
+string   intern.Sequence.ID;
 
-int    sequenceId;
-int    sequenceStatus = STATUS_WAITING;
-int    progressionLevel;
+int      sequenceId;
+int      sequenceStatus = STATUS_WAITING;
+int      currentLevel;
 
-bool   firstTick = true;
+double   Entry.limit;
+double   Entry.lastBid;
+
+int      orders.level     [];                         // Gridlevel (Basis ist 0)
+int      orders.ticket    [];
+int      orders.type      [];
+datetime orders.openTime  [];
+double   orders.openPrice [];
+datetime orders.closeTime [];
+double   orders.closePrice[];
+double   orders.swap      [];
+double   orders.commission[];
+double   orders.profit    [];
+
+bool     firstTick = true;
 
 
 /**
@@ -101,9 +115,9 @@ int init() {
 
    // (1.3) Parameteränderung ---------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_PARAMETERS) {             // alle internen Daten sind vorhanden
+      // TODO: die manuelle Sequence.ID kann geändert worden sein
       if (ValidateConfiguration())
          SaveConfiguration();
-      // TODO: die manuelle Sequence.ID kann geändert worden sein
    }
 
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
@@ -175,20 +189,21 @@ int onTick() {
    //checkAutoTP();                // stop()
 
 
-   //// Orders prüfen und Sequenzdaten aktualisieren
-   //if (CheckStatus()) {
+   // Orders prüfen und Sequenzdaten aktualisieren
+   if (CheckOrderStatus()) {
 
-   //   // Handelslogik ausführen
-   //   if (progressionLevel == 0) {
-   //      if (IsEntrySignal())                   StartSequence();
-   //   }
-   //   else if (IsProfitTargetReached()) {
-   //                                             FinishSequence();
-   //   }
-   //   else if (IsStopLossReached()) {
-   //      if (progressionLevel < sequenceLength) IncreaseProgression();
-   //   }
-   //}
+      // Handelslogik
+      // (1) Sequenz wartet auf Startsignal
+      if (sequenceStatus == STATUS_WAITING) {
+         if (IsStartSignal())                StartSequence();
+      }
+      // (2) Sequenz läuft
+      else {
+         //else if (IsProfitTargetReached()) FinishSequence();
+         //else if (IsStopLossReached())     IncreaseProgression();
+      }
+   }
+
    firstTick = false;
 
 
@@ -198,6 +213,108 @@ int onTick() {
    if (IsLastError())
       return(last_error);
    return(catch("onTick()"));
+}
+
+
+/**
+ * Prüft und synchronisiert die im EA gespeicherten offenen und pending Orders mit den aktuellen Laufzeitdaten.
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool CheckOrderStatus() {
+   bool pending, open, statusModified;
+   int orders = ArraySize(orders.ticket);
+
+   for (int i=0; i < orders; i++) {
+      if (orders.closeTime[i] == 0) {                                // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
+         if (!OrderSelectByTicket(orders.ticket[i]))                 // Existenz prüfen
+            return(false);
+
+         pending = orders.type[i] > OP_SELL;                         // OrderType beim letzten Aufruf
+         open    = !pending;
+
+         if (pending) {
+            if (OrderType() != orders.type[i]) {                     // Order wurde ausgeführt
+               orders.type      [i] = OrderType();
+               orders.openTime  [i] = OrderOpenTime();               // ??? muß OpenTime aktualisiert werden ???
+               orders.openPrice [i] = OrderOpenPrice();
+               orders.swap      [i] = OrderSwap();
+               orders.commission[i] = OrderCommission();
+               orders.profit    [i] = OrderProfit();
+               statusModified = true;
+            }
+         }
+         else if (open) {
+            orders.swap      [i] = OrderSwap();
+            orders.commission[i] = OrderCommission();
+            orders.profit    [i] = OrderProfit();
+         }
+
+         if (OrderCloseTime() != 0) {                                // pending + open: Order wurde gelöscht oder geschlossen
+            orders.closeTime [i] = OrderCloseTime();                 // (bei Spikes kann eine PendingOrder ausgeführt und bereits geschlossen sein)
+            orders.closePrice[i] = OrderClosePrice();
+            statusModified = true;
+         }
+      }
+   }
+
+   if (statusModified) {
+      //SaveStatus();
+   }
+   return(true);
+}
+
+
+/**
+ * Signalgeber für StartSequence(). Wurde kein Limit angegeben (StartCondition = 0 oder ""), gibt die Funktion ebenfalls TRUE zurück.
+ *
+ * @return bool - ob die konfigurierte StartCondition erfüllt ist
+ */
+bool IsStartSignal() {
+   // Das Limit ist erreicht, wenn der Bid-Preis es seit dem letzten Tick berührt oder gekreuzt hat.
+   if (EQ(Entry.limit, 0))                                           // kein Limit definiert => immer TRUE
+      return(true);
+
+   if (EQ(Bid, Entry.limit) || EQ(Entry.lastBid, Entry.limit)) {     // Bid liegt oder lag beim letzten Tick exakt auf dem Limit
+      Entry.lastBid = Entry.limit;                                   // Tritt während der weiteren Verarbeitung des Ticks ein behandelbarer Fehler auf, wird durch
+      return(true);                                                  // Entry.lastPrice = Entry.limit das Limit, einmal getriggert, nachfolgend immer wieder getriggert.
+   }
+
+   static bool lastBid.init = false;
+
+   if (EQ(Entry.lastBid, 0)) {                                       // Entry.lastBid muß initialisiert sein => ersten Aufruf überspringen und Status merken,
+      lastBid.init = true;                                           // um firstTick bei erstem tatsächlichen Test gegen Entry.lastBid auf TRUE zurückzusetzen
+   }
+   else {
+      if (LT(Entry.lastBid, Entry.limit)) {
+         if (GT(Bid, Entry.limit)) {                                 // Bid hat Limit von unten nach oben gekreuzt
+            Entry.lastBid = Entry.limit;
+            return(true);
+         }
+      }
+      else if (LT(Bid, Entry.limit)) {                               // Bid hat Limit von oben nach unten gekreuzt
+         Entry.lastBid = Entry.limit;
+         return(true);
+      }
+      if (lastBid.init) {
+         lastBid.init = false;
+         firstTick    = true;                                        // firstTick nach erstem tatsächlichen Test gegen Entry.lastBid auf TRUE zurückzusetzen
+      }
+   }
+   Entry.lastBid = Bid;
+
+   return(false);
+}
+
+
+/**
+ * Beginnt eine neue Trade-Sequenz.
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool StartSequence() {
+   debug("StartSequence()");
+   return(IsNoError(catch("StartSequence()")));
 }
 
 
@@ -219,12 +336,12 @@ int ShowStatus() {
    switch (sequenceStatus) {
       case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
-                                  msg = StringConcatenate(msg, " for ", StartCondition);                                                        break;
-      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", IntToSignedStr(progressionLevel)); break;
-      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                                break;
+                                  msg = StringConcatenate(msg, " for ", NumberToStr(Entry.limit, PriceFormat), " crossing");                break;
+      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", IntToSignedStr(currentLevel)); break;
+      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                            break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled");
                                if (IsLastError())
-                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                       break;
+                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                   break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ sequenceStatus, ERR_RUNTIME_ERROR));
    }
@@ -255,10 +372,9 @@ int ShowStatus() {
  * @return string
  */
 string IntToSignedStr(int value) {
-   string strValue = value;
    if (value > 0)
-      return(StringConcatenate("+", strValue));
-   return(strValue);
+      return(StringConcatenate("+", value));
+   return(value);
 }
 
 
@@ -408,19 +524,28 @@ bool ValidateConfiguration() {
    if (GT(Lotsize, maxLot))                 return(_false(catch("ValidateConfiguration(5)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
    if (NE(MathModFix(Lotsize, lotStep), 0)) return(_false(catch("ValidateConfiguration(6)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
 
-
    // StartCondition
-   StartCondition = StringTrim(StartCondition);                      // zur Zeit noch keine Validierung
+   StartCondition = StringReplace(StartCondition, " ", "");
+   if (StringLen(StartCondition) == 0) {
+      Entry.limit = 0;
+   }
+   else if (StringIsNumeric(StartCondition)) {
+      Entry.limit = StrToDouble(StartCondition);
+      if (LT(Entry.limit, 0)) return(_false(catch("ValidateConfiguration(7)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (EQ(Entry.limit, 0))
+         StartCondition = "";
+   }
+   else                       return(_false(catch("ValidateConfiguration(8)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
 
    // TakeProfitLevels
-   if (TakeProfitLevels < 1) return(_false(catch("ValidateConfiguration(7)  Invalid input parameter TakeProfitLevels = "+ TakeProfitLevels, ERR_INVALID_INPUT_PARAMVALUE)));
+   if (TakeProfitLevels < 1)  return(_false(catch("ValidateConfiguration(9)  Invalid input parameter TakeProfitLevels = "+ TakeProfitLevels, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
 
    // TODO: Nach Parameteränderung die neue Konfiguration mit einer evt. bereits laufenden Sequenz abgleichen
    //       oder Parameter werden geändert, ohne vorher im Input-Dialog die Konfigurationsdatei der Sequenz zu laden.
 
-   return(IsNoError(catch("ValidateConfiguration(8)")));
+   return(IsNoError(catch("ValidateConfiguration(10)")));
 }
 
 
