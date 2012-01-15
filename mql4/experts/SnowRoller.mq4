@@ -22,7 +22,7 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 
 extern int    Gridsize                       = 20;
 extern double Lotsize                        = 0.1;
-extern string StartCondition                 = "";    // BollingerBands(35xM15, EMA, 2.0) // {LimitValue} | [Bollinger]Bands(35xM5,EMA,2.0) | Env[elopes](75xM15,ALMA,2.0)
+extern string StartCondition                 = "";          // {LimitValue}
 extern int    TakeProfitLevels               = 5;
 extern string ______________________________ = "==== Sequence to Manage =============";
 extern string Sequence.ID                    = "";
@@ -30,10 +30,10 @@ extern string Sequence.ID                    = "";
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int      intern.Gridsize;                             // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
-double   intern.Lotsize;                              // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
-string   intern.StartCondition;                       // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
-int      intern.TakeProfitLevels;                     // und in init() wieder daraus restauriert.
+int      intern.Gridsize;                                   // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
+double   intern.Lotsize;                                    // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
+string   intern.StartCondition;                             // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
+int      intern.TakeProfitLevels;                           // und in init() wieder daraus restauriert.
 string   intern.Sequence.ID;
 
 int      sequenceId;
@@ -43,7 +43,7 @@ int      currentLevel;
 double   Entry.limit;
 double   Entry.lastBid;
 
-int      orders.level     [];                         // Gridlevel (Basis ist 0)
+int      orders.level     [];                               // Gridlevel (Basis ist 0)
 int      orders.ticket    [];
 int      orders.type      [];
 datetime orders.openTime  [];
@@ -184,9 +184,9 @@ int onTick() {
    if (sequenceStatus==STATUS_FINISHED || sequenceStatus==STATUS_DISABLED)
       return(last_error);
 
-   //checkButtonsAndLines();       // start(LONG|SHORT|BIDIR) | pause() | stop()
+   //checkButtonsAndLines();                 // start(LONG|SHORT|BIDIR) | pause() | stop()
    //trade();
-   //checkAutoTP();                // stop()
+   //checkAutoTP();                          // stop()
 
 
    // Orders prüfen und Sequenzdaten aktualisieren
