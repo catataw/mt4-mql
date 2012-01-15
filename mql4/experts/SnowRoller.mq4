@@ -37,7 +37,7 @@ int      intern.TakeProfitLevels;                           // und in init() wie
 string   intern.Sequence.ID;
 
 int      sequenceId;
-int      sequenceStatus = STATUS_WAITING;
+int      status = STATUS_WAITING;
 int      currentLevel;
 
 double   Entry.limit;
@@ -99,7 +99,7 @@ int init() {
          }
          else if (ValidateConfiguration()) {                         // Zum Schluß neue Sequenz anlegen.
             sequenceId = CreateSequenceId();
-            //if (StartCondition != "")                              // Ohne StartCondition erfolgt sofortiger Einstieg, in diesem Fall wird die
+            if (StartCondition != "")                                // Ohne StartCondition erfolgt sofortiger Einstieg, in diesem Fall wird die
                SaveConfiguration();                                  // Konfiguration erst nach Sicherheitsabfrage in StartSequence() gespeichert.
          }
       }
@@ -176,34 +176,28 @@ int deinit() {
 
 
 /**
- * Main-Funktion
- *
- * @return int - Fehlerstatus
+ * Main-Funktion                                               checkButtonsAndLines();    // start() | pause() | stop()
+ *                                                             trade();
+ * @return int - Fehlerstatus                                  checkAutoTP();             // stop()
  */
 int onTick() {
-   if (sequenceStatus==STATUS_FINISHED || sequenceStatus==STATUS_DISABLED)
+   if (status==STATUS_FINISHED || status==STATUS_DISABLED)
       return(last_error);
 
-   //checkButtonsAndLines();                 // start(LONG|SHORT|BIDIR) | pause() | stop()
-   //trade();
-   //checkAutoTP();                          // stop()
+   // Orders prüfen und Daten aktualisieren
+   if (UpdateStatus()) {
 
-
-   // Orders prüfen und Sequenzdaten aktualisieren
-   if (CheckOrderStatus()) {
-
-      // Handelslogik
       // (1) Sequenz wartet auf Startsignal
-      if (sequenceStatus == STATUS_WAITING) {
-         if (IsStartSignal())                StartSequence();
+      if (status == STATUS_WAITING) {
+         if (IsStartSignal())           StartSequence();
       }
+
       // (2) Sequenz läuft
       else {
-         //else if (IsProfitTargetReached()) FinishSequence();
-         //else if (IsStopLossReached())     IncreaseProgression();
+         //if (IsProfitTargetReached()) FinishSequence();
+         //if (IsStopLossReached())     IncreaseProgression();
       }
    }
-
    firstTick = false;
 
 
@@ -221,7 +215,7 @@ int onTick() {
  *
  * @return bool - Erfolgsstatus
  */
-bool CheckOrderStatus() {
+bool UpdateStatus() {
    bool pending, open, statusModified;
    int orders = ArraySize(orders.ticket);
 
@@ -261,7 +255,7 @@ bool CheckOrderStatus() {
    if (statusModified) {
       //SaveStatus();
    }
-   return(true);
+   return(IsNoError(catch("UpdateStatus()")));
 }
 
 
@@ -313,8 +307,20 @@ bool IsStartSignal() {
  * @return bool - Erfolgsstatus
  */
 bool StartSequence() {
+   if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort einen Trade triggert
+      ForceSound("notify.wav");
+      int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __SCRIPT__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+      if (button != IDOK) {
+         SetLastError(ERR_CANCELLED_BY_USER);
+         return(_false(catch("StartSequence(1)")));
+      }
+      SaveConfiguration();                                           // StartSequence() mit dem ersten Tick: jetzt Konfiguration speichern; @see init()
+   }
+
    debug("StartSequence()");
-   return(IsNoError(catch("StartSequence()")));
+
+
+   return(IsNoError(catch("StartSequence(2)")));
 }
 
 
@@ -329,11 +335,11 @@ int ShowStatus() {
 
    int error = last_error;                                           // bei Funktionseintritt bereits existierenden Fehler zwischenspeichern
    if (IsLastError())
-      sequenceStatus = STATUS_DISABLED;
+      status = STATUS_DISABLED;
 
    string msg = "";
 
-   switch (sequenceStatus) {
+   switch (status) {
       case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
                                   msg = StringConcatenate(msg, " for ", NumberToStr(Entry.limit, PriceFormat), " crossing");                break;
@@ -343,7 +349,7 @@ int ShowStatus() {
                                if (IsLastError())
                                   msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                   break;
       default:
-         return(catch("ShowStatus(1)   illegal sequence status = "+ sequenceStatus, ERR_RUNTIME_ERROR));
+         return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
    msg = StringConcatenate(__SCRIPT__, msg,                                                                      NL,
@@ -458,13 +464,10 @@ bool RestoreRunningSequenceId() {
 
       if (IsMyOrder()) {
          sequenceId = OrderMagicNumber() >> 8 & 0x3FFF;              // 14 Bits (Bits 9-22) => sequenceId
-         catch("RestoreRunningSequenceId(1)");
-         return(true);
+         return(_true(catch("RestoreRunningSequenceId(1)")));
       }
    }
-
-   catch("RestoreRunningSequenceId(2)");
-   return(false);
+   return(_false(catch("RestoreRunningSequenceId(2)")));
 }
 
 
