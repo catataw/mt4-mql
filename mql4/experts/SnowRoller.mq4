@@ -155,7 +155,6 @@ int deinit() {
       intern.Sequence.ID      = Sequence.ID;
    }
    else {
-      // aktuelle Sequenze-ID im Chart speichern
       StoreChartSequenceId();
    }
    return(catch("deinit()"));
@@ -208,7 +207,7 @@ int onTick() {
  * @return int - Fehlerstatus
  */
 int ShowStatus() {
-   if (IsTesting() && !IsVisualMode())
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(last_error);
 
    int error = last_error;                                           // bei Funktionseintritt bereits existierenden Fehler zwischenspeichern
