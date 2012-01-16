@@ -20,8 +20,8 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
 
-extern int    Gridsize                       = 20;
-extern double Lotsize                        = 0.1;
+extern int    GridSize                       = 20;
+extern double LotSize                        = 0.1;
 extern string StartCondition                 = "";          // {LimitValue}
 extern int    TakeProfitLevels               = 5;
 extern string ______________________________ = "==== Sequence to Manage =============";
@@ -30,15 +30,16 @@ extern string Sequence.ID                    = "";
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int      intern.Gridsize;                                   // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
-double   intern.Lotsize;                                    // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
+int      intern.GridSize;                                   // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
+double   intern.LotSize;                                    // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
 string   intern.StartCondition;                             // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
 int      intern.TakeProfitLevels;                           // und in init() wieder daraus restauriert.
 string   intern.Sequence.ID;
 
 int      sequenceId;
-int      status = STATUS_WAITING;
+double   GridBase;
 int      currentLevel;
+int      status = STATUS_WAITING;
 
 double   Entry.limit;
 double   Entry.lastBid;
@@ -122,8 +123,8 @@ int init() {
 
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_CHARTCHANGE) {
-      Gridsize         = intern.Gridsize;                            // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
-      Lotsize          = intern.Lotsize;                             // Inputvariablen restauriert.
+      GridSize         = intern.GridSize;                            // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
+      LotSize          = intern.LotSize;                             // Inputvariablen restauriert.
       StartCondition   = intern.StartCondition;
       TakeProfitLevels = intern.TakeProfitLevels;
       Sequence.ID      = intern.Sequence.ID;
@@ -162,8 +163,8 @@ int init() {
 int deinit() {
    if (UninitializeReason() == REASON_CHARTCHANGE) {
       // Input-Parameter sind nicht statisch: für's nächste init() in intern.* zwischenspeichern
-      intern.Gridsize         = Gridsize;
-      intern.Lotsize          = Lotsize;
+      intern.GridSize         = GridSize;
+      intern.LotSize          = LotSize;
       intern.StartCondition   = StartCondition;
       intern.TakeProfitLevels = TakeProfitLevels;
       intern.Sequence.ID      = Sequence.ID;
@@ -183,6 +184,7 @@ int deinit() {
 int onTick() {
    if (status==STATUS_FINISHED || status==STATUS_DISABLED)
       return(last_error);
+
 
    // Orders prüfen und Daten aktualisieren
    if (UpdateStatus()) {
@@ -314,13 +316,114 @@ bool StartSequence() {
          SetLastError(ERR_CANCELLED_BY_USER);
          return(_false(catch("StartSequence(1)")));
       }
-      SaveConfiguration();                                           // StartSequence() mit dem ersten Tick: jetzt Konfiguration speichern; @see init()
+      SaveConfiguration();                                           // StartSequence() beim ersten Tick: jetzt Konfiguration speichern, @see init()
    }
-
    debug("StartSequence()");
 
 
-   return(IsNoError(catch("StartSequence(2)")));
+   // (1) GridBase festlegen
+   GridBase = ifDouble(NE(Entry.limit, 0), Entry.limit, Bid);
+
+
+   // (2) PendingOrders in den Markt legen
+   int ticket1 = PendingStopOrder(OP_BUYSTOP, GridBase + GridSize*Pips, 1);
+   if (ticket1 == -1)
+      return(_false(catch("StartSequence(2)")));
+
+   int ticket2 = PendingStopOrder(OP_SELLSTOP, GridBase - GridSize*Pips, -1);
+   if (ticket2 == -1)
+      return(_false(catch("StartSequence(3)")));
+
+
+
+   /*
+   // Sequenzdaten aktualisieren
+   if (!OrderSelectByTicket(ticket))
+      return(last_error);
+
+   levels.ticket   [0] = OrderTicket();
+   levels.type     [0] = OrderType();
+   levels.openLots [0] = OrderLots();
+   levels.openTime [0] = OrderOpenTime();
+   levels.openPrice[0] = OrderOpenPrice();
+   */
+
+   status = STATUS_PROGRESSING;
+
+
+
+   // (3) Status extern speichern
+
+   return(IsNoError(catch("StartSequence(4)")));
+}
+
+
+/**
+ * Legt eine Stop-Order in den Markt.
+ *
+ * @param  int    type  - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
+ * @param  double price - Stop-Price der Order
+ * @param  int    level - Gridlevel der Order
+ *
+ * @return int - OderTicket oder -1, falls ein Fehler auftrat
+ */
+int PendingStopOrder(int type, double price, int level) {
+   if (type == OP_BUYSTOP) {
+      if (LE(price, Ask)) {
+         catch("PendingStopOrder(1)   illegal "+ OperationTypeDescription(type) +" price = "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE);
+         return(-1);
+      }
+   }
+   else if (type == OP_SELLSTOP) {
+      if (GE(price, Bid)) {
+         catch("PendingStopOrder(2)   illegal "+ OperationTypeDescription(type) +" price = "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE);
+         return(-1);
+      }
+   }
+   else {
+      catch("PendingStopOrder(3)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE);
+      return(-1);
+   }
+   if (level == 0) {
+      catch("PendingStopOrder(4)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE);
+      return(-1);
+   }
+
+   int    magicNumber = CreateMagicNumber(level);
+   string comment     = StringConcatenate("SR.", sequenceId, ".", IntToSignedStr(level));
+
+   int ticket = OrderSendEx(Symbol(), type, LotSize, price, NULL, NULL, NULL, comment, magicNumber, NULL, CLR_NONE);
+   if (ticket == -1)
+      SetLastError(stdlib_PeekLastError());
+
+   if (IsError(catch("PendingStopOrder(5)")))
+      return(-1);
+   return(ticket);
+}
+
+
+/**
+ * Generiert einen Wert für OrderMagicNumber() für den angegebenen Gridlevel.
+ *
+ * @param  int level - Gridlevel
+ *
+ * @return int - MagicNumber oder -1, falls ein Fehler auftrat
+ */
+int CreateMagicNumber(int level) {
+   if (sequenceId < 1000) {
+      catch("CreateMagicNumber(1)   illegal sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR);
+      return(-1);
+   }
+   if (level == 0) {
+      catch("CreateMagicNumber(2)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE);
+      return(-1);
+   }
+
+   int ea       = Strategy.Id & 0x3FF << 22;                         // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
+   int sequence = sequenceId & 0x3FFF << 8;                          // 14 bit (Bits größer 14 löschen und auf 22 Bit erweitern  | in MagicNumber: Bits  9-22
+   level        = level & 0xFF;                                      //  8 bit (Bits größer 8 löschen)                           | in MagicNumber: Bits  1-8
+
+   return(ea + sequence + level);
 }
 
 
@@ -354,8 +457,8 @@ int ShowStatus() {
 
    msg = StringConcatenate(__SCRIPT__, msg,                                                                      NL,
                                                                                                                  NL,
-                           "GridSize:       ", Gridsize, " pip",                                                 NL,
-                           "LotSize:         ", NumberToStr(Lotsize, ".+"), " = 12.00 / stop",                   NL,
+                           "GridSize:       ", GridSize, " pip",                                                 NL,
+                           "LotSize:         ", NumberToStr(LotSize, ".+"), " = 12.00 / stop",                   NL,
                            "Realized:       12 stops = -144.00  (-12/+4)",                                       NL,
                          //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)",                  NL,
                            "Breakeven:   ", NumberToStr(Bid, PriceFormat), " / ", NumberToStr(Ask, PriceFormat), NL,
@@ -512,20 +615,20 @@ int CreateSequenceId() {
  * @return bool - ob die Konfiguration gültig ist
  */
 bool ValidateConfiguration() {
-   // Gridsize
-   if (Gridsize < 1)   return(_false(catch("ValidateConfiguration(1)  Invalid input parameter Gridsize = "+ Gridsize, ERR_INVALID_INPUT_PARAMVALUE)));
+   // GridSize
+   if (GridSize < 1)   return(_false(catch("ValidateConfiguration(1)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
 
-   // Lotsize
-   if (LE(Lotsize, 0)) return(_false(catch("ValidateConfiguration(2)  Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
+   // LotSize
+   if (LE(LotSize, 0)) return(_false(catch("ValidateConfiguration(2)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
 
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT);
    double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT);
    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
    int error = GetLastError();
    if (IsError(error))                      return(_false(catch("ValidateConfiguration(3)   symbol=\""+ Symbol() +"\"", error)));
-   if (LT(Lotsize, minLot))                 return(_false(catch("ValidateConfiguration(4)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (GT(Lotsize, maxLot))                 return(_false(catch("ValidateConfiguration(5)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (NE(MathModFix(Lotsize, lotStep), 0)) return(_false(catch("ValidateConfiguration(6)   Invalid input parameter Lotsize = "+ NumberToStr(Lotsize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(4)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(5)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(6)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
 
    // StartCondition
    StartCondition = StringReplace(StartCondition, " ", "");
@@ -565,8 +668,8 @@ int SaveConfiguration() {
    // (1) Daten zusammenstellen
    string lines[];  ArrayResize(lines, 0);
    ArrayPushString(lines, /*string*/ "Sequence.ID="     +             sequenceId      );
-   ArrayPushString(lines, /*int   */ "Gridsize="        +             Gridsize        );
-   ArrayPushString(lines, /*double*/ "Lotsize="         + NumberToStr(Lotsize, ".+")  );
+   ArrayPushString(lines, /*int   */ "GridSize="        +             GridSize        );
+   ArrayPushString(lines, /*double*/ "LotSize="         + NumberToStr(LotSize, ".+")  );
    ArrayPushString(lines, /*string*/ "StartCondition="  +             StartCondition  );
    ArrayPushString(lines, /*int   */ "TakeProfitLevels="+             TakeProfitLevels);
 
@@ -692,14 +795,14 @@ bool RestoreConfiguration() {
       if (Explode(config[i], "=", parts, 2) != 2) return(_false(catch("RestoreConfiguration(3)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
       string key=parts[0], value=parts[1];
 
-      if (key == "Gridsize") {
+      if (key == "GridSize") {
          if (!StringIsDigit(value))               return(_false(catch("RestoreConfiguration(4)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
-         Gridsize = StrToInteger(value);
+         GridSize = StrToInteger(value);
          keys[I_GRIDSIZE] = 1;
       }
-      else if (key == "Lotsize") {
+      else if (key == "LotSize") {
          if (!StringIsNumeric(value))             return(_false(catch("RestoreConfiguration(5)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
-         Lotsize = StrToDouble(value);
+         LotSize = StrToDouble(value);
          keys[I_LOTSIZE] = 1;
       }
       else if (key == "StartCondition") {
