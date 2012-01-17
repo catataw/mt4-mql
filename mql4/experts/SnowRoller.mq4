@@ -220,7 +220,7 @@ int onTick() {
  */
 bool UpdateStatus() {
    bool pending, open, statusModified;
-   int orders = ArraySize(orders.ticket);
+   int  orders = ArraySize(orders.ticket);
 
    for (int i=0; i < orders; i++) {
       if (orders.closeTime[i] == 0) {                                // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
@@ -233,7 +233,7 @@ bool UpdateStatus() {
          if (pending) {
             if (OrderType() != orders.type[i]) {                     // Order wurde ausgeführt
                orders.type      [i] = OrderType();
-               orders.openTime  [i] = OrderOpenTime();               // ??? muß OpenTime aktualisiert werden ???
+               orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
                orders.swap      [i] = OrderSwap();
                orders.commission[i] = OrderCommission();
