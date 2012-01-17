@@ -36,15 +36,16 @@ string   intern.StartCondition;                             // Um dies zu verhin
 int      intern.TakeProfitLevels;                           // und in init() wieder daraus restauriert.
 string   intern.Sequence.ID;
 
-int      sequenceId;
-double   GridBase;
-int      currentLevel;
 int      status = STATUS_WAITING;
+int      sequenceId;
 
 double   Entry.limit;
 double   Entry.lastBid;
 
-int      orders.level     [];                               // Gridlevel (Basis ist 0)
+double   GridBase;
+int      currentLevel;                                      // aktueller Grid-Level (GridBase = 0)
+
+int      orders.level     [];                               // Grid-Level der Order
 int      orders.ticket    [];
 int      orders.type      [];
 datetime orders.openTime  [];
