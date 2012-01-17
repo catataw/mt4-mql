@@ -390,7 +390,7 @@ int PendingStopOrder(int type, double price, int level) {
    }
 
    int    magicNumber = CreateMagicNumber(level);
-   string comment     = StringConcatenate("SR.", sequenceId, ".", IntToSignedStr(level));
+   string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
 
    int ticket = OrderSendEx(Symbol(), type, LotSize, price, NULL, NULL, NULL, comment, magicNumber, NULL, CLR_NONE);
    if (ticket == -1)
@@ -445,12 +445,12 @@ int ShowStatus() {
    switch (status) {
       case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
-                                  msg = StringConcatenate(msg, " for ", NumberToStr(Entry.limit, PriceFormat), " crossing");                break;
-      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", IntToSignedStr(currentLevel)); break;
-      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                            break;
+                                  msg = StringConcatenate(msg, " for ", NumberToStr(Entry.limit, PriceFormat), " crossing");                   break;
+      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", NumberToStr(currentLevel, "+.")); break;
+      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                               break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled");
                                if (IsLastError())
-                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                   break;
+                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                      break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
@@ -470,20 +470,6 @@ int ShowStatus() {
    if (!IsError(catch("ShowStatus(2)")))
       last_error = error;                                            // bei Funktionseintritt bereits existierenden Fehler restaurieren
    return(last_error);
-}
-
-
-/**
- * Gibt die vorzeichenbehaftete String-Repr‰sentation eines Integers zur¸ck.
- *
- * @param  int value
- *
- * @return string
- */
-string IntToSignedStr(int value) {
-   if (value > 0)
-      return(StringConcatenate("+", value));
-   return(value);
 }
 
 
@@ -522,7 +508,7 @@ bool RestoreInputSequenceId() {
 
 
 /**
- * Speichert die aktuelle Sequenz-ID im Chart, sodaﬂ sie nach einem deinit() restauriert werden kann.
+ * Speichert die aktuelle Sequenz-ID im Chart, sodaﬂ die Sequenz sp‰ter daraus restauriert werden kann.
  *
  * @return int - Fehlerstatus
  */
@@ -532,7 +518,7 @@ int StoreChartSequenceId() {
    if (ObjectFind(label) != -1)
       ObjectDelete(label);
    ObjectCreate(label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                 // negativer Wert (nicht sichtbarer Bereich)
+   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                 // negativer Wert (im nicht sichtbaren Bereich)
 
    return(catch("StoreChartSequenceId()"));
 }
