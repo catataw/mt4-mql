@@ -31,7 +31,7 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int onStart() {
-   return(catch("onTick()"));
+   return(catch("onStart()"));
 }
 
 

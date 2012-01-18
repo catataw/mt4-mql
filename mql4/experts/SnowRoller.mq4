@@ -370,7 +370,7 @@ bool StartSequence() {
  * @param  double price - Stop-Price der Order
  * @param  int    level - Gridlevel der Order
  *
- * @return int - OderTicket oder -1, falls ein Fehler auftrat
+ * @return int - Ticket der Order oder -1, falls ein Fehler auftrat
  */
 int PendingStopOrder(int type, double price, int level) {
    if (type == OP_BUYSTOP) {
