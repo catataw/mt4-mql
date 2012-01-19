@@ -228,7 +228,7 @@ bool UpdateStatus() {
 
    for (int i=0; i < orders; i++) {
       if (orders.closeTime[i] == 0) {                                // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
-         if (!OrderSelectByTicket(orders.ticket[i]))                 // Existenz prüfen
+         if (!OrderSelectByTicket(orders.ticket[i], "UpdateStatus(1)"))
             return(false);
 
          pending = orders.type[i] > OP_SELL;                         // OrderType beim letzten Aufruf
@@ -262,7 +262,7 @@ bool UpdateStatus() {
    if (statusModified) {
       //SaveStatus();
    }
-   return(IsNoError(catch("UpdateStatus()")));
+   return(IsNoError(catch("UpdateStatus(2)")));
 }
 
 
@@ -343,7 +343,7 @@ bool StartSequence() {
 
    /*
    // Sequenzdaten aktualisieren
-   if (!OrderSelectByTicket(ticket))
+   if (!OrderSelectByTicket(ticket, "StartSequence(4)"))
       return(last_error);
 
    levels.ticket   [0] = OrderTicket();
@@ -359,7 +359,7 @@ bool StartSequence() {
 
    // (3) Status extern speichern
 
-   return(IsNoError(catch("StartSequence(4)")));
+   return(IsNoError(catch("StartSequence(5)")));
 }
 
 
