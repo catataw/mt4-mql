@@ -228,7 +228,7 @@ bool UpdateStatus() {
 
    for (int i=0; i < orders; i++) {
       if (orders.closeTime[i] == 0) {                                // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
-         if (!OrderSelectByTicket(orders.ticket[i], "UpdateStatus(1)"))
+         if (!OrderSelectByTicket(orders.ticket[i]))
             return(false);
 
          pending = orders.type[i] > OP_SELL;                         // OrderType beim letzten Aufruf
@@ -343,7 +343,7 @@ bool StartSequence() {
 
    /*
    // Sequenzdaten aktualisieren
-   if (!OrderSelectByTicket(ticket, "StartSequence(4)"))
+   if (!OrderSelectByTicket(ticket))
       return(last_error);
 
    levels.ticket   [0] = OrderTicket();
@@ -450,7 +450,7 @@ int ShowStatus() {
    switch (status) {
       case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
-                                  msg = StringConcatenate(msg, " for ", NumberToStr(Entry.limit, PriceFormat), " crossing");                   break;
+                                  msg = StringConcatenate(msg, " for crossing of ", NumberToStr(Entry.limit, PriceFormat));                    break;
       case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", NumberToStr(currentLevel, "+.")); break;
       case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                               break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled");
