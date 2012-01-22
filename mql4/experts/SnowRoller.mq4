@@ -22,7 +22,7 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 
 extern int    GridSize                       = 20;
 extern double LotSize                        = 0.1;
-extern string StartCondition                 = "";          // {LimitValue}
+extern string StartCondition                 = "1.40";      // {LimitValue}
 extern int    TakeProfitLevels               = 5;
 extern string ______________________________ = "==== Sequence to Manage =============";
 extern string Sequence.ID                    = "";
@@ -189,7 +189,6 @@ int deinit() {
 int onTick() {
    if (status==STATUS_FINISHED || status==STATUS_DISABLED)
       return(last_error);
-
 
    // Orders prüfen und Daten aktualisieren
    if (UpdateStatus()) {
