@@ -206,7 +206,6 @@ int onTick() {
    }
    firstTick = false;
 
-
    // Status anzeigen
    ShowStatus();
 
