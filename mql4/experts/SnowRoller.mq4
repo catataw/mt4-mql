@@ -321,19 +321,23 @@ bool StartSequence() {
       }
       SaveConfiguration();                                           // StartSequence() beim ersten Tick: jetzt Konfiguration speichern, @see init()
    }
-   debug("StartSequence()");
 
 
    // (1) GridBase festlegen
    GridBase = ifDouble(NE(Entry.limit, 0), Entry.limit, Bid);
 
+   double stopPrice, stopLoss;
+
 
    // (2) PendingOrders in den Markt legen
-   int ticket1 = PendingStopOrder(OP_BUYSTOP, GridBase + GridSize*Pips, 1);
+   stopPrice = GridBase + GridSize*Pips;
+   stopLoss  = GridBase;
+   int ticket1 = PendingStopOrder(OP_BUYSTOP, stopPrice, stopLoss, 1);
    if (ticket1 == -1)
       return(_false(catch("StartSequence(2)")));
 
-   int ticket2 = PendingStopOrder(OP_SELLSTOP, GridBase - GridSize*Pips, -1);
+   stopPrice = GridBase - GridSize*Pips;
+   int ticket2 = PendingStopOrder(OP_SELLSTOP, stopPrice, stopLoss, -1);
    if (ticket2 == -1)
       return(_false(catch("StartSequence(3)")));
 
@@ -364,42 +368,51 @@ bool StartSequence() {
 /**
  * Legt eine Stop-Order in den Markt.
  *
- * @param  int    type  - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
- * @param  double price - Stop-Price der Order
- * @param  int    level - Gridlevel der Order
+ * @param  int    type     - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
+ * @param  double price    - Aktivierungspreis
+ * @param  double stoploss - Stoploss
+ * @param  int    level    - Gridlevel der Order
  *
  * @return int - Ticket der Order oder -1, falls ein Fehler auftrat
  */
-int PendingStopOrder(int type, double price, int level) {
+int PendingStopOrder(int type, double price, double stoploss, int level) {
    if (type == OP_BUYSTOP) {
       if (LE(price, Ask)) {
-         catch("PendingStopOrder(1)   illegal "+ OperationTypeDescription(type) +" price = "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE);
+         catch("PendingStopOrder(1)   illegal "+ OperationTypeDescription(type) +" price: "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE);
+         return(-1);
+      }
+      if (GE(stoploss, price)) {
+         catch("PendingStopOrder(2)   illegal stoploss "+ NumberToStr(stoploss, PriceFormat) +" for "+ OperationTypeDescription(type) +" at "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE);
          return(-1);
       }
    }
    else if (type == OP_SELLSTOP) {
       if (GE(price, Bid)) {
-         catch("PendingStopOrder(2)   illegal "+ OperationTypeDescription(type) +" price = "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE);
+         catch("PendingStopOrder(3)   illegal "+ OperationTypeDescription(type) +" price: "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE);
+         return(-1);
+      }
+      else if (NE(stoploss, 0)) /*&&*/ if (LE(stoploss, price)) {
+         catch("PendingStopOrder(4)   illegal stoploss "+ NumberToStr(stoploss, PriceFormat) +" for "+ OperationTypeDescription(type) +" at "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE);
          return(-1);
       }
    }
    else {
-      catch("PendingStopOrder(3)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE);
+      catch("PendingStopOrder(5)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE);
       return(-1);
    }
    if (level == 0) {
-      catch("PendingStopOrder(4)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE);
+      catch("PendingStopOrder(6)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE);
       return(-1);
    }
 
    int    magicNumber = CreateMagicNumber(level);
    string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
 
-   int ticket = OrderSendEx(Symbol(), type, LotSize, price, NULL, NULL, NULL, comment, magicNumber, NULL, CLR_NONE);
+   int ticket = OrderSendEx(Symbol(), type, LotSize, price, NULL, stoploss, NULL, comment, magicNumber, NULL, CLR_NONE);
    if (ticket == -1)
       SetLastError(stdlib_PeekLastError());
 
-   if (IsError(catch("PendingStopOrder(5)")))
+   if (IsError(catch("PendingStopOrder(7)")))
       return(-1);
    return(ticket);
 }
@@ -464,7 +477,7 @@ int ShowStatus() {
                            "LotSize:         ", NumberToStr(LotSize, ".+"), " = 12.00 / stop",                   NL,
                            "Realized:       12 stops = -144.00  (-12/+4)",                                       NL,
                          //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)",                  NL,
-                           "Breakeven:   ", NumberToStr(Bid, PriceFormat), " / ", NumberToStr(Ask, PriceFormat), NL,
+                           "Breakeven:   1.5916'5 / 1.6017'8",                                                   NL,
                            "Profit/Loss:    147.95",                                                             NL);
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
