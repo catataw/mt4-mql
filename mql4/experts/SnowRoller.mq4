@@ -22,7 +22,7 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 
 extern int    GridSize                       = 20;
 extern double LotSize                        = 0.1;
-extern string StartCondition                 = "1.40";      // {LimitValue}
+extern string StartCondition                 = "";          // {LimitValue}
 extern int    TakeProfitLevels               = 5;
 extern string ______________________________ = "==== Sequence to Manage =============";
 extern string Sequence.ID                    = "";
