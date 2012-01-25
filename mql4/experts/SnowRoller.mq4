@@ -239,10 +239,7 @@ bool UpdateStatus() {
                orders.swap      [i] = OrderSwap();
                orders.commission[i] = OrderCommission();
                orders.profit    [i] = OrderProfit();
-
-               debug("UpdateStatus()   #"+ orders.ticket[i] +" wurde ausgeführt");
-               if (orders.level[i] > 0) currentLevel++;
-               else                     currentLevel--;
+               currentLevel += MathSign(orders.level[i]);
                statusModified = true;
             }
          }
@@ -255,14 +252,8 @@ bool UpdateStatus() {
          if (OrderCloseTime() != 0) {                                // pending + open: Order wurde geschlossen oder gelöscht
             orders.closeTime [i] = OrderCloseTime();                 // (bei Spikes kann eine PendingOrder ausgeführt *und* bereits geschlossen sein)
             orders.closePrice[i] = OrderClosePrice();
-            if (orders.type[i] > OP_SELL) {
-               debug("UpdateStatus()   #"+ orders.ticket[i] +" wurde gelöscht");
-            }
-            else {
-               debug("UpdateStatus()   #"+ orders.ticket[i] +" wurde geschlossen");
-               if (orders.level[i] > 0) currentLevel--;
-               else                     currentLevel++;
-            }
+            if (OrderType() <= OP_SELL)
+               currentLevel -= MathSign(orders.level[i]);
             statusModified = true;
          }
       }
@@ -343,8 +334,8 @@ bool StartSequence() {
    stopPrice  = GridBase + GridSize*Pips;
    stopLoss   = GridBase;
    int ticket = PendingStopOrder(OP_BUYSTOP, stopPrice, stopLoss, 1);
-   if (ticket==-1 || !OrderSelectByTicket(ticket))
-      return(false);
+   if (ticket == -1)                 return(false);
+   if (!OrderSelectByTicket(ticket)) return(false);
 
    // Arrays vergrößern und Daten speichern
    int i = IncreaseOrderArrays() - 1;
@@ -363,8 +354,8 @@ bool StartSequence() {
    // (3) Pending Stop Sell in den Markt legen
    stopPrice = GridBase - GridSize*Pips;
    ticket    = PendingStopOrder(OP_SELLSTOP, stopPrice, stopLoss, -1);
-   if (ticket==-1 || !OrderSelectByTicket(ticket))
-      return(false);
+   if (ticket == -1)                 return(false);
+   if (!OrderSelectByTicket(ticket)) return(false);
 
    // Arrays vergrößern und Daten speichern
    i = IncreaseOrderArrays() - 1;
