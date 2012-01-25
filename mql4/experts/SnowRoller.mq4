@@ -45,8 +45,8 @@ double   Entry.lastBid;
 double   GridBase;
 int      currentLevel;                                      // aktueller Grid-Level (GridBase = 0)
 
-int      orders.level     [];                               // Grid-Level der Order
 int      orders.ticket    [];
+int      orders.level     [];                               // Grid-Level der Order
 int      orders.type      [];
 datetime orders.openTime  [];
 double   orders.openPrice [];
@@ -221,7 +221,7 @@ int onTick() {
  * @return bool - Erfolgsstatus
  */
 bool UpdateStatus() {
-   bool pending, open, statusModified;
+   bool pending, statusModified;
    int  orders = ArraySize(orders.ticket);
 
    for (int i=0; i < orders; i++) {
@@ -229,29 +229,40 @@ bool UpdateStatus() {
          if (!OrderSelectByTicket(orders.ticket[i]))
             return(false);
 
-         pending = orders.type[i] > OP_SELL;                         // OrderType beim letzten Aufruf
-         open    = !pending;
+         pending = orders.type[i] > OP_SELL;                         // ob die Order beim letzten Aufruf "pending" war
 
          if (pending) {
-            if (OrderType() != orders.type[i]) {                     // Order wurde ausgeführt
+            if (OrderType() != orders.type[i]) {                     // "pending" Order, die inzwischen ausgeführt wurde
                orders.type      [i] = OrderType();
                orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
                orders.swap      [i] = OrderSwap();
                orders.commission[i] = OrderCommission();
                orders.profit    [i] = OrderProfit();
+
+               debug("UpdateStatus()   #"+ orders.ticket[i] +" wurde ausgeführt");
+               if (orders.level[i] > 0) currentLevel++;
+               else                     currentLevel--;
                statusModified = true;
             }
          }
-         else if (open) {
+         else {                                                      // Order war beim letzten Aufruf "open"
             orders.swap      [i] = OrderSwap();
             orders.commission[i] = OrderCommission();
             orders.profit    [i] = OrderProfit();
          }
 
-         if (OrderCloseTime() != 0) {                                // pending + open: Order wurde gelöscht oder geschlossen
-            orders.closeTime [i] = OrderCloseTime();                 // (bei Spikes kann eine PendingOrder ausgeführt und bereits geschlossen sein)
+         if (OrderCloseTime() != 0) {                                // pending + open: Order wurde geschlossen oder gelöscht
+            orders.closeTime [i] = OrderCloseTime();                 // (bei Spikes kann eine PendingOrder ausgeführt *und* bereits geschlossen sein)
             orders.closePrice[i] = OrderClosePrice();
+            if (orders.type[i] > OP_SELL) {
+               debug("UpdateStatus()   #"+ orders.ticket[i] +" wurde gelöscht");
+            }
+            else {
+               debug("UpdateStatus()   #"+ orders.ticket[i] +" wurde geschlossen");
+               if (orders.level[i] > 0) currentLevel--;
+               else                     currentLevel++;
+            }
             statusModified = true;
          }
       }
@@ -322,46 +333,80 @@ bool StartSequence() {
       SaveConfiguration();                                           // StartSequence() beim ersten Tick: jetzt Konfiguration speichern, @see init()
    }
 
-
    // (1) GridBase festlegen
    GridBase = ifDouble(NE(Entry.limit, 0), Entry.limit, Bid);
 
    double stopPrice, stopLoss;
 
 
-   // (2) PendingOrders in den Markt legen
-   stopPrice = GridBase + GridSize*Pips;
-   stopLoss  = GridBase;
-   int ticket1 = PendingStopOrder(OP_BUYSTOP, stopPrice, stopLoss, 1);
-   if (ticket1 == -1)
-      return(_false(catch("StartSequence(2)")));
+   // (2) Pending Stop Buy in den Markt legen
+   stopPrice  = GridBase + GridSize*Pips;
+   stopLoss   = GridBase;
+   int ticket = PendingStopOrder(OP_BUYSTOP, stopPrice, stopLoss, 1);
+   if (ticket==-1 || !OrderSelectByTicket(ticket))
+      return(false);
 
+   // Arrays vergrößern und Daten speichern
+   int i = IncreaseOrderArrays() - 1;
+   orders.ticket    [i] = OrderTicket();
+   orders.level     [i] = 1;
+   orders.type      [i] = OrderType();
+   orders.openTime  [i] = OrderOpenTime();
+   orders.openPrice [i] = OrderOpenPrice();
+   orders.closeTime [i] = OrderCloseTime();
+   orders.closePrice[i] = OrderClosePrice();
+   orders.swap      [i] = OrderSwap();
+   orders.commission[i] = OrderCommission();
+   orders.profit    [i] = OrderProfit();
+
+
+   // (3) Pending Stop Sell in den Markt legen
    stopPrice = GridBase - GridSize*Pips;
-   int ticket2 = PendingStopOrder(OP_SELLSTOP, stopPrice, stopLoss, -1);
-   if (ticket2 == -1)
-      return(_false(catch("StartSequence(3)")));
+   ticket    = PendingStopOrder(OP_SELLSTOP, stopPrice, stopLoss, -1);
+   if (ticket==-1 || !OrderSelectByTicket(ticket))
+      return(false);
+
+   // Arrays vergrößern und Daten speichern
+   i = IncreaseOrderArrays() - 1;
+   orders.ticket    [i] = OrderTicket();
+   orders.level     [i] = -1;
+   orders.type      [i] = OrderType();
+   orders.openTime  [i] = OrderOpenTime();
+   orders.openPrice [i] = OrderOpenPrice();
+   orders.closeTime [i] = OrderCloseTime();
+   orders.closePrice[i] = OrderClosePrice();
+   orders.swap      [i] = OrderSwap();
+   orders.commission[i] = OrderCommission();
+   orders.profit    [i] = OrderProfit();
 
 
-
-   /*
-   // Sequenzdaten aktualisieren
-   if (!OrderSelectByTicket(ticket))
-      return(last_error);
-
-   levels.ticket   [0] = OrderTicket();
-   levels.type     [0] = OrderType();
-   levels.openLots [0] = OrderLots();
-   levels.openTime [0] = OrderOpenTime();
-   levels.openPrice[0] = OrderOpenPrice();
-   */
-
+   // (4) Status ändern und Sequenz extern speichern
    status = STATUS_PROGRESSING;
 
+   return(IsNoError(catch("StartSequence(2)")));
+}
 
 
-   // (3) Status extern speichern
+/**
+ * Vergrößert die Orderdaten-Arrays um jeweils ein Feld.
+ *
+ * @return int - neue Größe der Arrays
+ */
+int IncreaseOrderArrays() {
+   int newSize = ArraySize(orders.ticket) + 1;
 
-   return(IsNoError(catch("StartSequence(5)")));
+   ArrayResize(orders.ticket,     newSize);
+   ArrayResize(orders.level,      newSize);
+   ArrayResize(orders.type,       newSize); orders.type[newSize-1] = OP_UNDEFINED;
+   ArrayResize(orders.openTime,   newSize);
+   ArrayResize(orders.openPrice,  newSize);
+   ArrayResize(orders.closeTime,  newSize);
+   ArrayResize(orders.closePrice, newSize);
+   ArrayResize(orders.swap,       newSize);
+   ArrayResize(orders.commission, newSize);
+   ArrayResize(orders.profit,     newSize);
+
+   return(newSize);
 }
 
 
@@ -435,9 +480,9 @@ int CreateMagicNumber(int level) {
       return(-1);
    }
 
-   int ea       = Strategy.Id & 0x3FF << 22;                         // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
-   int sequence = sequenceId & 0x3FFF << 8;                          // 14 bit (Bits größer 14 löschen und auf 22 Bit erweitern  | in MagicNumber: Bits  9-22
-   level        = level & 0xFF;                                      //  8 bit (Bits größer 8 löschen)                           | in MagicNumber: Bits  1-8
+   int ea       = Strategy.Id &  0x3FF << 22;                        // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
+   int sequence = sequenceId  & 0x3FFF <<  8;                        // 14 bit (Bits größer 14 löschen und auf 22 Bit erweitern  | in MagicNumber: Bits  9-22
+   level        = level       &   0xFF;                              //  8 bit (Bits größer 8 löschen)                           | in MagicNumber: Bits  1-8
 
    return(ea + sequence + level);
 }
