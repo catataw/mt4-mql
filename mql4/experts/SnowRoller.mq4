@@ -554,7 +554,7 @@ int ShowStatus() {
 
 
 /**
- * Gibt den PipValue des aktuellen Instrument für die angegebenen Lotsize zurück.
+ * Gibt den PipValue des aktuellen Instrument für die angegebene Lotsize zurück.
  *
  * @param  double lots - Lotsize (default: 1)
  *
