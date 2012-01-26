@@ -540,7 +540,7 @@ int ShowStatus() {
    msg = StringConcatenate(__SCRIPT__, msg,                                                                                                     NL,
                                                                                                                                                 NL,
                            "GridSize:       ", GridSize, " pip",                                                                                NL,
-                           "LotSize:         ", NumberToStr(LotSize, ".+"), " = ", DoubleToStr(grid.stopValue, 2), " / stop",                   NL,
+                           "LotSize:         ", NumberToStr(LotSize, ".+"), " = ", DoubleToStr(GridSize * GetPipValue(LotSize), 2), " / stop",  NL,
                            "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.realizedPL, 2),   NL,
                          //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)",                                                 NL,
                            "Breakeven:   ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat), NL,
@@ -556,8 +556,26 @@ int ShowStatus() {
 
 
 /**
+ * Gibt den PipValue des aktuellen Instrument für die angegebenen Lotsize zurück.
+ *
+ * @param  double lots - Lotsize (default: 1)
+ *
+ * @return double - PipValue oder 0, wenn ein Fehler auftrat
+ */
+double GetPipValue(double lots = 1.0) {
+   double tickValue = MarketInfo(Symbol(), MODE_TICKVALUE);          // !!! TODO: wenn QuoteCurrency == AccountCurrency, ist dies nur ein einziges Mal notwendig
+
+   int error = GetLastError();
+   if (IsError(error) || tickValue < 0.1)                            // ERR_INVALID_MARKETINFO abfangen
+      return(_ZERO(catch("GetPipValue()   TickValue = "+ NumberToStr(tickValue, ".+"), ifInt(IsError(error), error, ERR_INVALID_MARKETINFO))));
+
+   return(Pip / TickSize * tickValue * lots);
+}
+
+
+/**
  * Ob in den Input-Parametern ausdrücklich eine zu benutzende Sequenz-ID angegeben wurde. Hier wird nur geprüft,
- * ob ein Wert angegeben wurde. Die Gültigkeit einer ID wird erst in RestoreInputSequenceId() überprüft.
+ * ob ein Wert angegeben wurde. Die Gültigkeit dieser ID wird erst in RestoreInputSequenceId() überprüft.
  *
  * @return bool
  */
