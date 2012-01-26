@@ -42,8 +42,16 @@ int      sequenceId;
 double   Entry.limit;
 double   Entry.lastBid;
 
-double   GridBase;
-int      currentLevel;                                      // aktueller Grid-Level (GridBase = 0)
+double   grid.base;
+int      grid.level;                                        // aktueller Grid-Level (GridBase = 0)
+int      grid.maxLevelLong;                                 // höchster erreichter Long-Level
+int      grid.maxLevelShort;                                // höchster erreichter Short-Level
+int      grid.stops;                                        // Anzahl der bisher getriggerten Stops
+double   grid.stopValue;                                    // aktueller Betrag eines Stops in der Kontowährung
+double   grid.breakevenLong;
+double   grid.breakevenShort;
+double   grid.realizedPL;                                   // P/L-Summe aller bisher getriggerten Stops (immer negativ)
+double   grid.profitLoss;                                   // Gesamt-P/L (realized + floating)
 
 int      orders.ticket    [];
 int      orders.level     [];                               // Grid-Level der Order
@@ -221,7 +229,7 @@ int onTick() {
  * @return bool - Erfolgsstatus
  */
 bool UpdateStatus() {
-   bool pending, statusModified;
+   bool pending, grid.changed;
    int  orders = ArraySize(orders.ticket);
 
    for (int i=0; i < orders; i++) {
@@ -239,8 +247,8 @@ bool UpdateStatus() {
                orders.swap      [i] = OrderSwap();
                orders.commission[i] = OrderCommission();
                orders.profit    [i] = OrderProfit();
-               currentLevel += MathSign(orders.level[i]);
-               statusModified = true;
+               grid.level += MathSign(orders.level[i]);
+               grid.changed = true;
             }
          }
          else {                                                      // Order war beim letzten Aufruf "open"
@@ -253,13 +261,13 @@ bool UpdateStatus() {
             orders.closeTime [i] = OrderCloseTime();                 // (bei Spikes kann eine PendingOrder ausgeführt *und* bereits geschlossen sein)
             orders.closePrice[i] = OrderClosePrice();
             if (OrderType() <= OP_SELL)
-               currentLevel -= MathSign(orders.level[i]);
-            statusModified = true;
+               grid.level -= MathSign(orders.level[i]);
+            grid.changed = true;
          }
       }
    }
 
-   if (statusModified) {
+   if (grid.changed) {
       //SaveStatus();
    }
    return(IsNoError(catch("UpdateStatus(2)")));
@@ -325,14 +333,14 @@ bool StartSequence() {
    }
 
    // (1) GridBase festlegen
-   GridBase = ifDouble(NE(Entry.limit, 0), Entry.limit, Bid);
+   grid.base = ifDouble(NE(Entry.limit, 0), Entry.limit, Bid);
 
    double stopPrice, stopLoss;
 
 
    // (2) Pending Stop Buy in den Markt legen
-   stopPrice  = GridBase + GridSize*Pips;
-   stopLoss   = GridBase;
+   stopPrice  = grid.base + GridSize*Pips;
+   stopLoss   = grid.base;
    int ticket = PendingStopOrder(OP_BUYSTOP, stopPrice, stopLoss, 1);
    if (ticket == -1)                 return(false);
    if (!OrderSelectByTicket(ticket)) return(false);
@@ -352,7 +360,7 @@ bool StartSequence() {
 
 
    // (3) Pending Stop Sell in den Markt legen
-   stopPrice = GridBase - GridSize*Pips;
+   stopPrice = grid.base - GridSize*Pips;
    ticket    = PendingStopOrder(OP_SELLSTOP, stopPrice, stopLoss, -1);
    if (ticket == -1)                 return(false);
    if (!OrderSelectByTicket(ticket)) return(false);
@@ -379,7 +387,7 @@ bool StartSequence() {
 
 
 /**
- * Vergrößert die Orderdaten-Arrays um jeweils ein Feld.
+ * Vergrößert die Orderdaten-Arrays um ein Feld.
  *
  * @return int - neue Größe der Arrays
  */
@@ -497,24 +505,24 @@ int ShowStatus() {
    switch (status) {
       case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
-                                  msg = StringConcatenate(msg, " for crossing of ", NumberToStr(Entry.limit, PriceFormat));                    break;
-      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", NumberToStr(currentLevel, "+.")); break;
-      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                               break;
+                                  msg = StringConcatenate(msg, " for crossing of ", NumberToStr(Entry.limit, PriceFormat));                  break;
+      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", NumberToStr(grid.level, "+.")); break;
+      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                             break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled");
                                if (IsLastError())
-                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                      break;
+                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                    break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
-   msg = StringConcatenate(__SCRIPT__, msg,                                                                      NL,
-                                                                                                                 NL,
-                           "GridSize:       ", GridSize, " pip",                                                 NL,
-                           "LotSize:         ", NumberToStr(LotSize, ".+"), " = 12.00 / stop",                   NL,
-                           "Realized:       12 stops = -144.00  (-12/+4)",                                       NL,
-                         //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)",                  NL,
-                           "Breakeven:   1.5916'5 / 1.6017'8",                                                   NL,
-                           "Profit/Loss:    147.95",                                                             NL);
+   msg = StringConcatenate(__SCRIPT__, msg,                                                                                                                                                             NL,
+                                                                                                                                                                                                        NL,
+                           "GridSize:       ", GridSize, " pip",                                                                                                                                        NL,
+                           "LotSize:         ", NumberToStr(LotSize, ".+"), " = ", DoubleToStr(grid.stopValue, 2), " / stop",                                                                           NL,
+                           "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.realizedPL, 2), "  (+", grid.maxLevelLong, "/-", grid.maxLevelShort, ")", NL,
+                         //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)",                                                                                                         NL,
+                           "Breakeven:   ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat),                                                         NL,
+                           "Profit/Loss:    ", DoubleToStr(grid.profitLoss, 2),                                                                                                                         NL);
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
