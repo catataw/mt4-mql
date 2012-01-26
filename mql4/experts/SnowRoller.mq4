@@ -538,7 +538,7 @@ int ShowStatus() {
    msg = StringConcatenate(__SCRIPT__, msg,                                                                                                     NL,
                                                                                                                                                 NL,
                            "GridSize:       ", GridSize, " pip",                                                                                NL,
-                           "LotSize:         ", NumberToStr(LotSize, ".+"), " = ", DoubleToStr(GridSize * GetPipValue(LotSize), 2), " / stop",  NL,
+                           "LotSize:         ", NumberToStr(LotSize, ".+"), " = ", DoubleToStr(GridSize * GetPipValue(LotSize), 8), " / stop",  NL,
                            "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.realizedPL, 2),   NL,
                          //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)",                                                 NL,
                            "Breakeven:   ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat), NL,
