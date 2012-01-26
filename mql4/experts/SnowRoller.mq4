@@ -43,16 +43,14 @@ double   Entry.limit;
 double   Entry.lastBid;
 
 
-double   grid.base;                                         // ok
-int      grid.level;                                        // ok    aktueller Grid-Level
-int      grid.maxLevelLong;                                 // ok    höchster erreichter Long-Level
-int      grid.maxLevelShort;                                // ok    höchster erreichter Short-Level
-int      grid.stops;                                        // ok    Anzahl der bisher getriggerten Stops
-double   grid.stopValue;                                    // aktueller Betrag eines Stops in der Kontowährung
-double   grid.realizedPL;                                   // ok    P/L aller bisher getriggerten Stops (negativ)
-double   grid.floatingPL;                                   // ok    P/L der im Moment offenen Positionen
-double   grid.profitLoss;                                   // ok    Gesamt-P/L (realized + floating)
-
+double   grid.base;
+int      grid.level;                                        // aktueller Grid-Level
+int      grid.maxLevelLong;                                 // höchster erreichter Long-Level
+int      grid.maxLevelShort;                                // höchster erreichter Short-Level
+int      grid.stops;                                        // Anzahl der bisher getriggerten Stops
+double   grid.realizedPL;                                   // P/L aller bisher getriggerten Stops (negativ)
+double   grid.floatingPL;                                   // P/L der im Moment offenen Positionen
+double   grid.profitLoss;                                   // Gesamt-P/L (realized + floating)
 double   grid.breakevenLong;
 double   grid.breakevenShort;
 
