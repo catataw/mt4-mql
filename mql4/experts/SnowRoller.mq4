@@ -191,31 +191,33 @@ int deinit() {
 
 
 /**
- * Main-Funktion                                               checkButtonsAndLines();    // start() | pause() | stop()
- *                                                             trade();
- * @return int - Fehlerstatus                                  checkAutoTP();             // stop()
+ * Main-Funktion
+ *
+ * @return int - Fehlerstatus
  */
 int onTick() {
    if (status==STATUS_FINISHED || status==STATUS_DISABLED)
       return(last_error);
 
-   // Orders prüfen und Daten aktualisieren
-   if (UpdateStatus()) {
+   static int last.grid.level;
 
-      // (1) Sequenz wartet auf Startsignal
-      if (status == STATUS_WAITING) {
-         if (IsStartSignal())           StartSequence();
-      }
 
-      // (2) Sequenz läuft
-      else {
-         //if (IsProfitTargetReached()) FinishSequence();
-         //if (IsStopLossReached())     IncreaseProgression();
-      }
+   // (1) Sequenz wartet entweder auf Startsignal...
+   if (status == STATUS_WAITING) {
+      if (IsStartSignal())                    StartSequence();
    }
-   firstTick = false;
 
-   // Status anzeigen
+   // (2) ...oder läuft: Status prüfen und Orders aktualisieren
+   else if (UpdateStatus()) {
+      if      (IsProfitTargetReached())       FinishSequence();
+      else if (last.grid.level != grid.level) UpdatePendingOrders();
+   }
+
+   last.grid.level = grid.level;
+   firstTick       = false;
+
+
+   // (3) Status anzeigen
    ShowStatus();
 
    if (IsLastError())
@@ -237,7 +239,7 @@ bool UpdateStatus() {
 
    for (int i=0; i < orders; i++) {
       if (orders.closeTime[i] == 0) {                                // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
-         if (!OrderSelectByTicket(orders.ticket[i]))
+         if (!OrderSelectByTicket(orders.ticket[i], "UpdateStatus(1)"))
             return(false);
 
          wasPending = orders.type[i] > OP_SELL;                      // ob die Order beim letzten Aufruf "pending" war
@@ -252,7 +254,7 @@ bool UpdateStatus() {
                orders.commission[i] = OrderCommission();
                orders.profit    [i] = OrderProfit();
 
-               grid.level        += MathSign(orders.level[i]);
+               grid.level += MathSign(orders.level[i]);
                if (grid.level > 0) grid.maxLevelLong  = MathMax( grid.level, grid.maxLevelLong ) +0.1;   // (int) double
                else                grid.maxLevelShort = MathMax(-grid.level, grid.maxLevelShort) +0.1;   // (int) double
                grid.changed = true;
@@ -272,7 +274,7 @@ bool UpdateStatus() {
             grid.floatingPL += OrderSwap() + OrderCommission() + OrderProfit();
          }
          else {
-            // vormals offene oder "pending" Order, die inzwischen gelöscht oder geschlossen wurde
+            // vormals "pending" Order, die inzwischen gelöscht oder offene Position, die geschlossen wurde
             orders.closeTime [i] = OrderCloseTime();                 // Bei Spikes kann eine PendingOrder ausgeführt *und* bereits geschlossen sein.
             orders.closePrice[i] = OrderClosePrice();
 
@@ -280,8 +282,8 @@ bool UpdateStatus() {
                grid.level      -= MathSign(orders.level[i]);
                grid.stops++;
                grid.realizedPL += OrderSwap() + OrderCommission() + OrderProfit();
+               grid.changed     = true;
             }
-            grid.changed = true;
          }
       }
    }
@@ -359,45 +361,19 @@ bool StartSequence() {
    double stopPrice, stopLoss;
 
 
-   // (2) Pending Stop Buy in den Markt legen
+   // (2) Stop Buy in den Markt legen
    stopPrice  = grid.base + GridSize*Pips;
    stopLoss   = grid.base;
    int ticket = PendingStopOrder(OP_BUYSTOP, stopPrice, stopLoss, 1);
-   if (ticket == -1)                 return(false);
-   if (!OrderSelectByTicket(ticket)) return(false);
-
-   // Arrays vergrößern und Daten speichern
-   int i = IncreaseOrderArrays() - 1;
-   orders.ticket    [i] = OrderTicket();
-   orders.level     [i] = 1;
-   orders.type      [i] = OrderType();
-   orders.openTime  [i] = OrderOpenTime();
-   orders.openPrice [i] = OrderOpenPrice();
-   orders.closeTime [i] = OrderCloseTime();
-   orders.closePrice[i] = OrderClosePrice();
-   orders.swap      [i] = OrderSwap();
-   orders.commission[i] = OrderCommission();
-   orders.profit    [i] = OrderProfit();
+   if (ticket == -1)           return(false);
+   if (!Grid.AddOrder(ticket)) return(false);
 
 
-   // (3) Pending Stop Sell in den Markt legen
+   // (3) Stop Sell in den Markt legen
    stopPrice = grid.base - GridSize*Pips;
    ticket    = PendingStopOrder(OP_SELLSTOP, stopPrice, stopLoss, -1);
-   if (ticket == -1)                 return(false);
-   if (!OrderSelectByTicket(ticket)) return(false);
-
-   // Arrays vergrößern und Daten speichern
-   i = IncreaseOrderArrays() - 1;
-   orders.ticket    [i] = OrderTicket();
-   orders.level     [i] = -1;
-   orders.type      [i] = OrderType();
-   orders.openTime  [i] = OrderOpenTime();
-   orders.openPrice [i] = OrderOpenPrice();
-   orders.closeTime [i] = OrderCloseTime();
-   orders.closePrice[i] = OrderClosePrice();
-   orders.swap      [i] = OrderSwap();
-   orders.commission[i] = OrderCommission();
-   orders.profit    [i] = OrderProfit();
+   if (ticket == -1)           return(false);
+   if (!Grid.AddOrder(ticket)) return(false);
 
 
    // (4) Status ändern und Sequenz extern speichern
@@ -408,25 +384,115 @@ bool StartSequence() {
 
 
 /**
- * Vergrößert die Orderdaten-Arrays um ein Feld.
+ * Setzt dem Grid-Level entsprechend neue bzw. fehlende PendingOrders.
  *
- * @return int - neue Größe der Arrays
+ * @return bool - Erfolgsstatus
  */
-int IncreaseOrderArrays() {
-   int newSize = ArraySize(orders.ticket) + 1;
+bool UpdatePendingOrders() {
 
-   ArrayResize(orders.ticket,     newSize);
-   ArrayResize(orders.level,      newSize);
-   ArrayResize(orders.type,       newSize); orders.type[newSize-1] = OP_UNDEFINED;
-   ArrayResize(orders.openTime,   newSize);
-   ArrayResize(orders.openPrice,  newSize);
-   ArrayResize(orders.closeTime,  newSize);
-   ArrayResize(orders.closePrice, newSize);
-   ArrayResize(orders.swap,       newSize);
-   ArrayResize(orders.commission, newSize);
-   ArrayResize(orders.profit,     newSize);
+   //ForceAlert("UpdatePendingOrders()   grid.level = "+ grid.level);
 
-   return(newSize);
+   double stopPrice, stopLoss;
+   int    ticket;
+
+   if (grid.level > 0) {
+      // Stop Buy in den Markt legen
+      stopPrice = grid.base + (grid.level+1) * GridSize*Pips;
+      stopLoss  = grid.base +  grid.level    * GridSize*Pips;
+      ticket    = PendingStopOrder(OP_BUYSTOP, stopPrice, stopLoss, grid.level+1);
+      if (ticket == -1)           return(false);
+      if (!Grid.AddOrder(ticket)) return(false);
+   }
+   else if (grid.level < 0) {
+      // Stop Sell in den Markt legen
+      stopPrice = grid.base + (grid.level-1) * GridSize*Pips;
+      stopLoss  = grid.base +  grid.level    * GridSize*Pips;
+      ticket    = PendingStopOrder(OP_SELLSTOP, stopPrice, stopLoss, grid.level-1);
+      if (ticket == -1)           return(false);
+      if (!Grid.AddOrder(ticket)) return(false);
+   }
+   else {   // grid.level == 0
+   }
+
+   return(IsNoError(catch("UpdatePendingOrders()")));
+}
+
+
+/**
+ * Fügt den Griddaten-Arrays die angegebene Order hinzu.
+ *
+ * @param  int ticket - Orderticket
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool Grid.AddOrder(int ticket) {
+   if (!OrderSelectByTicket(ticket, "Grid.AddOrder(1)"))
+      return(false);
+
+   if (!IsMyOrder(sequenceId))
+      return(_false(catch("Grid.AddOrder(2)   not my order: #"+ ticket, ERR_RUNTIME_ERROR)));
+
+   int size = ArraySize(orders.ticket) + 1;
+
+   // Arrays vergrößern
+   ArrayResize(orders.ticket,     size);
+   ArrayResize(orders.level,      size);
+   ArrayResize(orders.type,       size);
+   ArrayResize(orders.openTime,   size);
+   ArrayResize(orders.openPrice,  size);
+   ArrayResize(orders.closeTime,  size);
+   ArrayResize(orders.closePrice, size);
+   ArrayResize(orders.swap,       size);
+   ArrayResize(orders.commission, size);
+   ArrayResize(orders.profit,     size);
+
+   int last = size - 1;
+
+   // Daten speichern
+   orders.ticket    [last] = OrderTicket();
+   orders.type      [last] = OrderType();
+   orders.level     [last] = OrderMagicNumber() & 0xFF;              //  8 Bits (Bits 1-8)  => grid.level
+   if (OrderType()==OP_SELL || OrderType()==OP_SELLSTOP)
+      orders.level[last] = -orders.level[last];
+   orders.openTime  [last] = OrderOpenTime();
+   orders.openPrice [last] = OrderOpenPrice();
+   orders.closeTime [last] = OrderCloseTime();
+   orders.closePrice[last] = OrderClosePrice();
+   orders.swap      [last] = OrderSwap();
+   orders.commission[last] = OrderCommission();
+   orders.profit    [last] = OrderProfit();
+
+   return(IsNoError(catch("Grid.AddOrder(3)")));
+}
+
+
+/**
+ * Ob der konfigurierte TakeProfit-Level erreicht oder überschritten wurde.
+ *
+ * @return bool
+ */
+bool IsProfitTargetReached() {
+   catch("IsProfitTargetReached()");
+   return(false);
+}
+
+
+/**
+ * Schließt alle offenen Positionen der Sequenz und löscht verbleibende PendingOrders.
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool FinishSequence() {
+   if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort einen Trade triggert
+      ForceSound("notify.wav");
+      int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to finish the sequence now?", __SCRIPT__ +" - FinishSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+      if (button != IDOK) {
+         SetLastError(ERR_CANCELLED_BY_USER);
+         return(_false(catch("FinishSequence(1)")));
+      }
+   }
+
+   return(IsNoError(catch("FinishSequence(2)")));
 }
 
 
@@ -540,7 +606,7 @@ int ShowStatus(bool init=false) {
 
    msg = StringConcatenate(__SCRIPT__, msg,                                                                                                     NL,
                                                                                                                                                 NL,
-                           "GridSize:       ", GridSize, " pip",                                                                                NL,
+                           "GridSize:       ", GridSize, " pip / ", DoubleToStr((Bid-grid.base)/Pips, 0), " pips",                              NL,
                            "LotSize:         ", NumberToStr(LotSize, ".+"), " = ", DoubleToStr(GridSize * PipValue(LotSize), 2), " / stop",     NL,
                            "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.realizedPL, 2),   NL,
                          //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)",                                                 NL,
