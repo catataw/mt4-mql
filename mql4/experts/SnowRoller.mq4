@@ -379,9 +379,8 @@ bool StartSequence() {
    // (4) Status ändern und Sequenz extern speichern
    status = STATUS_PROGRESSING;
 
-   //debug("StartSequence()   orders.level = "+ IntArrayToStr(orders.level, NULL));
-   //ForceAlert("StartSequence()   grid.level = "+ grid.level);
-
+   //ForceAlert("StartSequence()   new grid.level = "+ grid.level);
+   //debug("StartSequence()   new orders.level = "+ IntArrayToStr(orders.level, NULL));
    return(IsNoError(catch("StartSequence(2)")));
 }
 
@@ -392,10 +391,6 @@ bool StartSequence() {
  * @return bool - Erfolgsstatus
  */
 bool UpdatePendingOrders() {
-
-   //debug("UpdatePendingOrders()   orders.level = "+ IntArrayToStr(orders.level, NULL));
-   //ForceAlert("UpdatePendingOrders()   grid.level = "+ grid.level);
-
    double stopPrice, stopLoss;
    int    nextLevel, ticket;
    bool   isPending, isClosed, nextLevelExists, nextUpperExists, nextLowerExists;
@@ -463,6 +458,8 @@ bool UpdatePendingOrders() {
       // (3) alle übrigen Stop-Orders löschen
    }
 
+   //ForceAlert("UpdatePendingOrders()   new grid.level = "+ grid.level);
+   //debug("UpdatePendingOrders()   new orders.level = "+ IntArrayToStr(orders.level, NULL));
    return(IsNoError(catch("UpdatePendingOrders()")));
 }
 
@@ -677,8 +674,8 @@ int ShowStatus(bool init=false) {
 
    msg = StringConcatenate(__SCRIPT__, msg,                                                                                                     NL,
                                                                                                                                                 NL,
-                           "GridSize:       ", GridSize, " pip / ", DoubleToStr((Bid-grid.base)/Pips, 0), " pips",                              NL,
-                           "LotSize:         ", NumberToStr(LotSize, ".+"), " = ", DoubleToStr(GridSize * PipValue(LotSize), 2), " / stop",     NL,
+                           "GridSize:       ", GridSize, " pip",                                                                                NL,
+                           "LotSize:         ", NumberToStr(LotSize, ".+"), " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), " / stop", NL,
                            "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.realizedPL, 2),   NL,
                          //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)",                                                 NL,
                            "Breakeven:   ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat), NL,
