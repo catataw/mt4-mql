@@ -355,14 +355,14 @@ bool StartSequence() {
       SaveConfiguration();                                           // StartSequence() beim ersten Tick: jetzt Konfiguration speichern, @see init()
    }
 
-   // (1) GridBase festlegen
+   // Grid-Base definieren
    grid.base = ifDouble(EQ(Entry.limit, 0), Bid, Entry.limit);
 
-   // (2) Stop-Orders in den Markt legen
-   if (!Grid.AddOrder(OP_BUYSTOP,   1)) return(false);
-   if (!Grid.AddOrder(OP_SELLSTOP, -1)) return(false);
+   // Stop-Orders in den Markt legen
+   if (!UpdatePendingOrders())
+      return(false);
 
-   // (3) Status ändern und Sequenz extern speichern
+   // Status ändern und Sequenz extern speichern
    status = STATUS_PROGRESSING;
 
    //ForceAlert("StartSequence()   new grid.level = "+ grid.level);
@@ -377,8 +377,8 @@ bool StartSequence() {
  * @return bool - Erfolgsstatus
  */
 bool UpdatePendingOrders() {
-   bool orderExists, nextUpperExists, nextLowerExists;
    int  nextLevel;
+   bool orderExists;
 
    if (grid.level > 0) {
       nextLevel = grid.level + 1;
@@ -418,9 +418,26 @@ bool UpdatePendingOrders() {
          return(false);
    }
    else /*(grid.level == 0)*/ {
-      // (1) Existenz der nächsthöheren Stop-Order sicherstellen
-      // (2) Existenz der nächstniedrigeren Stop-Order sicherstellen
-      // (3) alle übrigen Stop-Orders löschen
+      bool buyOrderExists, sellOrderExists;
+
+      // unnötige "pending" Stop-Orders löschen
+      for (i=ArraySize(orders.ticket)-1; i >= 0; i--) {
+         if (orders.type[i] > OP_SELL && orders.closeTime[i]==0) {   // if (isPending && !isClosed)
+            if (orders.level[i] == 1) {
+               buyOrderExists = true;
+               continue;
+            }
+            if (orders.level[i] == -1) {
+               sellOrderExists = true;
+               continue;
+            }
+            if (!Grid.DeleteOrder(orders.ticket[i]))
+               return(false);
+         }
+      }
+      // wenn nötig neue Stop-Orders in den Markt legen
+      if (!buyOrderExists ) /*&&*/ if (!Grid.AddOrder(OP_BUYSTOP,   1)) return(false);
+      if (!sellOrderExists) /*&&*/ if (!Grid.AddOrder(OP_SELLSTOP, -1)) return(false);
    }
 
    //ForceAlert("UpdatePendingOrders()   new grid.level = "+ grid.level);
