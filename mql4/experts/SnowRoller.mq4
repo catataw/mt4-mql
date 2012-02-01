@@ -358,25 +358,11 @@ bool StartSequence() {
    // (1) GridBase festlegen
    grid.base = ifDouble(EQ(Entry.limit, 0), Bid, Entry.limit);
 
-   double stopPrice, stopLoss;
+   // (2) Stop-Orders in den Markt legen
+   if (!Grid.AddOrder(OP_BUYSTOP,   1)) return(false);
+   if (!Grid.AddOrder(OP_SELLSTOP, -1)) return(false);
 
-
-   // (2) Stop Buy in den Markt legen
-   stopPrice  = grid.base + GridSize*Pips;
-   stopLoss   = grid.base;
-   int ticket = PendingStopOrder(OP_BUYSTOP, stopPrice, stopLoss, 1);
-   if (ticket == -1)           return(false);
-   if (!Grid.AddOrder(ticket)) return(false);
-
-
-   // (3) Stop Sell in den Markt legen
-   stopPrice = grid.base - GridSize*Pips;
-   ticket    = PendingStopOrder(OP_SELLSTOP, stopPrice, stopLoss, -1);
-   if (ticket == -1)           return(false);
-   if (!Grid.AddOrder(ticket)) return(false);
-
-
-   // (4) Status ändern und Sequenz extern speichern
+   // (3) Status ändern und Sequenz extern speichern
    status = STATUS_PROGRESSING;
 
    //ForceAlert("StartSequence()   new grid.level = "+ grid.level);
@@ -391,68 +377,47 @@ bool StartSequence() {
  * @return bool - Erfolgsstatus
  */
 bool UpdatePendingOrders() {
-   double stopPrice, stopLoss;
-   int    nextLevel, ticket;
-   bool   isPending, isClosed, nextLevelExists, nextUpperExists, nextLowerExists;
+   bool orderExists, nextUpperExists, nextLowerExists;
+   int  nextLevel;
 
    if (grid.level > 0) {
-      // (1) Existenz der nächsthöheren Stop-Order prüfen und übrige offene Stop-Orders löschen
       nextLevel = grid.level + 1;
 
+      // unnötige "pending" Stop-Orders löschen
       for (int i=ArraySize(orders.ticket)-1; i >= 0; i--) {
-         isPending = orders.type[i] > OP_SELL;
-         isClosed  = orders.closeTime[i] != 0;
-
-         if (isPending && !isClosed) {
+         if (orders.type[i] > OP_SELL && orders.closeTime[i]==0) {   // if (isPending && !isClosed)
             if (orders.level[i] == nextLevel) {
-               nextLevelExists = true;
+               orderExists = true;
                continue;
             }
-            if (!OrderDeleteEx(orders.ticket[i], CLR_NONE)) return(_false(SetLastError(stdlib_PeekLastError())));
-            if (!Grid.RemoveOrder(i))                       return(false);
+            if (!Grid.DeleteOrder(orders.ticket[i]))
+               return(false);
          }
       }
-
-      // (2) ggf. nächsthöheren Stop Buy in den Markt legen
-      if (!nextLevelExists) {
-         stopPrice = grid.base +  nextLevel * GridSize*Pips;
-         stopLoss  = grid.base + grid.level * GridSize*Pips;
-         ticket    = PendingStopOrder(OP_BUYSTOP, stopPrice, stopLoss, nextLevel);
-         if (ticket == -1)           return(false);
-         if (!Grid.AddOrder(ticket)) return(false);
-      }
+      // wenn nötig neue Stop-Order in den Markt legen
+      if (!orderExists) /*&&*/ if (!Grid.AddOrder(OP_BUYSTOP, nextLevel))
+         return(false);
    }
+
    else if (grid.level < 0) {
-      // (1) Existenz der nächstniedrigeren Stop-Order prüfen und übrige offene Stop-Orders löschen
       nextLevel = grid.level - 1;
 
+      // unnötige "pending" Stop-Orders löschen
       for (i=ArraySize(orders.ticket)-1; i >= 0; i--) {
-         isPending = orders.type[i] > OP_SELL;
-         isClosed  = orders.closeTime[i] != 0;
-
-         if (isPending && !isClosed) {
+         if (orders.type[i] > OP_SELL && orders.closeTime[i]==0) {   // if (isPending && !isClosed)
             if (orders.level[i] == nextLevel) {
-               nextLevelExists = true;
+               orderExists = true;
                continue;
             }
-            if (!OrderDeleteEx(orders.ticket[i], CLR_NONE)) return(_false(SetLastError(stdlib_PeekLastError())));
-            if (!Grid.RemoveOrder(i))                       return(false);
+            if (!Grid.DeleteOrder(orders.ticket[i]))
+               return(false);
          }
       }
-
-      // (2) ggf. nächstniedrigere Stop Sell in den Markt legen
-      if (!nextLevelExists) {
-         stopPrice = grid.base +  nextLevel * GridSize*Pips;
-         stopLoss  = grid.base + grid.level * GridSize*Pips;
-         ticket    = PendingStopOrder(OP_SELLSTOP, stopPrice, stopLoss, nextLevel);
-         if (ticket == -1)           return(false);
-         if (!Grid.AddOrder(ticket)) return(false);
-      }
+      // wenn nötig neue Stop-Order in den Markt legen
+      if (!orderExists) /*&&*/ if (!Grid.AddOrder(OP_SELLSTOP, nextLevel))
+         return(false);
    }
    else /*(grid.level == 0)*/ {
-      // (1) Existenz der nächsthöheren und nächstniedrigeren Stop-Order prüfen und übrige offene Stop-Orders löschen
-      nextLevel = grid.level - 1;
-
       // (1) Existenz der nächsthöheren Stop-Order sicherstellen
       // (2) Existenz der nächstniedrigeren Stop-Order sicherstellen
       // (3) alle übrigen Stop-Orders löschen
@@ -465,22 +430,75 @@ bool UpdatePendingOrders() {
 
 
 /**
- * Fügt den Datenarrays des Grids die angegebene Order hinzu.
+ * Legt die angegebene Stop-Order in den Markt und fügt den Grid-Arrays deren Daten hinzu.
+ *
+ * @param  int type  - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
+ * @param  int level - Gridlevel der Order
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool Grid.AddOrder(int type, int level) {
+   // (1) Order in den Markt legen
+   int ticket = PendingStopOrder(type, level);
+   if (ticket == -1)
+      return(false);
+
+   // (2) Daten speichern
+   if (!OrderSelectByTicket(ticket, "Grid.AddOrder(1)"))
+      return(false);
+
+   // Daten speichern
+   int last = ArraySize(orders.ticket);
+   ArrayPushInt   (orders.ticket,     OrderTicket()            );
+   ArrayPushInt   (orders.type,       OrderType()              );
+   ArrayPushInt   (orders.level,      OrderMagicNumber() & 0xFF); if (OrderType()==OP_SELLSTOP) orders.level[last] = -orders.level[last];    // 8 Bits (Bits 1-8) => grid.level
+   ArrayPushInt   (orders.openTime,   OrderOpenTime()          );
+   ArrayPushDouble(orders.openPrice,  OrderOpenPrice()         );
+   ArrayPushInt   (orders.closeTime,  OrderCloseTime()         );
+   ArrayPushDouble(orders.closePrice, OrderClosePrice()        );
+   ArrayPushDouble(orders.swap,       OrderSwap()              );
+   ArrayPushDouble(orders.commission, OrderCommission()        );
+   ArrayPushDouble(orders.profit,     OrderProfit()            );
+
+   return(IsNoError(catch("Grid.AddOrder(2)")));
+}
+
+
+/**
+ * Löscht die angegebene Order und entfernt sie aus den Datenarrays des Grids.
  *
  * @param  int ticket - Orderticket
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.AddOrder(int ticket) {
-   if (!OrderSelectByTicket(ticket, "Grid.AddOrder(1)"))
-      return(false);
+bool Grid.DeleteOrder(int ticket) {
+   // (1) Order löschen
+   if (!OrderDeleteEx(ticket, CLR_NONE))
+      return(_false(SetLastError(stdlib_PeekLastError())));
 
-   if (!IsMyOrder(sequenceId))
-      return(_false(catch("Grid.AddOrder(2)   not my order: #"+ ticket, ERR_RUNTIME_ERROR)));
+   // (2) Position in Datenarrays bestimmen
+   int i = ArraySearchInt(ticket, orders.ticket);
+   if (i == -1)
+      return(_false(catch("Grid.DeleteOrder(1)   #"+ ticket +" not found in grid arrays", ERR_RUNTIME_ERROR)));
 
-   int size = ArraySize(orders.ticket) + 1;
+   // (3) Einträge entfernen
+   int size = ArraySize(orders.ticket);
 
-   // Arrays vergrößern
+   if (i < size-1) {                                                 // wenn das zu entfernende Element nicht das Letzte ist
+      ArrayCopy(orders.ticket,     orders.ticket,     i, i+1);
+      ArrayCopy(orders.level,      orders.level,      i, i+1);
+      ArrayCopy(orders.type,       orders.type,       i, i+1);
+      ArrayCopy(orders.openTime,   orders.openTime,   i, i+1);
+      ArrayCopy(orders.openPrice,  orders.openPrice,  i, i+1);
+      ArrayCopy(orders.closeTime,  orders.closeTime,  i, i+1);
+      ArrayCopy(orders.closePrice, orders.closePrice, i, i+1);
+      ArrayCopy(orders.swap,       orders.swap,       i, i+1);
+      ArrayCopy(orders.commission, orders.commission, i, i+1);
+      ArrayCopy(orders.profit,     orders.profit,     i, i+1);
+   }
+
+   // (3.1) Arrays verkleinern
+   size--;
    ArrayResize(orders.ticket,     size);
    ArrayResize(orders.level,      size);
    ArrayResize(orders.type,       size);
@@ -492,67 +510,39 @@ bool Grid.AddOrder(int ticket) {
    ArrayResize(orders.commission, size);
    ArrayResize(orders.profit,     size);
 
-   int last = size - 1;
-
-   // Daten speichern
-   orders.ticket    [last] = OrderTicket();
-   orders.type      [last] = OrderType();
-   orders.level     [last] = OrderMagicNumber() & 0xFF;              //  8 Bits (Bits 1-8)  => grid.level
-   if (OrderType()==OP_SELL || OrderType()==OP_SELLSTOP)
-      orders.level[last] = -orders.level[last];
-   orders.openTime  [last] = OrderOpenTime();
-   orders.openPrice [last] = OrderOpenPrice();
-   orders.closeTime [last] = OrderCloseTime();
-   orders.closePrice[last] = OrderClosePrice();
-   orders.swap      [last] = OrderSwap();
-   orders.commission[last] = OrderCommission();
-   orders.profit    [last] = OrderProfit();
-
-   return(IsNoError(catch("Grid.AddOrder(3)")));
+   return(IsNoError(catch("Grid.DeleteOrder(2)")));
 }
 
 
 /**
- * Entfernt die Order an der angegebenen Position aus den Datenarrays des Grids.
+ * Legt eine Stop-Order in den Markt.
  *
- * @param  int index - Orderposition
+ * @param  int type  - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
+ * @param  int level - Gridlevel der Order
  *
- * @return bool - Erfolgsstatus
+ * @return int - Ticket der Order oder -1, falls ein Fehler auftrat
  */
-bool Grid.RemoveOrder(int index) {
-   int size = ArraySize(orders.ticket);
-   if (size < index+1)
-      return(_false(catch("Grid.RemoveOrder(1)   illegal index "+ index +" for array size of "+ size, ERR_RUNTIME_ERROR)));
-
-   // wenn das zu entfernende Element nicht das Letzte ist
-   if (index < size-1) {
-      ArrayCopy(orders.ticket,     orders.ticket,     index, index+1);
-      ArrayCopy(orders.level,      orders.level,      index, index+1);
-      ArrayCopy(orders.type,       orders.type,       index, index+1);
-      ArrayCopy(orders.openTime,   orders.openTime,   index, index+1);
-      ArrayCopy(orders.openPrice,  orders.openPrice,  index, index+1);
-      ArrayCopy(orders.closeTime,  orders.closeTime,  index, index+1);
-      ArrayCopy(orders.closePrice, orders.closePrice, index, index+1);
-      ArrayCopy(orders.swap,       orders.swap,       index, index+1);
-      ArrayCopy(orders.commission, orders.commission, index, index+1);
-      ArrayCopy(orders.profit,     orders.profit,     index, index+1);
+int PendingStopOrder(int type, int level) {
+   if (type == OP_BUYSTOP) {
+      if (level <= 0) return(_int(-1, catch("PendingStopOrder(1)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
    }
+   else if (type == OP_SELLSTOP) {
+      if (level >= 0) return(_int(-1, catch("PendingStopOrder(2)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   }
+   else               return(_int(-1, catch("PendingStopOrder(3)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   int newSize = size-1;
+   double stopPrice   = grid.base +                       level * GridSize * Pips;
+   double stopLoss    = stopPrice + ifDouble(level<0, GridSize, -GridSize) * Pips;
+   int    magicNumber = CreateMagicNumber(level);
+   string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
 
-   // Arrays verkleinern
-   ArrayResize(orders.ticket,     newSize);
-   ArrayResize(orders.level,      newSize);
-   ArrayResize(orders.type,       newSize);
-   ArrayResize(orders.openTime,   newSize);
-   ArrayResize(orders.openPrice,  newSize);
-   ArrayResize(orders.closeTime,  newSize);
-   ArrayResize(orders.closePrice, newSize);
-   ArrayResize(orders.swap,       newSize);
-   ArrayResize(orders.commission, newSize);
-   ArrayResize(orders.profit,     newSize);
+   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, NULL, stopLoss, NULL, comment, magicNumber, NULL, CLR_NONE);
+   if (ticket == -1)
+      SetLastError(stdlib_PeekLastError());
 
-   return(IsNoError(catch("Grid.RemoveOrder(2)")));
+   if (IsError(catch("PendingStopOrder(4)")))
+      return(-1);
+   return(ticket);
 }
 
 
@@ -562,7 +552,6 @@ bool Grid.RemoveOrder(int index) {
  * @return bool
  */
 bool IsProfitTargetReached() {
-   catch("IsProfitTargetReached()");
    return(false);
 }
 
@@ -582,43 +571,6 @@ bool FinishSequence() {
       }
    }
    return(IsNoError(catch("FinishSequence(2)")));
-}
-
-
-/**
- * Legt eine Stop-Order in den Markt.
- *
- * @param  int    type     - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
- * @param  double price    - Aktivierungspreis
- * @param  double stoploss - Stoploss
- * @param  int    level    - Gridlevel der Order
- *
- * @return int - Ticket der Order oder -1, falls ein Fehler auftrat
- */
-int PendingStopOrder(int type, double price, double stoploss, int level) {
-   if (type == OP_BUYSTOP) {
-      if (LE(price, Ask))         return(_int(-1, catch("PendingStopOrder(1)   illegal "+ OperationTypeDescription(type) +" price: "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE)));
-      if (GE(stoploss, price))    return(_int(-1, catch("PendingStopOrder(2)   illegal stoploss "+ NumberToStr(stoploss, PriceFormat) +" for "+ OperationTypeDescription(type) +" at "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE)));
-      if (level <= 0)             return(_int(-1, catch("PendingStopOrder(3)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   }
-   else if (type == OP_SELLSTOP) {
-      if (GE(price, Bid))         return(_int(-1, catch("PendingStopOrder(4)   illegal "+ OperationTypeDescription(type) +" price: "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE)));
-      if (NE(stoploss, 0))
-         if (LE(stoploss, price)) return(_int(-1, catch("PendingStopOrder(5)   illegal stoploss "+ NumberToStr(stoploss, PriceFormat) +" for "+ OperationTypeDescription(type) +" at "+ NumberToStr(price, PriceFormat), ERR_INVALID_FUNCTION_PARAMVALUE)));
-      if (level >= 0)             return(_int(-1, catch("PendingStopOrder(6)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   }
-   else                           return(_int(-1, catch("PendingStopOrder(7)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
-
-   int    magicNumber = CreateMagicNumber(level);
-   string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
-
-   int ticket = OrderSendEx(Symbol(), type, LotSize, price, NULL, stoploss, NULL, comment, magicNumber, NULL, CLR_NONE);
-   if (ticket == -1)
-      SetLastError(stdlib_PeekLastError());
-
-   if (IsError(catch("PendingStopOrder(8)")))
-      return(-1);
-   return(ticket);
 }
 
 
