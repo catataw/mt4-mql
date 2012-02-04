@@ -23,7 +23,6 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 extern int    GridSize                       = 20;
 extern double LotSize                        = 0.1;
 extern string StartCondition                 = "";          // {LimitValue}
-extern int    TakeProfitLevels               = 5;
 extern string ______________________________ = "==== Sequence to Manage =============";
 extern string Sequence.ID                    = "";
 
@@ -33,8 +32,7 @@ extern string Sequence.ID                    = "";
 int      intern.GridSize;                                   // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
 double   intern.LotSize;                                    // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
 string   intern.StartCondition;                             // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
-int      intern.TakeProfitLevels;                           // und in init() wieder daraus restauriert.
-string   intern.Sequence.ID;
+string   intern.Sequence.ID;                                // und in init() wieder daraus restauriert.
 
 int      status = STATUS_WAITING;
 int      sequenceId;
@@ -137,7 +135,6 @@ int init() {
       GridSize         = intern.GridSize;                            // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
       LotSize          = intern.LotSize;                             // Inputvariablen restauriert.
       StartCondition   = intern.StartCondition;
-      TakeProfitLevels = intern.TakeProfitLevels;
       Sequence.ID      = intern.Sequence.ID;
    }
 
@@ -177,13 +174,14 @@ int deinit() {
       intern.GridSize         = GridSize;
       intern.LotSize          = LotSize;
       intern.StartCondition   = StartCondition;
-      intern.TakeProfitLevels = TakeProfitLevels;
       intern.Sequence.ID      = Sequence.ID;
    }
    else if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE) {
-      string configFile = TerminalPath() +"\\experts\\presets\\SR."+ sequenceId +".set";
-      if (IsFile(configFile))                                        // Ohne Config-Datei wurde Sequenz abgebrochen und braucht/kann
-         StoreChartSequenceId();                                     // beim nächsten init() nicht restauriert werden.
+      if (!IsTesting()) {
+         string configFile = TerminalPath() +"\\experts\\presets\\SR."+ sequenceId +".set";
+         if (IsFile(configFile))                                     // Ohne Config-Datei wurde Sequenz abgebrochen und braucht/kann
+            StoreChartSequenceId();                                  // beim nächsten init() nicht restauriert werden.
+      }
    }
    return(catch("deinit()"));
 }
@@ -345,13 +343,12 @@ bool IsStartSignal() {
  */
 bool StartSequence() {
    if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort einen Trade triggert
-      ForceSound("notify.wav");
-      int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __SCRIPT__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
-      if (button != IDOK) {
-         SetLastError(ERR_CANCELLED_BY_USER);
-         return(_false(catch("StartSequence(1)")));
+      if (!IsTesting() || IsVisualMode()) {                          // im Tester nur im VisualMode
+         ForceSound("notify.wav");
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __SCRIPT__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+         if (button != IDOK)
+            return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StartSequence(1)")));
       }
-      SaveConfiguration();                                           // StartSequence() beim ersten Tick: jetzt Konfiguration speichern, @see init()
    }
 
    // Grid-Base definieren
@@ -364,8 +361,6 @@ bool StartSequence() {
    // Status ändern und Sequenz extern speichern
    status = STATUS_PROGRESSING;
 
-   //ForceAlert("StartSequence()   new grid.level = "+ grid.level);
-   //debug("StartSequence()   new orders.level = "+ IntArrayToStr(orders.level, NULL));
    return(IsNoError(catch("StartSequence(2)")));
 }
 
@@ -377,7 +372,7 @@ bool StartSequence() {
  */
 bool UpdatePendingOrders() {
    int  nextLevel;
-   bool orderExists;
+   bool orderExists, orderChange;
 
    if (grid.level > 0) {
       nextLevel = grid.level + 1;
@@ -389,13 +384,15 @@ bool UpdatePendingOrders() {
                orderExists = true;
                continue;
             }
-            if (!Grid.DeleteOrder(orders.ticket[i]))
-               return(false);
+            if (!Grid.DeleteOrder(orders.ticket[i])) return(false);
+            orderChange = true;
          }
       }
       // wenn nötig neue Stop-Order in den Markt legen
-      if (!orderExists) /*&&*/ if (!Grid.AddOrder(OP_BUYSTOP, nextLevel))
-         return(false);
+      if (!orderExists) {
+         if (!Grid.AddOrder(OP_BUYSTOP, nextLevel)) return(false);
+         orderChange = true;
+      }
    }
 
    else if (grid.level < 0) {
@@ -408,13 +405,15 @@ bool UpdatePendingOrders() {
                orderExists = true;
                continue;
             }
-            if (!Grid.DeleteOrder(orders.ticket[i]))
-               return(false);
+            if (!Grid.DeleteOrder(orders.ticket[i])) return(false);
+            orderChange = true;
          }
       }
       // wenn nötig neue Stop-Order in den Markt legen
-      if (!orderExists) /*&&*/ if (!Grid.AddOrder(OP_SELLSTOP, nextLevel))
-         return(false);
+      if (!orderExists) {
+         if (!Grid.AddOrder(OP_SELLSTOP, nextLevel)) return(false);
+         orderChange = true;
+      }
    }
    else /*(grid.level == 0)*/ {
       bool buyOrderExists, sellOrderExists;
@@ -430,17 +429,24 @@ bool UpdatePendingOrders() {
                sellOrderExists = true;
                continue;
             }
-            if (!Grid.DeleteOrder(orders.ticket[i]))
-               return(false);
+            if (!Grid.DeleteOrder(orders.ticket[i])) return(false);
+            orderChange = true;
          }
       }
       // wenn nötig neue Stop-Orders in den Markt legen
-      if (!buyOrderExists ) /*&&*/ if (!Grid.AddOrder(OP_BUYSTOP,   1)) return(false);
-      if (!sellOrderExists) /*&&*/ if (!Grid.AddOrder(OP_SELLSTOP, -1)) return(false);
+      if (!buyOrderExists) {
+         if (!Grid.AddOrder(OP_BUYSTOP,   1)) return(false);
+         orderChange = true;
+      }
+      if (!sellOrderExists) {
+         if (!Grid.AddOrder(OP_SELLSTOP, -1)) return(false);
+         orderChange = true;
+      }
    }
 
-   //ForceAlert("UpdatePendingOrders()   new grid.level = "+ grid.level);
-   //debug("UpdatePendingOrders()   new orders.level = "+ IntArrayToStr(orders.level, NULL));
+   if (orderChange)                                                  // nach jeder Änderung Konfiguration speichern
+      SaveConfiguration();
+
    return(IsNoError(catch("UpdatePendingOrders()")));
 }
 
@@ -579,11 +585,11 @@ bool IsProfitTargetReached() {
  */
 bool FinishSequence() {
    if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort einen Trade triggert
-      ForceSound("notify.wav");
-      int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to finish the sequence now?", __SCRIPT__ +" - FinishSequence()", MB_ICONQUESTION|MB_OKCANCEL);
-      if (button != IDOK) {
-         SetLastError(ERR_CANCELLED_BY_USER);
-         return(_false(catch("FinishSequence(1)")));
+      if (!IsTesting() || IsVisualMode()) {                          // im Tester nur im VisualMode
+         ForceSound("notify.wav");
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to finish the sequence now?", __SCRIPT__ +" - FinishSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+         if (button != IDOK)
+            return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("FinishSequence(1)")));
       }
    }
    return(IsNoError(catch("FinishSequence(2)")));
@@ -645,7 +651,6 @@ int ShowStatus(bool init=false) {
                            "GridSize:       ", GridSize, " pip",                                                                                NL,
                            "LotSize:         ", NumberToStr(LotSize, ".+"), " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), " / stop", NL,
                            "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.realizedPL, 2),   NL,
-                         //"TakeProfit:    ", TakeProfitLevels, " levels  (1.6016'5 = 875.00)",                                                 NL,
                            "Breakeven:   ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat), NL,
                            "Profit/Loss:    ", DoubleToStr(grid.profitLoss, 2),                                                                 NL);
 
@@ -830,15 +835,12 @@ bool ValidateConfiguration() {
    }
    else                       return(_false(catch("ValidateConfiguration(8)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
 
-   // TakeProfitLevels
-   if (TakeProfitLevels < 1)  return(_false(catch("ValidateConfiguration(9)  Invalid input parameter TakeProfitLevels = "+ TakeProfitLevels, ERR_INVALID_INPUT_PARAMVALUE)));
-
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
 
    // TODO: Nach Parameteränderung die neue Konfiguration mit einer evt. bereits laufenden Sequenz abgleichen
    //       oder Parameter werden geändert, ohne vorher im Input-Dialog die Konfigurationsdatei der Sequenz zu laden.
 
-   return(IsNoError(catch("ValidateConfiguration(10)")));
+   return(IsNoError(catch("ValidateConfiguration(9)")));
 }
 
 
@@ -851,36 +853,89 @@ bool ValidateConfiguration() {
 int SaveConfiguration() {
    if (sequenceId == 0)
       return(catch("SaveConfiguration(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR));
+   /*
+   Aufgabe: Wir müssen den kompletten internen Status wiederherstellen, nicht nur die Input-Parameter
+   --------------------------------------------------------------------------------------------------
+   Speichernotwendigkeit der einzelnen Variablen:
 
-   // (1) Daten zusammenstellen
+   int      status;                    // nein: kann aus Orderdaten und offenen Positionen restauriert werden
+
+   double   Entry.limit;               // nein: wird aus StartCondition abgeleitet
+   double   Entry.lastBid;             // nein: unnötig
+
+   double   grid.base;                 // ja: könnte zwar u.U. aus den Orderdaten restauriert werden, dies könnte sich jedoch ändern
+   int      grid.level;                // nein: kann aus Orderdaten restauriert werden
+   int      grid.maxLevelLong;         // nein: kann aus Orderdaten restauriert werden
+   int      grid.maxLevelShort;        // nein: kann aus Orderdaten restauriert werden
+   int      grid.stops;                // nein: kann aus Orderdaten restauriert werden
+   double   grid.realizedPL;           // nein: kann aus Orderdaten restauriert werden
+   double   grid.floatingPL;           // nein: kann aus offenen Positionen restauriert werden
+   double   grid.profitLoss;           // nein: kann aus grid.realizedPL und grid.floatingPL restauriert werden
+   double   grid.breakevenLong;        // nein: wird neuberechnet (mit dem aktuellen TickValue als Näherung)
+   double   grid.breakevenShort;       // nein: wird neuberechnet (mit dem aktuellen TickValue als Näherung)
+
+   int      orders.ticket    [];       // ja
+   int      orders.level     [];       // ja
+   int      orders.type      [];       // ja
+   datetime orders.openTime  [];       // ja
+   double   orders.openPrice [];       // ja
+   datetime orders.closeTime [];       // ja
+   double   orders.closePrice[];       // ja
+   double   orders.swap      [];       // ja
+   double   orders.commission[];       // ja
+   double   orders.profit    [];       // ja
+   */
+
+   debug("SaveConfiguration("+ Tick +")");
+
    string lines[];  ArrayResize(lines, 0);
-   ArrayPushString(lines, /*string*/ "Sequence.ID="     +             sequenceId      );
-   ArrayPushString(lines, /*int   */ "GridSize="        +             GridSize        );
-   ArrayPushString(lines, /*double*/ "LotSize="         + NumberToStr(LotSize, ".+")  );
-   ArrayPushString(lines, /*string*/ "StartCondition="  +             StartCondition  );
-   ArrayPushString(lines, /*int   */ "TakeProfitLevels="+             TakeProfitLevels);
+
+   // (1.1) Daten zusammenstellen: Input-Parameter
+   ArrayPushString(lines, /*string*/ "Sequence.ID="   +             sequenceId    );
+   ArrayPushString(lines, /*int   */ "GridSize="      +             GridSize      );
+   ArrayPushString(lines, /*double*/ "LotSize="       + NumberToStr(LotSize, ".+"));
+   ArrayPushString(lines, /*string*/ "StartCondition="+             StartCondition);
+
+   // (1.2) Daten zusammenstellen: Laufzeit-Variablen
+   ArrayPushString(lines, /*double*/ "rt.grid.base="  + NumberToStr(grid.base, ".+"));
+   int size = ArraySize(orders.ticket);
+   for (int i=0; i < size; i++) {
+      int      ticket     = orders.ticket    [i];
+      int      level      = orders.level     [i];
+      int      type       = orders.type      [i];
+      datetime openTime   = orders.openTime  [i];
+      double   openPrice  = orders.openPrice [i];
+      datetime closeTime  = orders.closeTime [i];
+      double   closePrice = orders.closePrice[i];
+      double   swap       = orders.swap      [i];
+      double   commission = orders.commission[i];
+      double   profit     = orders.profit    [i];
+      string _line = "rt.order."+ i +"="+ level +","+ ticket +","+ type +","+ openTime +","+ openPrice +","+ closeTime +","+ closePrice +","+ swap +","+ commission +","+ profit;
+      debug("SaveConfiguration("+ Tick +")   "+ _line);
+      ArrayPushString(lines, /*string*/ _line);
+   }
 
 
    // (2) Daten in lokale Datei schreiben
    string filename = "presets\\SR."+ sequenceId +".set";             // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch ist
                                                                      // das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
-   int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);
+   int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);              // existierende Datei überschreiben
    if (hFile < 0)
-      return(catch("SaveConfiguration(2)  FileOpen(file=\""+ filename +"\")"));
+      return(catch("SaveConfiguration(2)->FileOpen(\""+ filename +"\")"));
 
-   for (int i=0; i < ArraySize(lines); i++) {
+   for (i=0; i < ArraySize(lines); i++) {
       if (FileWrite(hFile, lines[i]) < 0) {
-         int error = GetLastError();
+         catch("SaveConfiguration(3)->FileWrite(line #"+ (i+1) +")");
          FileClose(hFile);
-         return(catch("SaveConfiguration(3)  FileWrite(line #"+ (i+1) +")", error));
+         return(last_error);
       }
    }
    FileClose(hFile);
 
 
    // (3) Datei auf Server laden
-   if (!IsTesting()) {
-      error = UploadConfiguration(ShortAccountCompany(), AccountNumber(), StdSymbol(), filename);
+   if (!IsTesting()) {                                               // jedoch nicht im Tester
+      int error = UploadConfiguration(ShortAccountCompany(), AccountNumber(), StdSymbol(), filename);
       if (IsError(error))
          return(error);
    }
@@ -939,20 +994,22 @@ bool RestoreConfiguration() {
 
    // TODO: Existenz von wget.exe prüfen
 
-   // (1) bei nicht existierender lokaler Konfiguration die Datei vom Server laden
+   // (1) bei nicht existierender lokaler Konfiguration die Datei neu vom Server laden
    string filesDir = TerminalPath() +"\\experts\\files\\";           // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
    string fileName = "presets\\SR."+ sequenceId +".set";             // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
 
    if (!IsFile(filesDir + fileName)) {
+      if (IsTesting()) return(_false(catch("RestoreConfiguration(2)   configuration for sequence "+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+
       // Befehlszeile für Shellaufruf zusammensetzen
       string url        = "http://sub.domain.tld/downloadSRConfiguration.php?company="+ UrlEncode(ShortAccountCompany()) +"&account="+ AccountNumber() +"&symbol="+ UrlEncode(StdSymbol()) +"&sequence="+ sequenceId;
       string targetFile = filesDir +"\\"+ fileName;
       string logFile    = filesDir +"\\"+ fileName +".log";
-      string cmdLine    = "wget.exe \""+ url +"\" -O \""+ targetFile +"\" -o \""+ logFile +"\"";
+      string cmd        = "wget.exe \""+ url +"\" -O \""+ targetFile +"\" -o \""+ logFile +"\"";
 
       debug("RestoreConfiguration()   downloading configuration for sequence "+ sequenceId);
 
-      int error = WinExecAndWait(cmdLine, SW_HIDE);                  // SW_SHOWNORMAL|SW_HIDE
+      int error = WinExecAndWait(cmd, SW_HIDE);                      // SW_SHOWNORMAL|SW_HIDE
       if (IsError(error))
          return(_false(SetLastError(error)));
 
@@ -967,7 +1024,7 @@ bool RestoreConfiguration() {
       return(_false(SetLastError(stdlib_PeekLastError())));
    if (lines == 0) {
       FileDelete(fileName);
-      return(_false(catch("RestoreConfiguration(2)   no configuration found for sequence "+ sequenceId, ERR_RUNTIME_ERROR)));
+      return(_false(catch("RestoreConfiguration(3)   configuration for sequence "+ sequenceId +" not found", ERR_RUNTIME_ERROR)));
    }
 
    // (3) Zeilen in Schlüssel-Wert-Paare aufbrechen, Datentypen validieren und Daten übernehmen
@@ -975,31 +1032,25 @@ bool RestoreConfiguration() {
    #define I_GRIDSIZE          0
    #define I_LOTSIZE           1
    #define I_START_CONDITION   2
-   #define I_TAKEPROFIT_LEVELS 3
 
    string parts[];
    for (int i=0; i < lines; i++) {
-      if (Explode(config[i], "=", parts, 2) != 2) return(_false(catch("RestoreConfiguration(3)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
+      if (Explode(config[i], "=", parts, 2) != 2) return(_false(catch("RestoreConfiguration(4)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
       string key=parts[0], value=parts[1];
 
       if (key == "GridSize") {
-         if (!StringIsDigit(value))               return(_false(catch("RestoreConfiguration(4)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsDigit(value))               return(_false(catch("RestoreConfiguration(5)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
          GridSize = StrToInteger(value);
          keys[I_GRIDSIZE] = 1;
       }
       else if (key == "LotSize") {
-         if (!StringIsNumeric(value))             return(_false(catch("RestoreConfiguration(5)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsNumeric(value))             return(_false(catch("RestoreConfiguration(6)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
          LotSize = StrToDouble(value);
          keys[I_LOTSIZE] = 1;
       }
       else if (key == "StartCondition") {
          StartCondition = value;
          keys[I_START_CONDITION] = 1;
-      }
-      else if (key == "TakeProfitLevels") {
-         if (!StringIsDigit(value))               return(_false(catch("RestoreConfiguration(6)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
-         TakeProfitLevels = StrToInteger(value);
-         keys[I_TAKEPROFIT_LEVELS] = 1;
       }
    }
    if (IntInArray(0, keys))                       return(_false(catch("RestoreConfiguration(7)   one or more configuration values missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
