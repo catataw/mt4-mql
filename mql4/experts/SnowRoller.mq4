@@ -42,7 +42,6 @@ int      sequenceId;
 double   Entry.limit;
 double   Entry.lastBid;
 
-
 double   grid.base;
 int      grid.level;                                        // aktueller Grid-Level
 int      grid.maxLevelLong;                                 // höchster erreichter Long-Level
@@ -749,7 +748,6 @@ int ClearChartSequenceId() {
  * @return bool - ob eine laufende Sequenz gefunden und die ID restauriert wurde
  */
 bool RestoreRunningSequenceId() {
-   // offene Positionen einlesen
    for (int i=OrdersTotal()-1; i >= 0; i--) {
       if (!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))               // FALSE: während des Auslesens wird in einem anderen Thread eine offene Order entfernt
          continue;
