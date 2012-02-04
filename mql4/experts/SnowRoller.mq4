@@ -20,11 +20,11 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
 
-extern int    GridSize                       = 20;
-extern double LotSize                        = 0.1;
-extern string StartCondition                 = "";          // {LimitValue}
-extern string ______________________________ = "==== Sequence to Manage =============";
-extern string Sequence.ID                    = "";
+extern int    GridSize                      = 20;
+extern double LotSize                       = 0.1;
+extern string StartCondition                = "";           // {LimitValue}
+extern string _____________________________ = "==== Sequence to Manage =============";
+extern string Sequence.ID                   = "";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -216,6 +216,11 @@ int onTick() {
 
    // (3) Status anzeigen
    ShowStatus();
+
+
+   if (IsStopped()) {
+      debug("onTick()   IsStopped = "+ IsStopped());
+   }
 
    if (IsLastError())
       return(last_error);
@@ -871,8 +876,8 @@ int SaveConfiguration() {
    double   grid.realizedPL;           // nein: kann aus Orderdaten restauriert werden
    double   grid.floatingPL;           // nein: kann aus offenen Positionen restauriert werden
    double   grid.profitLoss;           // nein: kann aus grid.realizedPL und grid.floatingPL restauriert werden
-   double   grid.breakevenLong;        // nein: wird neuberechnet (mit dem aktuellen TickValue als Näherung)
-   double   grid.breakevenShort;       // nein: wird neuberechnet (mit dem aktuellen TickValue als Näherung)
+   double   grid.breakevenLong;        // nein: wird mit dem aktuellen TickValue als Näherung neuberechnet
+   double   grid.breakevenShort;       // nein: wird mit dem aktuellen TickValue als Näherung neuberechnet
 
    int      orders.ticket    [];       // ja
    int      orders.level     [];       // ja
@@ -885,18 +890,16 @@ int SaveConfiguration() {
    double   orders.commission[];       // ja
    double   orders.profit    [];       // ja
    */
-
-   debug("SaveConfiguration("+ Tick +")");
-
    string lines[];  ArrayResize(lines, 0);
 
-   // (1.1) Daten zusammenstellen: Input-Parameter
+
+   // (1.1) Input-Parameter zusammenstellen
    ArrayPushString(lines, /*string*/ "Sequence.ID="   +             sequenceId    );
    ArrayPushString(lines, /*int   */ "GridSize="      +             GridSize      );
    ArrayPushString(lines, /*double*/ "LotSize="       + NumberToStr(LotSize, ".+"));
    ArrayPushString(lines, /*string*/ "StartCondition="+             StartCondition);
 
-   // (1.2) Daten zusammenstellen: Laufzeit-Variablen
+   // (1.2) Laufzeit-Variablen zusammenstellen
    ArrayPushString(lines, /*double*/ "rt.grid.base="  + NumberToStr(grid.base, ".+"));
    int size = ArraySize(orders.ticket);
    for (int i=0; i < size; i++) {
@@ -910,16 +913,14 @@ int SaveConfiguration() {
       double   swap       = orders.swap      [i];
       double   commission = orders.commission[i];
       double   profit     = orders.profit    [i];
-      string _line = "rt.order."+ i +"="+ level +","+ ticket +","+ type +","+ openTime +","+ openPrice +","+ closeTime +","+ closePrice +","+ swap +","+ commission +","+ profit;
-      debug("SaveConfiguration("+ Tick +")   "+ _line);
-      ArrayPushString(lines, /*string*/ _line);
+      ArrayPushString(lines, StringConcatenate("rt.order.", i, "=", level, ",", ticket, ",", type, ",", openTime, ",", NumberToStr(openPrice, ".+"), ",", closeTime, ",", NumberToStr(closePrice, ".+"), ",", NumberToStr(swap, ".+"), ",", NumberToStr(commission, ".+"), ",", NumberToStr(profit, ".+")));
    }
 
 
-   // (2) Daten in lokale Datei schreiben
+   // (2) Daten in lokaler Datei (über-)schreiben
    string filename = "presets\\SR."+ sequenceId +".set";             // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch ist
                                                                      // das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
-   int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);              // existierende Datei überschreiben
+   int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);
    if (hFile < 0)
       return(catch("SaveConfiguration(2)->FileOpen(\""+ filename +"\")"));
 
