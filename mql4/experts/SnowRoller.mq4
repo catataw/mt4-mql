@@ -20,11 +20,11 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
 
-extern int    GridSize                      = 20;
-extern double LotSize                       = 0.1;
-extern string StartCondition                = "";           // {LimitValue}
-extern string _____________________________ = "==== Sequence to Manage =============";
-extern string Sequence.ID                   = "";
+extern int    GridSize                       = 20;
+extern double LotSize                        = 0.1;
+extern string StartCondition                 = "";          // {LimitValue}
+extern string ______________________________ = "==== Sequence to Manage =============";
+extern string Sequence.ID                    = "";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -169,7 +169,12 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
-   if (UninitializeReason() == REASON_CHARTCHANGE) {
+   if (IsTesting()) {
+      status = STATUS_FINISHED;                                   // Tester hat alle offenen Positionen geschlossen
+      if (UpdateStatus())
+         SaveConfiguration();
+   }
+   else if (UninitializeReason() == REASON_CHARTCHANGE) {
       // Input-Parameter sind nicht statisch: für's nächste init() in intern.* zwischenspeichern
       intern.GridSize         = GridSize;
       intern.LotSize          = LotSize;
@@ -177,11 +182,9 @@ int deinit() {
       intern.Sequence.ID      = Sequence.ID;
    }
    else if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE) {
-      if (!IsTesting()) {
-         string configFile = TerminalPath() +"\\experts\\presets\\SR."+ sequenceId +".set";
-         if (IsFile(configFile))                                     // Ohne Config-Datei wurde Sequenz abgebrochen und braucht/kann
-            StoreChartSequenceId();                                  // beim nächsten init() nicht restauriert werden.
-      }
+      string configFile = TerminalPath() +"\\experts\\presets\\SR."+ sequenceId +".set";
+      if (IsFile(configFile))                                     // Ohne Config-Datei wurde Sequenz abgebrochen und braucht/kann
+         StoreChartSequenceId();                                  // beim nächsten init() nicht restauriert werden.
    }
    return(catch("deinit()"));
 }
@@ -218,10 +221,6 @@ int onTick() {
    ShowStatus();
 
 
-   if (IsStopped()) {
-      debug("onTick()   IsStopped = "+ IsStopped());
-   }
-
    if (IsLastError())
       return(last_error);
    return(catch("onTick()"));
@@ -236,7 +235,7 @@ int onTick() {
 bool UpdateStatus() {
    grid.floatingPL = 0;
 
-   bool wasPending, isClosed, grid.changed;
+   bool wasPending, isClosed;
    int  orders = ArraySize(orders.ticket);
 
    for (int i=0; i < orders; i++) {
@@ -247,8 +246,8 @@ bool UpdateStatus() {
          wasPending = orders.type[i] > OP_SELL;                      // ob die Order beim letzten Aufruf "pending" war
 
          if (wasPending) {
-            // vormals "pending" Order, die inzwischen ausgeführt wurde
-            if (OrderType() != orders.type[i]) {
+            // beim letzten Aufruf "pending" Order
+            if (OrderType() != orders.type[i]) {                     // Order wurde inzwischen ausgeführt
                orders.type      [i] = OrderType();
                orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
@@ -259,11 +258,10 @@ bool UpdateStatus() {
                grid.level += MathSign(orders.level[i]);
                if (grid.level > 0) grid.maxLevelLong  = MathMax( grid.level, grid.maxLevelLong ) +0.1;   // (int) double
                else                grid.maxLevelShort = MathMax(-grid.level, grid.maxLevelShort) +0.1;   // (int) double
-               grid.changed = true;
             }
          }
          else {
-            // Order war beim letzten Aufruf offen
+            // beim letzten Aufruf offene Position
             orders.swap      [i] = OrderSwap();
             orders.commission[i] = OrderCommission();
             orders.profit    [i] = OrderProfit();
@@ -272,29 +270,29 @@ bool UpdateStatus() {
          isClosed = OrderCloseTime() != 0;                           // ob die Order jetzt geschlossen ist
 
          if (!isClosed) {
-            // weiterhin offene oder "pending" Order
+            // weiterhin offene Position oder "pending" Order
             grid.floatingPL += OrderSwap() + OrderCommission() + OrderProfit();
          }
          else {
-            // vormals "pending" Order, die inzwischen gelöscht oder offene Position, die geschlossen wurde
+            // vormals offene Position oder "pending" Order, die inzwischen geschlossen bzw. gelöscht wurde
             orders.closeTime [i] = OrderCloseTime();                 // Bei Spikes kann eine PendingOrder ausgeführt *und* bereits geschlossen sein.
             orders.closePrice[i] = OrderClosePrice();
 
             if (OrderType() <= OP_SELL) {                            // vormals offene Position, die geschlossen wurde
-               grid.level      -= MathSign(orders.level[i]);
-               grid.stops++;
-               grid.realizedPL += OrderSwap() + OrderCommission() + OrderProfit();
-               grid.changed     = true;
+               if (status == STATUS_PROGRESSING) {                   // getriggerter Stop
+                  grid.level      -= MathSign(orders.level[i]);
+                  grid.stops++;
+                  grid.realizedPL += OrderSwap() + OrderCommission() + OrderProfit();
+               }
+               else if (status == STATUS_FINISHED) {                 // bei Sequenz-Ende durch Tester geschlossene Position
+                  grid.floatingPL += OrderSwap() + OrderCommission() + OrderProfit();
+               }
             }
          }
       }
    }
    grid.profitLoss = grid.realizedPL + grid.floatingPL;
 
-   if (grid.changed) {
-      //ForceAlert("UpdateStatus()   grid status changed");
-      //SaveStatus();
-   }
    return(IsNoError(catch("UpdateStatus(2)")));
 }
 
@@ -348,7 +346,7 @@ bool IsStartSignal() {
  */
 bool StartSequence() {
    if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort einen Trade triggert
-      if (!IsTesting() || IsVisualMode()) {                          // im Tester nur im VisualMode
+      if (!IsTesting()) {                                            // jedoch nicht im Tester
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __SCRIPT__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
@@ -377,7 +375,7 @@ bool StartSequence() {
  */
 bool UpdatePendingOrders() {
    int  nextLevel;
-   bool orderExists, orderChange;
+   bool orderExists, ordersChanged;
 
    if (grid.level > 0) {
       nextLevel = grid.level + 1;
@@ -390,13 +388,13 @@ bool UpdatePendingOrders() {
                continue;
             }
             if (!Grid.DeleteOrder(orders.ticket[i])) return(false);
-            orderChange = true;
+            ordersChanged = true;
          }
       }
       // wenn nötig neue Stop-Order in den Markt legen
       if (!orderExists) {
          if (!Grid.AddOrder(OP_BUYSTOP, nextLevel)) return(false);
-         orderChange = true;
+         ordersChanged = true;
       }
    }
 
@@ -411,13 +409,13 @@ bool UpdatePendingOrders() {
                continue;
             }
             if (!Grid.DeleteOrder(orders.ticket[i])) return(false);
-            orderChange = true;
+            ordersChanged = true;
          }
       }
       // wenn nötig neue Stop-Order in den Markt legen
       if (!orderExists) {
          if (!Grid.AddOrder(OP_SELLSTOP, nextLevel)) return(false);
-         orderChange = true;
+         ordersChanged = true;
       }
    }
    else /*(grid.level == 0)*/ {
@@ -435,21 +433,21 @@ bool UpdatePendingOrders() {
                continue;
             }
             if (!Grid.DeleteOrder(orders.ticket[i])) return(false);
-            orderChange = true;
+            ordersChanged = true;
          }
       }
       // wenn nötig neue Stop-Orders in den Markt legen
       if (!buyOrderExists) {
          if (!Grid.AddOrder(OP_BUYSTOP,   1)) return(false);
-         orderChange = true;
+         ordersChanged = true;
       }
       if (!sellOrderExists) {
          if (!Grid.AddOrder(OP_SELLSTOP, -1)) return(false);
-         orderChange = true;
+         ordersChanged = true;
       }
    }
 
-   if (orderChange)                                                  // nach jeder Änderung Konfiguration speichern
+   if (ordersChanged)                                                // nach jeder Änderung Konfiguration speichern
       SaveConfiguration();
 
    return(IsNoError(catch("UpdatePendingOrders()")));
@@ -590,7 +588,7 @@ bool IsProfitTargetReached() {
  */
 bool FinishSequence() {
    if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort einen Trade triggert
-      if (!IsTesting() || IsVisualMode()) {                          // im Tester nur im VisualMode
+      if (!IsTesting()) {                                            // jedoch nicht im Tester
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to finish the sequence now?", __SCRIPT__ +" - FinishSequence()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
@@ -858,6 +856,7 @@ bool ValidateConfiguration() {
 int SaveConfiguration() {
    if (sequenceId == 0)
       return(catch("SaveConfiguration(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR));
+
    /*
    Aufgabe: Wir müssen den kompletten internen Status wiederherstellen, nicht nur die Input-Parameter
    --------------------------------------------------------------------------------------------------
@@ -890,10 +889,10 @@ int SaveConfiguration() {
    double   orders.commission[];       // ja
    double   orders.profit    [];       // ja
    */
-   string lines[];  ArrayResize(lines, 0);
 
 
    // (1.1) Input-Parameter zusammenstellen
+   string lines[];  ArrayResize(lines, 0);
    ArrayPushString(lines, /*string*/ "Sequence.ID="   +             sequenceId    );
    ArrayPushString(lines, /*int   */ "GridSize="      +             GridSize      );
    ArrayPushString(lines, /*double*/ "LotSize="       + NumberToStr(LotSize, ".+"));
@@ -935,11 +934,10 @@ int SaveConfiguration() {
 
 
    // (3) Datei auf Server laden
-   if (!IsTesting()) {                                               // jedoch nicht im Tester
-      int error = UploadConfiguration(ShortAccountCompany(), AccountNumber(), StdSymbol(), filename);
-      if (IsError(error))
-         return(error);
-   }
+   int error = UploadConfiguration(ShortAccountCompany(), AccountNumber(), StdSymbol(), filename);
+   if (IsError(error))
+      return(error);
+
    return(catch("SaveConfiguration(4)"));
 }
 
@@ -956,7 +954,7 @@ int SaveConfiguration() {
  */
 int UploadConfiguration(string company, int account, string symbol, string presetsFile) {
    if (IsTesting())
-      return(_NO_ERROR(debug("UploadConfiguration()   skipping in tester")));
+      return(_NO_ERROR(debug("UploadConfiguration()   skipping in Strategy Tester")));
 
    // TODO: Existenz von wget.exe prüfen
 
