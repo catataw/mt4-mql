@@ -954,7 +954,7 @@ int SaveConfiguration() {
  */
 int UploadConfiguration(string company, int account, string symbol, string presetsFile) {
    if (IsTesting())
-      return(_NO_ERROR(debug("UploadConfiguration()   skipping in Strategy Tester")));
+      return(NO_ERROR);
 
    // TODO: Existenz von wget.exe prüfen
 
