@@ -35,7 +35,11 @@ string   intern.StartCondition;                             // Um dies zu verhin
 string   intern.Sequence.ID;                                // und in init() wieder daraus restauriert.
 
 int      status = STATUS_WAITING;
+
 int      sequenceId;
+string   sequenceSymbol;                                    // für Restart
+datetime sequenceStartup;                                   // für Restart
+datetime sequenceShutdown;                                  // für Restart
 
 double   Entry.limit;
 double   Entry.lastBid;
@@ -169,24 +173,29 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
-   if (IsTesting()) {
-      status = STATUS_FINISHED;                                   // Tester hat alle offenen Positionen geschlossen
-      if (UpdateStatus())
-         SaveConfiguration();
-   }
-   else if (UninitializeReason() == REASON_CHARTCHANGE) {
+   if (UninitializeReason() == REASON_CHARTCHANGE) {
       // Input-Parameter sind nicht statisch: für's nächste init() in intern.* zwischenspeichern
       intern.GridSize         = GridSize;
       intern.LotSize          = LotSize;
       intern.StartCondition   = StartCondition;
       intern.Sequence.ID      = Sequence.ID;
+      return(catch("deinit(1)"));
    }
-   else if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE) {
-      string configFile = TerminalPath() +"\\experts\\presets\\SR."+ sequenceId +".set";
-      if (IsFile(configFile))                                     // Ohne Config-Datei wurde Sequenz abgebrochen und braucht/kann
-         StoreChartSequenceId();                                  // beim nächsten init() nicht restauriert werden.
+
+   bool isConfigFile = IsFile(TerminalPath() + ifString(IsTesting(), "\\tester", "\\experts") +"\\files\\presets\\SR."+ sequenceId +".set");
+
+   if (isConfigFile) {                                            // Ohne Config-Datei wurde Sequenz manuell abgebrochen und nicht gestartet.
+      if (IsTesting())
+         status = STATUS_FINISHED;                                // Tester hat alle offenen Positionen geschlossen
+
+      // TODO: UpdateStatus() muß den Status selbst bestimmen
+      if (UpdateStatus())
+         SaveConfiguration();
+
+      if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE)
+         StoreChartSequenceId();                                  // Eine abgebrochene Sequenz braucht beim nächsten init() nicht restauriert zu werden.
    }
-   return(catch("deinit()"));
+   return(catch("deinit(2)"));
 }
 
 
@@ -284,9 +293,22 @@ bool UpdateStatus() {
                   grid.stops++;
                   grid.realizedPL += OrderSwap() + OrderCommission() + OrderProfit();
                }
-               else if (status == STATUS_FINISHED) {                 // bei Sequenz-Ende durch Tester geschlossene Position
+               else {                                                // Sequenz-Ende: durch Tester geschlossene Position
                   grid.floatingPL += OrderSwap() + OrderCommission() + OrderProfit();
                }
+
+               // TODO: korrekt muß die Logik wie folgt sein
+               /*
+               if (StopLossTriggered) {
+                  grid.level      -= MathSign(orders.level[i]);
+                  grid.stops++;
+                  grid.realizedPL += OrderSwap() + OrderCommission() + OrderProfit();
+               }
+               else {
+                  // manuell oder durch Tester geschlossen: Sequenz-Ende
+                  grid.floatingPL += OrderSwap() + OrderCommission() + OrderProfit();
+               }
+               */
             }
          }
       }
@@ -652,7 +674,7 @@ int ShowStatus(bool init=false) {
    msg = StringConcatenate(__SCRIPT__, msg,                                                                                                     NL,
                                                                                                                                                 NL,
                            "GridSize:       ", GridSize, " pip",                                                                                NL,
-                           "LotSize:         ", NumberToStr(LotSize, ".+"), " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), " / stop", NL,
+                           "LotSize:         ", NumberToStr(LotSize, ".+"), " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",   NL,
                            "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.realizedPL, 2),   NL,
                            "Breakeven:   ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat), NL,
                            "Profit/Loss:    ", DoubleToStr(grid.profitLoss, 2),                                                                 NL);
@@ -797,10 +819,10 @@ bool IsMyOrder(int sequenceId = NULL) {
 int CreateSequenceId() {
    MathSrand(GetTickCount());
    int id;
-   while (id < 2000) {                                               // Das abschließende Shiften halbiert den Wert und wir wollen mindestens eine 4-stellige ID haben.
+   while (id < 2000) {
       id = MathRand();
    }
-   return(id >> 1);
+   return(id >> 1);                                                  // Das abschließende Shiften halbiert den Wert und wir wollen mindestens eine 4-stellige ID haben.
 }
 
 
@@ -848,8 +870,8 @@ bool ValidateConfiguration() {
 
 
 /**
- * Speichert aktuelle Konfiguration und Laufzeitdaten der Instanz, um die nahtlose Wiederauf- und Übernahme durch eine
- * andere Instanz im selben oder einem anderen Terminal zu ermöglichen.
+ * Speichert aktuelle Konfiguration und Laufzeitdaten der Instanz, um später die nahtlose Re-Initialisierung im selben oder einem
+ * anderen Terminal zu ermöglichen.
  *
  * @return int - Fehlerstatus
  */
@@ -858,11 +880,15 @@ int SaveConfiguration() {
       return(catch("SaveConfiguration(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR));
 
    /*
-   Aufgabe: Wir müssen den kompletten internen Status wiederherstellen, nicht nur die Input-Parameter
-   --------------------------------------------------------------------------------------------------
+   Aufgabe: Wir müssen beim Re-Initialisieren den kompletten Laufzeitstatus wiederherstellen (nicht nur die Input-Parameter).
+   --------------------------------------------------------------------------------------------------------------------------
    Speichernotwendigkeit der einzelnen Variablen:
 
    int      status;                    // nein: kann aus Orderdaten und offenen Positionen restauriert werden
+
+   string   sequenceSymbol;            // ja, für Restart: Zusätzlich zu speichern (History und Original-Tickets sind beim Restart u.U. nicht mehr erreichbar):
+   datetime sequenceStartup;           // ja, für Restart: Zusätzlich zu speichern (History und Original-Tickets sind beim Restart u.U. nicht mehr erreichbar):
+   datetime sequenceShutdown;          // ja, für Restart: Zusätzlich zu speichern (History und Original-Tickets sind beim Restart u.U. nicht mehr erreichbar):
 
    double   Entry.limit;               // nein: wird aus StartCondition abgeleitet
    double   Entry.lastBid;             // nein: unnötig
@@ -899,8 +925,10 @@ int SaveConfiguration() {
    ArrayPushString(lines, /*string*/ "StartCondition="+             StartCondition);
 
    // (1.2) Laufzeit-Variablen zusammenstellen
-   ArrayPushString(lines, /*double*/ "rt.grid.base="  + NumberToStr(grid.base, ".+"));
    int size = ArraySize(orders.ticket);
+   if (size > 0)
+      ArrayPushString(lines, /*double*/ "rt.grid.base="+ NumberToStr(grid.base, ".+"));
+
    for (int i=0; i < size; i++) {
       int      ticket     = orders.ticket    [i];
       int      level      = orders.level     [i];
@@ -953,7 +981,7 @@ int SaveConfiguration() {
  * @return int - Fehlerstatus
  */
 int UploadConfiguration(string company, int account, string symbol, string presetsFile) {
-   if (IsTesting())
+   if (IsTesting())                                                     // skipping in Tester
       return(NO_ERROR);
 
    // TODO: Existenz von wget.exe prüfen
@@ -994,11 +1022,12 @@ bool RestoreConfiguration() {
    // TODO: Existenz von wget.exe prüfen
 
    // (1) bei nicht existierender lokaler Konfiguration die Datei neu vom Server laden
-   string filesDir = TerminalPath() +"\\experts\\files\\";           // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
-   string fileName = "presets\\SR."+ sequenceId +".set";             // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
-
+   string filesDir = TerminalPath() + ifString(IsTesting(), "\\tester", "\\experts") +"\\files\\";
+   string fileName = "presets\\SR."+ sequenceId +".set";             // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
+                                                                     // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
    if (!IsFile(filesDir + fileName)) {
-      if (IsTesting()) return(_false(catch("RestoreConfiguration(2)   configuration for sequence "+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+      if (IsTesting())
+         return(_false(catch("RestoreConfiguration(2)   configuration for sequence "+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
 
       // Befehlszeile für Shellaufruf zusammensetzen
       string url        = "http://sub.domain.tld/downloadSRConfiguration.php?company="+ UrlEncode(ShortAccountCompany()) +"&account="+ AccountNumber() +"&symbol="+ UrlEncode(StdSymbol()) +"&sequence="+ sequenceId;
@@ -1027,7 +1056,7 @@ bool RestoreConfiguration() {
    }
 
    // (3) Zeilen in Schlüssel-Wert-Paare aufbrechen, Datentypen validieren und Daten übernehmen
-   int keys[4]; ArrayInitialize(keys, 0);
+   int keys[3]; ArrayInitialize(keys, 0);
    #define I_GRIDSIZE          0
    #define I_LOTSIZE           1
    #define I_START_CONDITION   2
