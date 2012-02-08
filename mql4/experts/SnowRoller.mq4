@@ -1,9 +1,12 @@
 /**
- * SnowRoller Anti-Martingale EA
+ * Snowroller - Pyramiding Grid EA
  *
- * @see 7bit strategy:  http://www.forexfactory.com/showthread.php?t=226059
- *      7bit journal:   http://www.forexfactory.com/showthread.php?t=239717
- *      7bit code base: http://sites.google.com/site/prof7bit/snowball
+ * @see 7bit Strategy:   http://www.forexfactory.com/showthread.php?t=226059
+ *      7bit Journal:    http://www.forexfactory.com/showthread.php?t=239717
+ *      7bit Code base:  http://sites.google.com/site/prof7bit/snowball
+ *
+ * @see Different pyramiding schemes:  http://www.actionforex.com/articles-library/money-management-articles/pyramiding:-a-risky-strategy-200603035356/
+ * @see Schwager about pyramiding:     http://www.forexjournal.com/fx-education/money-management/450-pyramiding-and-the-management-of-profitable-trades.html
  */
 #include <stdlib.mqh>
 #include <win32api.mqh>
@@ -52,6 +55,8 @@ int      grid.stops;                                        // Anzahl der bisher
 double   grid.realizedPL;                                   // P/L aller bisher getriggerten Stops (negativ)
 double   grid.floatingPL;                                   // P/L der im Moment offenen Positionen
 double   grid.profitLoss;                                   // Gesamt-P/L (realized + floating)
+double   grid.maxProfitLoss;                                // höchster je erreichter Gesamt-P/L
+double   grid.maxDrawdown;                                  // höchster je erreichter Drawdown
 double   grid.breakevenLong;
 double   grid.breakevenShort;
 
@@ -93,35 +98,34 @@ int init() {
 
       // (1.1) Recompilation ----------------------------------------------------------------------------------------------------------------------------------
       if (UninitializeReason() == REASON_RECOMPILE) {
-         if (RestoreChartSequenceId()) {                             // falls externe Referenz vorhanden: restaurieren und validieren
-            if (RestoreConfiguration())                              // ohne externe Referenz weiter in (1.2)
+         if (RestoreChartSequenceId())                               // falls externe Referenz vorhanden: restaurieren und validieren
+            if (RestoreStatus())                                     // ohne externe Referenz weiter in (1.2)
                if (ValidateConfiguration())
                   ReadSequence();
-         }
       }
 
       // (1.2) Neustart ---------------------------------------------------------------------------------------------------------------------------------------
       if (sequenceId == 0) {
          if (IsInputSequenceId()) {                                  // Zuerst eine ausdrücklich angegebene Sequenz-ID restaurieren...
             if (RestoreInputSequenceId())
-               if (RestoreConfiguration())
+               if (RestoreStatus())
                   if (ValidateConfiguration())
                      ReadSequence();
          }
          else if (RestoreChartSequenceId()) {                        // ...dann ggf. eine im Chart gespeicherte Sequenz-ID restaurieren...
-            if (RestoreConfiguration())
+            if (RestoreStatus())
                if (ValidateConfiguration())
                   ReadSequence();
          }
          else if (RestoreRunningSequenceId()) {                      // ...dann ID aus laufender Sequenz restaurieren.
-            if (RestoreConfiguration())
+            if (RestoreStatus())
                if (ValidateConfiguration())
                   ReadSequence();
          }
          else if (ValidateConfiguration()) {                         // Zum Schluß neue Sequenz anlegen.
             sequenceId = CreateSequenceId();
-            if (StartCondition != "")                                // Ohne StartCondition erfolgt sofortiger Einstieg, in diesem Fall wird die
-               SaveConfiguration();                                  // Konfiguration erst nach Sicherheitsabfrage in StartSequence() gespeichert.
+            if (StartCondition != "")                                // Ohne StartCondition erfolgt sofortiger Einstieg, in diesem Fall wird der
+               SaveStatus();                                         // Status erst nach Sicherheitsabfrage in StartSequence() gespeichert.
          }
       }
       ClearChartSequenceId();
@@ -131,7 +135,7 @@ int init() {
    else if (UninitializeReason() == REASON_PARAMETERS) {             // alle internen Daten sind vorhanden
       // TODO: die manuelle Sequence.ID kann geändert worden sein
       if (ValidateConfiguration())
-         SaveConfiguration();
+         SaveStatus();
    }
 
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
@@ -185,12 +189,13 @@ int deinit() {
    bool isConfigFile = IsFile(TerminalPath() + ifString(IsTesting(), "\\tester", "\\experts") +"\\files\\presets\\SR."+ sequenceId +".set");
 
    if (isConfigFile) {                                            // Ohne Config-Datei wurde Sequenz manuell abgebrochen und nicht gestartet.
-      if (IsTesting())
+      if (IsTesting()) {
          status = STATUS_FINISHED;                                // Tester hat alle offenen Positionen geschlossen
+         // TODO: UpdateStatus() muß den Status selbst bestimmen
+      }
 
-      // TODO: UpdateStatus() muß den Status selbst bestimmen
       if (UpdateStatus())
-         SaveConfiguration();
+         SaveStatus();
 
       if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE)
          StoreChartSequenceId();                                  // Eine abgebrochene Sequenz braucht beim nächsten init() nicht restauriert zu werden.
@@ -209,6 +214,13 @@ int onTick() {
       return(last_error);
 
    static int last.grid.level;
+
+
+   if (__SCRIPT__ == "SnowRoller.2") {
+      debug("onTick()   status="+ SequenceStatusToStr(status) +"   grid.base="+ NumberToStr(grid.base, PriceFormat) +"   orders.ticket="+ IntArrayToStr(orders.ticket, NULL));
+      status = STATUS_DISABLED;
+      return(catch("onTick(1)"));
+   }
 
 
    // (1) Sequenz wartet entweder auf Startsignal...
@@ -232,7 +244,7 @@ int onTick() {
 
    if (IsLastError())
       return(last_error);
-   return(catch("onTick()"));
+   return(catch("onTick(2)"));
 }
 
 
@@ -313,7 +325,9 @@ bool UpdateStatus() {
          }
       }
    }
-   grid.profitLoss = grid.realizedPL + grid.floatingPL;
+   grid.profitLoss    = grid.realizedPL + grid.floatingPL;
+   grid.maxProfitLoss = MathMax(grid.maxProfitLoss, grid.profitLoss);
+   grid.maxDrawdown   = MathMin(grid.maxDrawdown,   grid.profitLoss);
 
    return(IsNoError(catch("UpdateStatus(2)")));
 }
@@ -469,8 +483,8 @@ bool UpdatePendingOrders() {
       }
    }
 
-   if (ordersChanged)                                                // nach jeder Änderung Konfiguration speichern
-      SaveConfiguration();
+   if (ordersChanged)                                                // nach jeder Änderung Status speichern
+      SaveStatus();
 
    return(IsNoError(catch("UpdatePendingOrders()")));
 }
@@ -673,11 +687,12 @@ int ShowStatus(bool init=false) {
 
    msg = StringConcatenate(__SCRIPT__, msg,                                                                                                     NL,
                                                                                                                                                 NL,
-                           "GridSize:       ", GridSize, " pip",                                                                                NL,
-                           "LotSize:         ", NumberToStr(LotSize, ".+"), " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",   NL,
-                           "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.realizedPL, 2),   NL,
-                           "Breakeven:   ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat), NL,
-                           "Profit/Loss:    ", DoubleToStr(grid.profitLoss, 2),                                                                 NL);
+                           "GridSize:            ", GridSize, " pip",                                                                                NL,
+                           "LotSize:              ", NumberToStr(LotSize, ".+"), " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",   NL,
+                           "Realized:            ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.realizedPL, 2),   NL,
+                           "Breakeven:        ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat), NL,
+                           "Profit/Loss max:  ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat), NL,
+                           "Profit/Loss:         ", DoubleToStr(grid.profitLoss, 2),                                                                 NL);
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
@@ -769,6 +784,9 @@ int ClearChartSequenceId() {
       ObjectDelete(label);
 
    return(catch("ClearChartSequenceId()"));
+
+   // Dummy-Calls
+   SequenceStatusToStr(NULL);
 }
 
 
@@ -870,14 +888,18 @@ bool ValidateConfiguration() {
 
 
 /**
- * Speichert aktuelle Konfiguration und Laufzeitdaten der Instanz, um später die nahtlose Re-Initialisierung im selben oder einem
- * anderen Terminal zu ermöglichen.
+ * Speichert den aktuellen Status der Instanz, um später die nahtlose Re-Initialisierung im selben oder einem anderen Terminal
+ * zu ermöglichen.
  *
  * @return int - Fehlerstatus
  */
-int SaveConfiguration() {
+int SaveStatus() {
    if (sequenceId == 0)
-      return(catch("SaveConfiguration(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR));
+      return(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR));
+
+   if (__SCRIPT__ == "SnowRoller.2")
+      return(NO_ERROR);
+
 
    /*
    Aufgabe: Wir müssen beim Re-Initialisieren den kompletten Laufzeitstatus wiederherstellen (nicht nur die Input-Parameter).
@@ -949,11 +971,11 @@ int SaveConfiguration() {
                                                                      // das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
    int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);
    if (hFile < 0)
-      return(catch("SaveConfiguration(2)->FileOpen(\""+ filename +"\")"));
+      return(catch("SaveStatus(2)->FileOpen(\""+ filename +"\")"));
 
    for (i=0; i < ArraySize(lines); i++) {
       if (FileWrite(hFile, lines[i]) < 0) {
-         catch("SaveConfiguration(3)->FileWrite(line #"+ (i+1) +")");
+         catch("SaveStatus(3)->FileWrite(line #"+ (i+1) +")");
          FileClose(hFile);
          return(last_error);
       }
@@ -962,25 +984,25 @@ int SaveConfiguration() {
 
 
    // (3) Datei auf Server laden
-   int error = UploadConfiguration(ShortAccountCompany(), AccountNumber(), StdSymbol(), filename);
+   int error = UploadStatus(ShortAccountCompany(), AccountNumber(), StdSymbol(), filename);
    if (IsError(error))
       return(error);
 
-   return(catch("SaveConfiguration(4)"));
+   return(catch("SaveStatus(4)"));
 }
 
 
 /**
- * Lädt die angegebene Konfigurationsdatei auf den Server.
+ * Lädt die angegebene Statusdatei auf den Server.
  *
  * @param  string company     - Account-Company
  * @param  int    account     - Account-Number
- * @param  string symbol      - Symbol der Konfiguration
+ * @param  string symbol      - Symbol der Sequenz
  * @param  string presetsFile - Dateiname, relativ zu "{terminal-directory}\experts"
  *
  * @return int - Fehlerstatus
  */
-int UploadConfiguration(string company, int account, string symbol, string presetsFile) {
+int UploadStatus(string company, int account, string symbol, string presetsFile) {
    if (IsTesting())                                                     // skipping in Tester
       return(NO_ERROR);
 
@@ -993,33 +1015,31 @@ int UploadConfiguration(string company, int account, string symbol, string prese
    string presetsPath  = TerminalPath() +"\\experts\\" + presetsFile;   // Dateinamen mit vollständigen Pfaden
    string responsePath = presetsPath +".response";
    string logPath      = presetsPath +".log";
-   string url          = "http://sub.domain.tld/uploadSRConfiguration.php?company="+ UrlEncode(company) +"&account="+ account +"&symbol="+ UrlEncode(symbol) +"&name="+ UrlEncode(file);
+   string url          = "http://sub.domain.tld/uploadSRStatus.php?company="+ UrlEncode(company) +"&account="+ account +"&symbol="+ UrlEncode(symbol) +"&name="+ UrlEncode(file);
    string cmdLine      = "wget.exe -b \""+ url +"\" --post-file=\""+ presetsPath +"\" --header=\"Content-Type: text/plain\" -O \""+ responsePath +"\" -a \""+ logPath +"\"";
 
    // Existenz der Datei prüfen
    if (!IsFile(presetsPath))
-      return(catch("UploadConfiguration(1)   file not found: \""+ presetsPath +"\"", ERR_FILE_NOT_FOUND));
+      return(catch("UploadStatus(1)   file not found: \""+ presetsPath +"\"", ERR_FILE_NOT_FOUND));
 
    // Datei hochladen, WinExec() kehrt ohne zu warten zurück, wget -b beschleunigt zusätzlich
    int error = WinExec(cmdLine, SW_HIDE);                               // SW_SHOWNORMAL|SW_HIDE
    if (error < 32)
-      return(catch("UploadConfiguration(2) ->kernel32::WinExec(cmdLine=\""+ cmdLine +"\"), error="+ error +" ("+ ShellExecuteErrorToStr(error) +")", ERR_WIN32_ERROR));
+      return(catch("UploadStatus(2) ->kernel32::WinExec(cmdLine=\""+ cmdLine +"\"), error="+ error +" ("+ ShellExecuteErrorToStr(error) +")", ERR_WIN32_ERROR));
 
-   return(catch("UploadConfiguration(3)"));
+   return(catch("UploadStatus(3)"));
 }
 
 
 /**
- * Liest die Konfiguration einer Sequenz ein und setzt die internen Variablen entsprechend. Ohne lokale Konfiguration
- * wird die Konfiguration vom Server geladen und lokal gespeichert.
+ * Liest den Status einer Sequenz ein und restauriert die internen Variablen. Bei fehlender lokaler Statusdatei wird versucht,
+ * die Datei vom Server zu laden.
  *
- * @return bool - ob die Konfiguration erfolgreich restauriert wurde
+ * @return bool - ob der Status erfolgreich restauriert wurde
  */
-bool RestoreConfiguration() {
+bool RestoreStatus() {
    if (sequenceId == 0)
-      return(_false(catch("RestoreConfiguration(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
-
-   // TODO: Existenz von wget.exe prüfen
+      return(_false(catch("RestoreStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
    // (1) bei nicht existierender lokaler Konfiguration die Datei neu vom Server laden
    string filesDir = TerminalPath() + ifString(IsTesting(), "\\tester", "\\experts") +"\\files\\";
@@ -1027,64 +1047,211 @@ bool RestoreConfiguration() {
                                                                      // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
    if (!IsFile(filesDir + fileName)) {
       if (IsTesting())
-         return(_false(catch("RestoreConfiguration(2)   configuration for sequence "+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+         return(_false(catch("RestoreStatus(2)   status file for sequence "+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+
+      // TODO: Existenz von wget.exe prüfen
 
       // Befehlszeile für Shellaufruf zusammensetzen
-      string url        = "http://sub.domain.tld/downloadSRConfiguration.php?company="+ UrlEncode(ShortAccountCompany()) +"&account="+ AccountNumber() +"&symbol="+ UrlEncode(StdSymbol()) +"&sequence="+ sequenceId;
+      string url        = "http://sub.domain.tld/downloadSRStatus.php?company="+ UrlEncode(ShortAccountCompany()) +"&account="+ AccountNumber() +"&symbol="+ UrlEncode(StdSymbol()) +"&sequence="+ sequenceId;
       string targetFile = filesDir +"\\"+ fileName;
       string logFile    = filesDir +"\\"+ fileName +".log";
       string cmd        = "wget.exe \""+ url +"\" -O \""+ targetFile +"\" -o \""+ logFile +"\"";
 
-      debug("RestoreConfiguration()   downloading configuration for sequence "+ sequenceId);
+      debug("RestoreStatus()   downloading status file for sequence "+ sequenceId);
 
       int error = WinExecAndWait(cmd, SW_HIDE);                      // SW_SHOWNORMAL|SW_HIDE
       if (IsError(error))
          return(_false(SetLastError(error)));
 
-      debug("RestoreConfiguration()   configuration for sequence "+ sequenceId +" successfully downloaded");
+      debug("RestoreStatus()   status file for sequence "+ sequenceId +" successfully downloaded");
       FileDelete(fileName +".log");
    }
 
    // (2) Datei einlesen
-   string config[];
-   int lines = FileReadLines(fileName, config, true);
-   if (lines < 0)
+   string lines[];
+   int size = FileReadLines(fileName, lines, true);
+   if (size < 0)
       return(_false(SetLastError(stdlib_PeekLastError())));
-   if (lines == 0) {
+   if (size == 0) {
       FileDelete(fileName);
-      return(_false(catch("RestoreConfiguration(3)   configuration for sequence "+ sequenceId +" not found", ERR_RUNTIME_ERROR)));
+      return(_false(catch("RestoreStatus(3)   status for sequence "+ sequenceId +" not found", ERR_RUNTIME_ERROR)));
    }
 
+
    // (3) Zeilen in Schlüssel-Wert-Paare aufbrechen, Datentypen validieren und Daten übernehmen
-   int keys[3]; ArrayInitialize(keys, 0);
-   #define I_GRIDSIZE          0
-   #define I_LOTSIZE           1
-   #define I_START_CONDITION   2
+   int keys[4]; ArrayInitialize(keys, 0);
+   #define I_SEQUENCE_ID      0
+   #define I_GRIDSIZE         1
+   #define I_LOTSIZE          2
+   #define I_STARTCONDITION   3
 
    string parts[];
-   for (int i=0; i < lines; i++) {
-      if (Explode(config[i], "=", parts, 2) != 2) return(_false(catch("RestoreConfiguration(4)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
-      string key=parts[0], value=parts[1];
+   for (int i=0; i < size; i++) {
+      if (Explode(lines[i], "=", parts, 2) != 2)         return(_false(catch("RestoreStatus(4)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+      string key=StringTrim(parts[0]), value=StringTrim(parts[1]);
 
-      if (key == "GridSize") {
-         if (!StringIsDigit(value))               return(_false(catch("RestoreConfiguration(5)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
+      if (key == "Sequence.ID") {
+         if (value != StringConcatenate("", sequenceId)) return(_false(catch("RestoreStatus(5)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         Sequence.ID = sequenceId;
+         keys[I_SEQUENCE_ID] = 1;
+      }
+      else if (key == "GridSize") {
+         if (!StringIsDigit(value))                      return(_false(catch("RestoreStatus(6)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          GridSize = StrToInteger(value);
          keys[I_GRIDSIZE] = 1;
       }
       else if (key == "LotSize") {
-         if (!StringIsNumeric(value))             return(_false(catch("RestoreConfiguration(6)   invalid configuration file \""+ fileName +"\" (line \""+ config[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsNumeric(value))                    return(_false(catch("RestoreStatus(7)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          LotSize = StrToDouble(value);
          keys[I_LOTSIZE] = 1;
       }
       else if (key == "StartCondition") {
          StartCondition = value;
-         keys[I_START_CONDITION] = 1;
+         keys[I_STARTCONDITION] = 1;
+      }
+      else if (StringStartsWith(key, "rt.")) {                       // Laufzeitvariable
+         if (!RestoreStatus.Runtime(fileName, lines[i], StringRight(key, -3), value))
+            return(false);
       }
    }
-   if (IntInArray(0, keys))                       return(_false(catch("RestoreConfiguration(7)   one or more configuration values missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
-   Sequence.ID = sequenceId;
+   if (IntInArray(0, keys))                              return(_false(catch("RestoreStatus(8)   one or more configuration values missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
 
-   return(IsNoError(catch("RestoreConfiguration(8)")));
+   return(IsNoError(catch("RestoreStatus(9)")));
+}
+
+
+/**
+ * Restauriert eine oder mehrere Laufzeitvariablen.
+ *
+ * @param  string file  - Name der Statusdatei, aus der die Einstellung stammt (nur für evt. Fehlermeldung)
+ * @param  string line  - Statuszeile der Einstellung                          (nur für evt. Fehlermeldung)
+ * @param  string key   - Schlüssel der Einstellung
+ * @param  string value - Wert der Einstellung
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool RestoreStatus.Runtime(string file, string line, string key, string value) {
+   /*
+   [rt.]grid.base=1.32677
+   [rt.]order.0=1,61845848,0,1328705811,1.32757,1328705920,1.32677,0,0,-8
+   [rt.]order.1=1,61846892,0,1328706488,1.32757,1328707208,1.32677,0,0,-8
+   [rt.]order.2=-1,61847814,1,1328707713,1.32597,1328708053,1.32677,0,0,-8
+   int      level      = values[0];
+   int      ticket     = values[1];
+   int      type       = values[2];
+   datetime openTime   = values[3];
+   double   openPrice  = values[4];
+   datetime closeTime  = values[5];
+   double   closePrice = values[6];
+   double   swap       = values[7];
+   double   commission = values[8];
+   double   profit     = values[9];
+   */
+   if (key == "grid.base") {
+      if (!StringIsNumeric(value))                            return(_false(catch("RestoreStatus.Runtime(1)   illegal grid.base \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      grid.base = StrToDouble(value);
+      if (LT(grid.base, 0))                                   return(_false(catch("RestoreStatus.Runtime(2)   ilegal grid.base "+ NumberToStr(grid.base, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+   }
+   else if (StringStartsWith(key, "order.")) {
+      // Orderindex
+      string strIndex = StringRight(key, -6);
+      if (!StringIsDigit(strIndex))                           return(_false(catch("RestoreStatus.Runtime(3)   illegal order index \""+ key +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      int i = StrToInteger(strIndex);
+
+      // Orderdaten
+      string values[];
+      if (Explode(value, ",", values, NULL) != 10)            return(_false(catch("RestoreStatus.Runtime(4)   invalid status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // level
+      string strLevel = values[0];
+      if (!StringIsInteger(strLevel))                         return(_false(catch("RestoreStatus.Runtime(5)   illegal order level \""+ strLevel +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      int level = StrToInteger(strLevel);
+      if (level == 0)                                         return(_false(catch("RestoreStatus.Runtime(6)   illegal order level "+ level +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // ticket
+      string strTicket = values[1];
+      if (!StringIsDigit(strTicket))                          return(_false(catch("RestoreStatus.Runtime(7)   illegal order ticket \""+ strTicket +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      int ticket = StrToInteger(strTicket);
+      if (ticket == 0)                                        return(_false(catch("RestoreStatus.Runtime(8)   illegal order ticket \""+ ticket +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // type
+      string strType = values[2];
+      if (!StringIsDigit(strType))                            return(_false(catch("RestoreStatus.Runtime(9)   illegal order type \""+ strType +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      int type = StrToInteger(strType);
+      if (!IsTradeOperation(type))                            return(_false(catch("RestoreStatus.Runtime(10)   illegal order type \""+ type +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // openTime
+      string strOpenTime = values[3];
+      if (!StringIsDigit(strOpenTime))                        return(_false(catch("RestoreStatus.Runtime(11)   illegal order open time \""+ strOpenTime +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      datetime openTime = StrToInteger(strOpenTime);
+      if (openTime == 0)                                      return(_false(catch("RestoreStatus.Runtime(12)   illegal order open time \""+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // openPrice
+      string strOpenPrice = values[4];
+      if (!StringIsNumeric(strOpenPrice))                     return(_false(catch("RestoreStatus.Runtime(13)   illegal order open price \""+ strOpenPrice +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      double openPrice = StrToDouble(strOpenPrice);
+      if (LE(openPrice, 0))                                   return(_false(catch("RestoreStatus.Runtime(14)   ilegal order open price "+ NumberToStr(openPrice, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // closeTime
+      string strCloseTime = values[5];
+      if (!StringIsDigit(strCloseTime))                       return(_false(catch("RestoreStatus.Runtime(15)   illegal order close time \""+ strCloseTime +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      datetime closeTime = StrToInteger(strCloseTime);
+      if (closeTime!=0 && closeTime < openTime )              return(_false(catch("RestoreStatus.Runtime(16)   order open/close time mismatch \""+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\"/\""+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // closePrice
+      string strClosePrice = values[6];
+      if (!StringIsNumeric(strClosePrice))                    return(_false(catch("RestoreStatus.Runtime(17)   illegal order close price \""+ strClosePrice +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      double closePrice = StrToDouble(strClosePrice);
+      if (LT(closePrice, 0))                                  return(_false(catch("RestoreStatus.Runtime(18)   ilegal order close price "+ NumberToStr(closePrice, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (closeTime!=0 && EQ(closePrice, 0))                  return(_false(catch("RestoreStatus.Runtime(19)   order close time/price \""+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\"/"+ NumberToStr(closePrice, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // swap
+      string strSwap = values[7];
+      if (!StringIsNumeric(strSwap))                          return(_false(catch("RestoreStatus.Runtime(20)   illegal order swap \""+ strSwap +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      double swap = StrToDouble(strSwap);
+      if (IsPendingTradeOperation(type) && NE(swap, 0))       return(_false(catch("RestoreStatus.Runtime(21)   order type/swap mismatch "+ OperationTypeToStr(type) +"/"+ NumberToStr(swap, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // commission
+      string strCommission = values[8];
+      if (!StringIsNumeric(strCommission))                    return(_false(catch("RestoreStatus.Runtime(22)   illegal order commission \""+ strCommission +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      double commission = StrToDouble(strCommission);
+      if (IsPendingTradeOperation(type) && NE(commission, 0)) return(_false(catch("RestoreStatus.Runtime(23)   order type/commission mismatch "+ OperationTypeToStr(type) +"/"+ NumberToStr(commission, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // profit
+      string strProfit = values[9];
+      if (!StringIsNumeric(strProfit))                        return(_false(catch("RestoreStatus.Runtime(24)   illegal order profit \""+ strProfit +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      double profit = StrToDouble(strProfit);
+      if (IsPendingTradeOperation(type) && NE(profit, 0))     return(_false(catch("RestoreStatus.Runtime(25)   order type/profit mismatch "+ OperationTypeToStr(type) +"/"+ NumberToStr(profit, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
+      // ggf. Datenarrays vergrößern
+      int minSize = i+1;
+      if (ArraySize(orders.ticket) < minSize) {
+         ArrayResize(orders.ticket,     minSize);
+         ArrayResize(orders.level,      minSize);
+         ArrayResize(orders.type,       minSize);
+         ArrayResize(orders.openTime,   minSize);
+         ArrayResize(orders.openPrice,  minSize);
+         ArrayResize(orders.closeTime,  minSize);
+         ArrayResize(orders.closePrice, minSize);
+         ArrayResize(orders.swap,       minSize);
+         ArrayResize(orders.commission, minSize);
+         ArrayResize(orders.profit,     minSize);
+      }
+
+      // Daten speichern
+      orders.ticket    [i] = ticket;
+      orders.level     [i] = level;
+      orders.type      [i] = type;
+      orders.openTime  [i] = openTime;
+      orders.openPrice [i] = openPrice;
+      orders.closeTime [i] = closeTime;
+      orders.closePrice[i] = closePrice;
+      orders.swap      [i] = swap;
+      orders.commission[i] = commission;
+      orders.profit    [i] = profit;
+   }
+
+   return(IsNoError(catch("RestoreStatus.Runtime(26)")));
 }
 
 
@@ -1095,4 +1262,22 @@ bool RestoreConfiguration() {
  */
 bool ReadSequence() {
    return(IsNoError(catch("ReadSequence()")));
+}
+
+
+/**
+ * Gibt die lesbare Konstante eines Sequenzstatus-Codes zurück.
+ *
+ * @param  int status - Status-Code
+ *
+ * @return string
+ */
+string SequenceStatusToStr(int status) {
+   switch (status) {
+      case STATUS_WAITING    : return("STATUS_WAITING"    );
+      case STATUS_PROGRESSING: return("STATUS_PROGRESSING");
+      case STATUS_FINISHED   : return("STATUS_FINISHED"   );
+      case STATUS_DISABLED   : return("STATUS_DISABLED"   );
+   }
+   return(_empty(catch("SequenceStatusToStr()  invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
