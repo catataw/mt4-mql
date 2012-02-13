@@ -443,7 +443,7 @@ bool UpdatePendingOrders() {
             ordersChanged = true;
          }
       }
-      // wenn nötig neue Stop-Order in den Markt legen
+      // wenn nötig, neue Stop-Order in den Markt legen
       if (!orderExists) {
          if (!Grid.AddOrder(OP_BUYSTOP, nextLevel)) return(false);
          ordersChanged = true;
@@ -464,7 +464,7 @@ bool UpdatePendingOrders() {
             ordersChanged = true;
          }
       }
-      // wenn nötig neue Stop-Order in den Markt legen
+      // wenn nötig, neue Stop-Order in den Markt legen
       if (!orderExists) {
          if (!Grid.AddOrder(OP_SELLSTOP, nextLevel)) return(false);
          ordersChanged = true;
@@ -669,7 +669,7 @@ int PendingStopOrder(int type, int level) {
    int    magicNumber = CreateMagicNumber(level);
    string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
 
-   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, NULL, stopLoss, NULL, comment, magicNumber, NULL, CLR_NONE);
+   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, NULL, stopLoss, NULL, comment, magicNumber, NULL, CLR_NONE);// CLR_NONE|MediumTurquoise
    if (ticket == -1)
       SetLastError(stdlib_PeekLastError());
 
