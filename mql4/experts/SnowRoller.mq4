@@ -80,6 +80,15 @@ string   orders.comment   [];
 
 bool     firstTick = true;
 
+string   str.LotSize;                                       // Speichervariablen für schnellere Abarbeitung von ShowStatus()
+string   str.grid.stopsPL;
+string   str.grid.totalPL;
+string   str.grid.maxProfitLoss;
+string   str.grid.maxDrawdown;
+string   str.grid.breakevenLong;
+string   str.grid.breakevenShort;
+
+
 
 /**
  * Initialisierung
@@ -280,6 +289,9 @@ bool UpdateStatus() {
                grid.level += MathSign(orders.level[i]);
                if (grid.level > 0) grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;    // (int) double
                else                grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1;    // (int) double
+
+               str.grid.breakevenLong  = NumberToStr(grid.breakevenLong,  PriceFormat);
+               str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
             }
          }
          else {
@@ -305,9 +317,12 @@ bool UpdateStatus() {
                else                                           closedByStop = false;
 
                if (closedByStop) {                                   // getriggerter Stop
-                  grid.level   -= MathSign(orders.level[i]);
-                  grid.stops++;
-                  grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
+                      grid.level   -= MathSign(orders.level[i]);
+                      grid.stops++;
+                      grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
+                  str.grid.stopsPL        = DoubleToStr(grid.stopsPL, 2);
+                  str.grid.breakevenLong  = NumberToStr(grid.breakevenLong,  PriceFormat);
+                  str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
                }
                else {                                                // am Sequenzende geschlossen (ggf. durch Tester)
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
@@ -316,15 +331,18 @@ bool UpdateStatus() {
          }
       }
    }
-   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
+       grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
+   str.grid.totalPL = NumberToStr(grid.totalPL, "+.2");
 
    if (GT(grid.totalPL, grid.maxProfitLoss)) {
-      grid.maxProfitLoss      = grid.totalPL;
-      grid.maxProfitLoss.time = TimeCurrent();
+          grid.maxProfitLoss      = grid.totalPL;
+      str.grid.maxProfitLoss      = NumberToStr(grid.maxProfitLoss, "+.2");
+          grid.maxProfitLoss.time = TimeCurrent();
    }
    else if (LT(grid.totalPL, grid.maxDrawdown)) {
-      grid.maxDrawdown      = grid.totalPL;
-      grid.maxDrawdown.time = TimeCurrent();
+          grid.maxDrawdown      = grid.totalPL;
+      str.grid.maxDrawdown      = NumberToStr(grid.maxDrawdown, "+.2");
+          grid.maxDrawdown.time = TimeCurrent();
    }
 
    return(IsNoError(catch("UpdateStatus(2)")));
@@ -544,7 +562,7 @@ bool Grid.PushTicket(int ticket) {
    ResizeArrays(size+1);
 
    orders.ticket    [size] = OrderTicket();
-   orders.level     [size] = ifInt(IsLongTradeOperation(OrderType()), 1, -1) * OrderMagicNumber() & 0xFF;      // 8 Bits (Bits 1-8) => grid.level
+   orders.level     [size] = ifInt(IsLongTradeOperation(OrderType()), 1, -1) * OrderMagicNumber()>>14 & 0xFF;     // 8 Bits (Bits 15-22) => grid.level
    orders.type      [size] = OrderType();
    orders.openTime  [size] = OrderOpenTime();
    orders.openPrice [size] = OrderOpenPrice();
@@ -613,7 +631,7 @@ bool Grid.ReplaceTicket(int ticket) {
       return(false);
 
    orders.ticket    [i] = OrderTicket();
-   orders.level     [i] = ifInt(IsLongTradeOperation(OrderType()), 1, -1) * OrderMagicNumber() & 0xFF;      // 8 Bits (Bits 1-8) => grid.level
+   orders.level     [i] = ifInt(IsLongTradeOperation(OrderType()), 1, -1) * OrderMagicNumber()>>14 & 0xFF;     // 8 Bits (Bits 15-22) => grid.level
    orders.type      [i] = OrderType();
    orders.openTime  [i] = OrderOpenTime();
    orders.openPrice [i] = OrderOpenPrice();
@@ -700,12 +718,13 @@ int CreateMagicNumber(int level) {
    if (sequenceId < 1000) return(_int(-1, catch("CreateMagicNumber(1)   illegal sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
    if (level == 0)        return(_int(-1, catch("CreateMagicNumber(2)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   int ea       = Strategy.Id &  0x3FF << 22;                        // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
-   int sequence = sequenceId  & 0x3FFF <<  8;                        // 14 bit (Bits größer 14 löschen und auf 22 Bit erweitern  | in MagicNumber: Bits  9-22
+   // Für bessere Obfuscation ist die Reihenfolge der Werte [ea,level,sequence] und nicht [ea,sequence,level]. Dies wären aufeinander folgende Werte.
+   int ea       = Strategy.Id & 0x3FF << 22;                         // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
    level        = MathAbs(level) +0.1;                               // (int) double: Wert in MagicNumber ist immer positiv
-   level       &= 0xFF;                                              //  8 bit (Bits größer 8 löschen)                           | in MagicNumber: Bits  1-8
+   level        = level & 0xFF << 14;                                //  8 bit (Bits größer 8 löschen und auf 22 Bit erweitern)  | in MagicNumber: Bits 15-22
+   int sequence = sequenceId  & 0x3FFF;                              // 14 bit (Bits größer 14 löschen                           | in MagicNumber: Bits  1-14
 
-   return(ea + sequence + level);
+   return(ea + level + sequence);
 }
 
 
@@ -739,14 +758,13 @@ int ShowStatus(bool init=false) {
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
-   msg = StringConcatenate(__SCRIPT__, msg,                                                                                                          NL,
-                                                                                                                                                     NL,
-                           "GridSize:            ", GridSize, " pip",                                                                                NL,
-                           "LotSize:              ", NumberToStr(LotSize, ".+"), " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",   NL,
-                           "Realized:            ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", DoubleToStr(grid.stopsPL, 2),      NL,
-                           "Breakeven:        ", NumberToStr(grid.breakevenLong, PriceFormat), " / ", NumberToStr(grid.breakevenShort, PriceFormat), NL,
-                           "Profit/Loss max:  ", DoubleToStr(grid.maxProfitLoss, 2), " / ", DoubleToStr(grid.maxDrawdown, 2),                        NL,
-                           "Profit/Loss:         ", DoubleToStr(grid.totalPL, 2),                                                                    NL);
+   msg = StringConcatenate(__SCRIPT__, msg,                                                                                     NL,
+                                                                                                                                NL,
+                           "GridSize:       ", GridSize, " pip",                                                                NL,
+                           "LotSize:         ", str.LotSize, " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",  NL,
+                           "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", str.grid.stopsPL,  NL,
+                           "Breakeven:   ", str.grid.breakevenLong, " / ", str.grid.breakevenShort,                             NL,
+                           "Profit/Loss:    ", str.grid.totalPL, "  (", str.grid.maxProfitLoss, "/", str.grid.maxDrawdown, ")", NL);
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
@@ -852,7 +870,7 @@ bool RestoreRunningSequenceId() {
          continue;
 
       if (IsMyOrder()) {
-         sequenceId = OrderMagicNumber() >> 8 & 0x3FFF;              // 14 Bits (Bits 9-22) => sequenceId
+         sequenceId = OrderMagicNumber() & 0x3FFF;                   // 14 Bits (Bits 1-14) => sequenceId
          return(_true(catch("RestoreRunningSequenceId(1)")));
       }
    }
@@ -873,7 +891,7 @@ bool IsMyOrder(int sequenceId = NULL) {
       if (OrderMagicNumber() >> 22 == Strategy.Id) {
          if (sequenceId == NULL)
             return(true);
-         return(sequenceId == OrderMagicNumber() >> 8 & 0x3FFF);     // 14 Bits (Bits 9-22) => sequenceId
+         return(sequenceId == OrderMagicNumber() & 0x3FFF);          // 14 Bits (Bits 1-14) => sequenceId
       }
    }
    return(false);
@@ -915,6 +933,7 @@ bool ValidateConfiguration() {
    if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(4)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
    if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(5)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
    if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(6)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   str.LotSize = NumberToStr(LotSize, ".+");                         // für ShowStatus()
 
    // StartCondition
    StartCondition = StringReplace(StartCondition, " ", "");
@@ -1164,7 +1183,8 @@ bool RestoreStatus() {
       }
       else if (key == "LotSize") {
          if (!StringIsNumeric(value))                    return(_false(catch("RestoreStatus(7)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-         LotSize = StrToDouble(value);
+         LotSize    = StrToDouble(value);
+         str.LotSize = NumberToStr(LotSize, ".+");                   // für ShowStatus()
          keys[I_LOTSIZE] = 1;
       }
       else if (key == "StartCondition") {
@@ -1221,7 +1241,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
    }
    else if (key == "grid.maxProfitLoss") {
       if (!StringIsNumeric(value))                                      return(_false(catch("RestoreStatus.Runtime(3)   illegal grid.maxProfitLoss \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      grid.maxProfitLoss = StrToDouble(value);
+          grid.maxProfitLoss = StrToDouble(value);
+      str.grid.maxProfitLoss = NumberToStr(grid.maxProfitLoss, "+.2");
    }
    else if (key == "grid.maxProfitLoss.time") {
       if (!StringIsDigit(value))                                        return(_false(catch("RestoreStatus.Runtime(4)   illegal grid.maxProfitLoss.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -1230,7 +1251,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
    }
    else if (key == "grid.maxDrawdown") {
       if (!StringIsNumeric(value))                                      return(_false(catch("RestoreStatus.Runtime(6)   illegal grid.maxDrawdown \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      grid.maxDrawdown = StrToDouble(value);
+          grid.maxDrawdown = StrToDouble(value);
+      str.grid.maxDrawdown = NumberToStr(grid.maxDrawdown, "+.2");
    }
    else if (key == "grid.maxDrawdown.time") {
       if (!StringIsDigit(value))                                        return(_false(catch("RestoreStatus.Runtime(7)   illegal grid.maxDrawdown.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -1452,8 +1474,9 @@ bool SynchronizeStatus() {
             ArrayPushInt(levels, orders.level[i]);
          }
          else if (closedByStop) {
-            grid.stops++;
-            grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
+                grid.stops++;
+                grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
+            str.grid.stopsPL  = DoubleToStr(grid.stopsPL, 2);
          }
          else if (closedByFinish) {
             grid.finishedPL  += orders.swap[i] + orders.commission[i] + orders.profit[i];
@@ -1462,7 +1485,8 @@ bool SynchronizeStatus() {
          else return(_false(catch("SynchronizeStatus(6)   illegal order status of #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
       }
    }
-   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
+       grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
+   str.grid.totalPL = NumberToStr(grid.totalPL, "+.2");
 
    if (openPositions) {
       if (finishedPositions) return(_false(catch("SynchronizeStatus(7)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
