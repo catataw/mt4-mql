@@ -779,7 +779,7 @@ int ShowStatus(bool init=false) {
 
 /**
  * Ob in den Input-Parametern ausdrücklich eine zu benutzende Sequenz-ID angegeben wurde. Hier wird nur geprüft,
- * ob ein Wert angegeben wurde. Die Gültigkeit dieser ID wird erst in RestoreInputSequenceId() überprüft.
+ * ob ein Wert angegeben wurde. Die Gültigkeit einer ID wird erst in RestoreInputSequenceId() überprüft.
  *
  * @return bool
  */
