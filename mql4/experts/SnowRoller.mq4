@@ -838,9 +838,6 @@ int ClearChartSequenceId() {
       ObjectDelete(label);
 
    return(catch("ClearChartSequenceId()"));
-
-   // Dummy-Calls
-   SequenceStatusToStr(NULL);
 }
 
 
@@ -1538,6 +1535,9 @@ int ResizeArrays(int size, bool reset=false) {
    }
 
    return(catch("ResizeArrays()"));
+
+   // Dummy-Calls
+   SequenceStatusToStr(NULL);
 }
 
 
