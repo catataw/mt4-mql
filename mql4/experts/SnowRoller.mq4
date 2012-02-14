@@ -88,6 +88,9 @@ string   str.grid.maxDrawdown;
 string   str.grid.breakevenLong;
 string   str.grid.breakevenShort;
 
+color    CLR_LONG  = Blue;
+color    CLR_SHORT = Red;
+color    CLR_CLOSE = Orange;
 
 
 /**
@@ -259,7 +262,7 @@ int onTick() {
 
 
 /**
- * Prüft und synchronisiert die im EA gespeicherten offenen und pending Orders mit den aktuellen Laufzeitdaten.
+ * Prüft und synchronisiert die im EA gespeicherten Orders mit den aktuellen Laufzeitdaten.
  *
  * @return bool - Erfolgsstatus
  */
@@ -278,7 +281,10 @@ bool UpdateStatus() {
 
          if (wasPending) {
             // beim letzten Aufruf "pending" Order
-            if (OrderType() != orders.type[i]) {                     // Order wurde inzwischen ausgeführt
+            if (OrderType() != orders.type[i]) {                     // Order wurde ausgeführt
+               if (!ChartMarkers.OrderFilled(orders.ticket[i], orders.type[i], orders.openPrice[i], Digits, ifInt(OrderType()==OP_BUY, CLR_LONG, CLR_SHORT)))
+                  return(_false(SetLastError(stdlib_GetLastError())));
+
                orders.type      [i] = OrderType();
                orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
@@ -669,7 +675,7 @@ int PendingStopOrder(int type, int level) {
    int    magicNumber = CreateMagicNumber(level);
    string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
 
-   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, NULL, stopLoss, NULL, comment, magicNumber, NULL, CLR_NONE);// CLR_NONE|MediumTurquoise
+   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, NULL, stopLoss, NULL, comment, magicNumber, NULL, ifInt(type==OP_BUYSTOP, CLR_LONG, CLR_SHORT));
    if (ticket == -1)
       SetLastError(stdlib_PeekLastError());
 
