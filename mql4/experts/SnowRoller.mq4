@@ -1,8 +1,8 @@
 /**
  * Snowroller - Pyramiding Grid EA
  *
- * @see 7bit Strategy:   http://www.forexfactory.com/showthread.php?t=226059
- *      7bit Journal:    http://www.forexfactory.com/showthread.php?t=239717
+ * @see 7bit Strategy:   http://www.forexfactory.com/showthread.php?t=226059&page=999
+ *      7bit Journal:    http://www.forexfactory.com/showthread.php?t=239717&page=999
  *      7bit Code base:  http://sites.google.com/site/prof7bit/snowball
  *
  * @see Different pyramiding schemes:  http://www.actionforex.com/articles-library/money-management-articles/pyramiding:-a-risky-strategy-200603035356/
