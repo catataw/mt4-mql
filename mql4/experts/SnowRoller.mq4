@@ -317,6 +317,9 @@ bool UpdateStatus() {
             orders.closePrice[i] = OrderClosePrice();
 
             if (orders.type[i] <= OP_SELL) {                         // geschlossene Position
+               if (!ChartMarkers.PositionClosed(orders.ticket[i], Digits, CLR_CLOSE))
+                  return(_false(SetLastError(stdlib_GetLastError())));
+
                if (StringEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
                else if (orders.type[i] == OP_BUY )            closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
                else if (orders.type[i] == OP_SELL)            closedByStop = GE(orders.closePrice[i], orders.stopLoss[i]);
