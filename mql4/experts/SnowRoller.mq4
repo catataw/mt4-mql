@@ -88,9 +88,9 @@ string   str.grid.maxDrawdown;
 string   str.grid.breakevenLong;
 string   str.grid.breakevenShort;
 
-color    CLR_LONG  = Blue;
-color    CLR_SHORT = Red;
-color    CLR_CLOSE = Orange;
+extern color    CLR_LONG  = Blue;
+extern color    CLR_SHORT = Red;
+extern color    CLR_CLOSE = Orange;
 
 
 /**
