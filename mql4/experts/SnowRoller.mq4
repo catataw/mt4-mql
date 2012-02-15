@@ -81,16 +81,16 @@ string   orders.comment   [];
 bool     firstTick = true;
 
 string   str.LotSize;                                       // Speichervariablen für schnellere Abarbeitung von ShowStatus()
-string   str.grid.stopsPL;
-string   str.grid.totalPL;
-string   str.grid.maxProfitLoss;
-string   str.grid.maxDrawdown;
-string   str.grid.breakevenLong;
-string   str.grid.breakevenShort;
+string   str.grid.stopsPL        = "0.00";
+string   str.grid.totalPL        = "0.00";
+string   str.grid.maxProfitLoss  = "0.00";
+string   str.grid.maxDrawdown    = "0.00";
+string   str.grid.breakevenLong  = "-";
+string   str.grid.breakevenShort = "-";
 
-extern color    CLR_LONG  = Blue;
-extern color    CLR_SHORT = Red;
-extern color    CLR_CLOSE = Orange;
+color    CLR_LONG  = Blue;
+color    CLR_SHORT = Red;
+color    CLR_CLOSE = Orange;
 
 
 /**
