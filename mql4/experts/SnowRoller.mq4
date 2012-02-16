@@ -231,24 +231,25 @@ int onTick() {
    if (status==STATUS_FINISHED || status==STATUS_DISABLED)
       return(last_error);
 
-   if (__SCRIPT__ == "SnowRoller.2") {
-      status = STATUS_DISABLED;
-      return(catch("onTick(0.1)"));
-   }
-
    static int last.grid.level;
 
 
-   // (1) Sequenz wartet entweder auf Startsignal...
-   if (status == STATUS_WAITING) {
-      if (IsStartSignal())                    StartSequence();
+   if (__SCRIPT__ == "SnowRoller.2") {
+      last_error = ERR_RUNTIME_ERROR;
+   }
+   else {
+      // (1) Sequenz wartet entweder auf Startsignal...
+      if (status == STATUS_WAITING) {
+         if (IsStartSignal())                    StartSequence();
+      }
+
+      // (2) ...oder läuft: Status prüfen und Orders aktualisieren
+      else if (UpdateStatus()) {
+         if      (IsProfitTargetReached())       FinishSequence();
+         else if (last.grid.level != grid.level) UpdatePendingOrders();
+      }
    }
 
-   // (2) ...oder läuft: Status prüfen und Orders aktualisieren
-   else if (UpdateStatus()) {
-      if      (IsProfitTargetReached())       FinishSequence();
-      else if (last.grid.level != grid.level) UpdatePendingOrders();
-   }
 
    last.grid.level = grid.level;
    firstTick       = false;
@@ -270,7 +271,7 @@ int onTick() {
  * @return bool - Erfolgsstatus
  */
 bool UpdateStatus() {
-   if (IsLastError())
+   if (IsLastError() || status==STATUS_DISABLED)
       return(false);
 
    grid.floatingPL = 0;
@@ -417,6 +418,9 @@ bool IsStartSignal() {
  * @return bool - Erfolgsstatus
  */
 bool StartSequence() {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+
    if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort einen Trade triggert
       if (!IsTesting()) {                                            // jedoch nicht im Tester
          ForceSound("notify.wav");
@@ -446,6 +450,9 @@ bool StartSequence() {
  * @return bool - Erfolgsstatus
  */
 bool UpdatePendingOrders() {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+
    int  nextLevel;
    bool orderExists, ordersChanged;
 
@@ -536,6 +543,9 @@ bool UpdatePendingOrders() {
  * @return bool - Erfolgsstatus
  */
 bool Grid.AddOrder(int type, int level) {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+
    // Order in den Markt legen
    int ticket = PendingStopOrder(type, level);
    if (ticket == -1)
@@ -557,6 +567,9 @@ bool Grid.AddOrder(int type, int level) {
  * @return bool - Erfolgsstatus
  */
 bool Grid.DeleteOrder(int ticket) {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+
    if (!OrderDeleteEx(ticket, CLR_NONE))
       return(_false(SetLastError(stdlib_PeekLastError())));
 
@@ -677,6 +690,9 @@ bool Grid.ReplaceTicket(int ticket) {
  * @return int - Ticket der Order oder -1, falls ein Fehler auftrat
  */
 int PendingStopOrder(int type, int level) {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(-1);
+
    if (type == OP_BUYSTOP) {
       if (level <= 0) return(_int(-1, catch("PendingStopOrder(1)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
    }
@@ -716,6 +732,9 @@ bool IsProfitTargetReached() {
  * @return bool - Erfolgsstatus
  */
 bool FinishSequence() {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+
    if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort einen Trade triggert
       if (!IsTesting()) {                                            // jedoch nicht im Tester
          ForceSound("notify.wav");
@@ -761,10 +780,13 @@ int ShowStatus(bool init=false) {
       return(last_error);
 
    int error = last_error;                                           // bei Funktionseintritt bereits existierenden Fehler zwischenspeichern
-   if (IsLastError())
-      status = STATUS_DISABLED;
 
-   string msg = "";
+   static string msg, str.error;
+
+   if (IsLastError()) {
+      status    = STATUS_DISABLED;
+      str.error = StringConcatenate("  [", ErrorDescription(last_error), "]");
+   }
 
    switch (status) {
       case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting");
@@ -772,9 +794,7 @@ int ShowStatus(bool init=false) {
                                   msg = StringConcatenate(msg, " for crossing of ", str.Entry.limit);                                                                                     break;
       case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")"); break;
       case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                                                                          break;
-      case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled");
-                               if (IsLastError())
-                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                                                                 break;
+      case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled", str.error);                                                                               break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
@@ -986,14 +1006,13 @@ bool ValidateConfiguration() {
  * @return bool - Erfolgsstatus
  */
 bool SaveStatus() {
-   if (sequenceId == 0) return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
-   if (IsLastError())   return(false);
-
-   debug("SaveStatus()   last_error = NO_ERROR");
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+   if (sequenceId == 0)
+      return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
    if (__SCRIPT__ == "SnowRoller.2")
       return(true);
-
    /*
    Für's Re-Initialisieren wird der komplette Laufzeitstatus abgespeichert (nicht nur die Input-Parameter).
    --------------------------------------------------------------------------------------------------------
@@ -1067,7 +1086,7 @@ bool SaveStatus() {
       double   commission = orders.commission[i];
       double   profit     = orders.profit    [i];
       string   comment    = orders.comment   [i];
-      ArrayPushString(lines, StringConcatenate("rt.order.", i, "=", level, "\t", ticket, "\t", type, "\t", openTime, "\t", NumberToStr(openPrice, ".+"), "\t", closeTime, "\t", NumberToStr(closePrice, ".+"), "\t", NumberToStr(stopLoss, ".+"), "\t", NumberToStr(swap, ".+"), "\t", NumberToStr(commission, ".+"), "\t", NumberToStr(profit, ".+"), "\t", comment));
+      ArrayPushString(lines, StringConcatenate("rt.order.", i, "=", level, ",", ticket, ",", type, ",", openTime, ",", NumberToStr(openPrice, ".+"), ",", closeTime, ",", NumberToStr(closePrice, ".+"), ",", NumberToStr(stopLoss, ".+"), ",", NumberToStr(swap, ".+"), ",", NumberToStr(commission, ".+"), ",", NumberToStr(profit, ".+"), ",", comment));
    }
 
 
@@ -1108,6 +1127,9 @@ bool SaveStatus() {
  * @return int - Fehlerstatus
  */
 int UploadStatus(string company, int account, string symbol, string presetsFile) {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(last_error);
+
    if (IsTesting())                                                     // skipping in Tester
       return(NO_ERROR);
 
@@ -1143,6 +1165,9 @@ int UploadStatus(string company, int account, string symbol, string presetsFile)
  * @return bool - ob der Status erfolgreich restauriert wurde
  */
 bool RestoreStatus() {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+
    if (sequenceId == 0)
       return(_false(catch("RestoreStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
@@ -1192,39 +1217,36 @@ bool RestoreStatus() {
 
    string parts[];
    for (int i=0; i < size; i++) {
-      if (Explode(lines[i], "=", parts, 2) < 2)             return(_false(catch("RestoreStatus(4)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-      string key=StringTrim(parts[0]), value=parts[1];
+      if (Explode(lines[i], "=", parts, 2) < 2)          return(_false(catch("RestoreStatus(4)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+      string key=StringTrim(parts[0]), value=StringTrim(parts[1]);
 
-      if (StringStartsWith(key, "rt.")) {                            // Laufzeitvariable
+      if (key == "Sequence.ID") {
+         if (value != StringConcatenate("", sequenceId)) return(_false(catch("RestoreStatus(5)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         Sequence.ID = sequenceId;
+         keys[I_SEQUENCE_ID] = 1;
+      }
+      else if (key == "GridSize") {
+         if (!StringIsDigit(value))                      return(_false(catch("RestoreStatus(6)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         GridSize = StrToInteger(value);
+         keys[I_GRIDSIZE] = 1;
+      }
+      else if (key == "LotSize") {
+         if (!StringIsNumeric(value))                    return(_false(catch("RestoreStatus(7)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+             LotSize = StrToDouble(value);
+         str.LotSize = NumberToStr(LotSize, ".+");                   // für ShowStatus()
+         keys[I_LOTSIZE] = 1;
+      }
+      else if (key == "StartCondition") {
+         StartCondition = value;
+         keys[I_STARTCONDITION] = 1;
+      }
+      else if (StringStartsWith(key, "rt.")) {                       // Laufzeitvariable
          if (!RestoreStatus.Runtime(fileName, lines[i], StringRight(key, -3), value))
             return(false);
       }
-      else {
-         value = StringTrim(value);
-         if (key == "Sequence.ID") {
-            if (value != StringConcatenate("", sequenceId)) return(_false(catch("RestoreStatus(5)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-            Sequence.ID = sequenceId;
-            keys[I_SEQUENCE_ID] = 1;
-         }
-         else if (key == "GridSize") {
-            if (!StringIsDigit(value))                      return(_false(catch("RestoreStatus(6)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-            GridSize = StrToInteger(value);
-            keys[I_GRIDSIZE] = 1;
-         }
-         else if (key == "LotSize") {
-            if (!StringIsNumeric(value))                    return(_false(catch("RestoreStatus(7)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-                LotSize = StrToDouble(value);
-            str.LotSize = NumberToStr(LotSize, ".+");                // für ShowStatus()
-            keys[I_LOTSIZE] = 1;
-         }
-         else if (key == "StartCondition") {
-            StartCondition = value;
-            keys[I_STARTCONDITION] = 1;
-         }
-      }
    }
-   if (IntInArray(0, keys))                                 return(_false(catch("RestoreStatus(8)   one or more configuration values missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
-   if (IntInArray(0, orders.ticket))                        return(_false(catch("RestoreStatus(9)   one or more order entries missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
+   if (IntInArray(0, keys))                              return(_false(catch("RestoreStatus(8)   one or more configuration values missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
+   if (IntInArray(0, orders.ticket))                     return(_false(catch("RestoreStatus(9)   one or more order entries missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
 
    return(IsNoError(catch("RestoreStatus(10)")));
 }
@@ -1241,13 +1263,15 @@ bool RestoreStatus() {
  * @return bool - Erfolgsstatus
  */
 bool RestoreStatus.Runtime(string file, string line, string key, string value) {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
    /*
    [rt.]grid.base=1.32677
    [rt.]grid.maxProfitLoss=200.13
    [rt.]grid.maxProfitLoss.time=1328701713
    [rt.]grid.maxDrawdown=-127.80
    [rt.]grid.maxDrawdown.time=1328691713
-   [rt.]order.0=1\t 61845848\t 0\t 1328705811\t 1.32757\t 1328705920\t 1.32677\t 1.32677\t 0\t 0\t -8\t
+   [rt.]order.0=1,61845848,0,1328705811,1.32757,1328705920,1.32677,1.32677,0,0,-8,
    int      level      = values[ 0];
    int      ticket     = values[ 1];
    int      type       = values[ 2];
@@ -1261,36 +1285,32 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
    double   profit     = values[10];
    string   comment    = values[11];
    */
-   if (!StringStartsWith(key, "order.")) {
-      value = StringTrim(value);
-
-      if (key == "grid.base") {
-         if (!StringIsNumeric(value))                                   return(_false(catch("RestoreStatus.Runtime(1)   illegal grid.base \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-         grid.base = StrToDouble(value);
-         if (LT(grid.base, 0))                                          return(_false(catch("RestoreStatus.Runtime(2)   ilegal grid.base "+ NumberToStr(grid.base, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      }
-      else if (key == "grid.maxProfitLoss") {
-         if (!StringIsNumeric(value))                                   return(_false(catch("RestoreStatus.Runtime(3)   illegal grid.maxProfitLoss \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-             grid.maxProfitLoss = StrToDouble(value);
-         str.grid.maxProfitLoss = NumberToStr(grid.maxProfitLoss, "+.2");
-      }
-      else if (key == "grid.maxProfitLoss.time") {
-         if (!StringIsDigit(value))                                     return(_false(catch("RestoreStatus.Runtime(4)   illegal grid.maxProfitLoss.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-         grid.maxProfitLoss.time = StrToInteger(value);
-         if (grid.maxProfitLoss.time==0 && NE(grid.maxProfitLoss, 0))   return(_false(catch("RestoreStatus.Runtime(5)   grid.maxProfitLoss/grid.maxProfitLoss.time mis-match "+ NumberToStr(grid.maxProfitLoss, ".2") +"/\""+ TimeToStr(grid.maxProfitLoss.time, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      }
-      else if (key == "grid.maxDrawdown") {
-         if (!StringIsNumeric(value))                                   return(_false(catch("RestoreStatus.Runtime(6)   illegal grid.maxDrawdown \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-             grid.maxDrawdown = StrToDouble(value);
-         str.grid.maxDrawdown = NumberToStr(grid.maxDrawdown, "+.2");
-      }
-      else if (key == "grid.maxDrawdown.time") {
-         if (!StringIsDigit(value))                                     return(_false(catch("RestoreStatus.Runtime(7)   illegal grid.maxDrawdown.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-         grid.maxDrawdown.time = StrToInteger(value);
-         if (grid.maxDrawdown.time==0 && NE(grid.maxDrawdown, 0))       return(_false(catch("RestoreStatus.Runtime(8)   grid.maxDrawdown/grid.maxDrawdown.time mis-match "+ NumberToStr(grid.maxDrawdown, ".2") +"/\""+ TimeToStr(grid.maxDrawdown.time, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      }
+   if (key == "grid.base") {
+      if (!StringIsNumeric(value))                                      return(_false(catch("RestoreStatus.Runtime(1)   illegal grid.base \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      grid.base = StrToDouble(value);
+      if (LT(grid.base, 0))                                             return(_false(catch("RestoreStatus.Runtime(2)   ilegal grid.base "+ NumberToStr(grid.base, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
    }
-   else {
+   else if (key == "grid.maxProfitLoss") {
+      if (!StringIsNumeric(value))                                      return(_false(catch("RestoreStatus.Runtime(3)   illegal grid.maxProfitLoss \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+          grid.maxProfitLoss = StrToDouble(value);
+      str.grid.maxProfitLoss = NumberToStr(grid.maxProfitLoss, "+.2");
+   }
+   else if (key == "grid.maxProfitLoss.time") {
+      if (!StringIsDigit(value))                                        return(_false(catch("RestoreStatus.Runtime(4)   illegal grid.maxProfitLoss.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      grid.maxProfitLoss.time = StrToInteger(value);
+      if (grid.maxProfitLoss.time==0 && NE(grid.maxProfitLoss, 0))      return(_false(catch("RestoreStatus.Runtime(5)   grid.maxProfitLoss/grid.maxProfitLoss.time mis-match "+ NumberToStr(grid.maxProfitLoss, ".2") +"/\""+ TimeToStr(grid.maxProfitLoss.time, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+   }
+   else if (key == "grid.maxDrawdown") {
+      if (!StringIsNumeric(value))                                      return(_false(catch("RestoreStatus.Runtime(6)   illegal grid.maxDrawdown \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+          grid.maxDrawdown = StrToDouble(value);
+      str.grid.maxDrawdown = NumberToStr(grid.maxDrawdown, "+.2");
+   }
+   else if (key == "grid.maxDrawdown.time") {
+      if (!StringIsDigit(value))                                        return(_false(catch("RestoreStatus.Runtime(7)   illegal grid.maxDrawdown.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      grid.maxDrawdown.time = StrToInteger(value);
+      if (grid.maxDrawdown.time==0 && NE(grid.maxDrawdown, 0))          return(_false(catch("RestoreStatus.Runtime(8)   grid.maxDrawdown/grid.maxDrawdown.time mis-match "+ NumberToStr(grid.maxDrawdown, ".2") +"/\""+ TimeToStr(grid.maxDrawdown.time, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+   }
+   else if (StringStartsWith(key, "order.")) {
       // Orderindex
       string strIndex = StringRight(key, -6);
       if (!StringIsDigit(strIndex))                                     return(_false(catch("RestoreStatus.Runtime(9)   illegal order index \""+ key +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -1299,72 +1319,72 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
 
       // Orderdaten
       string values[];
-      if (Explode(StringTrimLeft(value), "\t", values, NULL) != 12)     return(_false(catch("RestoreStatus.Runtime(11)   illegal number of order details ("+ ArraySize(values) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (Explode(value, ",", values, 12) < 12)                         return(_false(catch("RestoreStatus.Runtime(11)   illegal number of order details ("+ ArraySize(values) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // level
-      string strLevel = values[0];
+      string strLevel = StringTrim(values[0]);
       if (!StringIsInteger(strLevel))                                   return(_false(catch("RestoreStatus.Runtime(12)   illegal order level \""+ strLevel +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       int level = StrToInteger(strLevel);
       if (level == 0)                                                   return(_false(catch("RestoreStatus.Runtime(13)   illegal order level "+ level +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // ticket
-      string strTicket = values[1];
+      string strTicket = StringTrim(values[1]);
       if (!StringIsDigit(strTicket))                                    return(_false(catch("RestoreStatus.Runtime(14)   illegal order ticket \""+ strTicket +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       int ticket = StrToInteger(strTicket);
       if (ticket == 0)                                                  return(_false(catch("RestoreStatus.Runtime(15)   illegal order ticket #"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       if (IntInArray(ticket, orders.ticket))                            return(_false(catch("RestoreStatus.Runtime(16)   duplicate order ticket #"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // type
-      string strType = values[2];
+      string strType = StringTrim(values[2]);
       if (!StringIsDigit(strType))                                      return(_false(catch("RestoreStatus.Runtime(17)   illegal order type \""+ strType +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       int type = StrToInteger(strType);
       if (!IsTradeOperation(type))                                      return(_false(catch("RestoreStatus.Runtime(18)   illegal order type \""+ type +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // openTime
-      string strOpenTime = values[3];
+      string strOpenTime = StringTrim(values[3]);
       if (!StringIsDigit(strOpenTime))                                  return(_false(catch("RestoreStatus.Runtime(19)   illegal order open time \""+ strOpenTime +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       datetime openTime = StrToInteger(strOpenTime);
       if (openTime == 0)                                                return(_false(catch("RestoreStatus.Runtime(20)   illegal order open time \""+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // openPrice
-      string strOpenPrice = values[4];
+      string strOpenPrice = StringTrim(values[4]);
       if (!StringIsNumeric(strOpenPrice))                               return(_false(catch("RestoreStatus.Runtime(21)   illegal order open price \""+ strOpenPrice +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double openPrice = StrToDouble(strOpenPrice);
       if (LE(openPrice, 0))                                             return(_false(catch("RestoreStatus.Runtime(22)   ilegal order open price "+ NumberToStr(openPrice, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // closeTime
-      string strCloseTime = values[5];
+      string strCloseTime = StringTrim(values[5]);
       if (!StringIsDigit(strCloseTime))                                 return(_false(catch("RestoreStatus.Runtime(23)   illegal order close time \""+ strCloseTime +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       datetime closeTime = StrToInteger(strCloseTime);
       if (closeTime!=0 && closeTime < openTime )                        return(_false(catch("RestoreStatus.Runtime(24)   order open/close time mis-match \""+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\"/\""+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // closePrice
-      string strClosePrice = values[6];
+      string strClosePrice = StringTrim(values[6]);
       if (!StringIsNumeric(strClosePrice))                              return(_false(catch("RestoreStatus.Runtime(25)   illegal order close price \""+ strClosePrice +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double closePrice = StrToDouble(strClosePrice);
       if (LT(closePrice, 0))                                            return(_false(catch("RestoreStatus.Runtime(26)   ilegal order close price "+ NumberToStr(closePrice, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       if (closeTime!=0 && EQ(closePrice, 0))                            return(_false(catch("RestoreStatus.Runtime(27)   order close time/price \""+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\"/"+ NumberToStr(closePrice, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // stopLoss
-      string strStopLoss = values[7];
+      string strStopLoss = StringTrim(values[7]);
       if (!StringIsNumeric(strStopLoss))                                return(_false(catch("RestoreStatus.Runtime(28)   illegal order stoploss \""+ strStopLoss +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double stopLoss = StrToDouble(strStopLoss);
       if (LT(stopLoss, 0))                                              return(_false(catch("RestoreStatus.Runtime(29)   ilegal order stoploss "+ NumberToStr(stopLoss, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // swap
-      string strSwap = values[8];
+      string strSwap = StringTrim(values[8]);
       if (!StringIsNumeric(strSwap))                                    return(_false(catch("RestoreStatus.Runtime(30)   illegal order swap \""+ strSwap +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double swap = StrToDouble(strSwap);
       if (IsPendingTradeOperation(type) && NE(swap, 0))                 return(_false(catch("RestoreStatus.Runtime(31)   order type/swap mis-match "+ OperationTypeToStr(type) +"/"+ NumberToStr(swap, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // commission
-      string strCommission = values[9];
+      string strCommission = StringTrim(values[9]);
       if (!StringIsNumeric(strCommission))                              return(_false(catch("RestoreStatus.Runtime(32)   illegal order commission \""+ strCommission +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double commission = StrToDouble(strCommission);
       if (IsPendingTradeOperation(type) && NE(commission, 0))           return(_false(catch("RestoreStatus.Runtime(33)   order type/commission mis-match "+ OperationTypeToStr(type) +"/"+ NumberToStr(commission, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // profit
-      string strProfit = values[10];
+      string strProfit = StringTrim(values[10]);
       if (!StringIsNumeric(strProfit))                                  return(_false(catch("RestoreStatus.Runtime(34)   illegal order profit \""+ strProfit +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double profit = StrToDouble(strProfit);
       if (IsPendingTradeOperation(type) && NE(profit, 0))               return(_false(catch("RestoreStatus.Runtime(35)   order type/profit mis-match "+ OperationTypeToStr(type) +"/"+ NumberToStr(profit, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -1400,6 +1420,9 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
  * @return bool - Erfolgsstatus
  */
 bool SynchronizeStatus() {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+
    // (1.1) alle offenen Tickets in Datenarrays mit Online-Status synchronisieren
    for (int i=ArraySize(orders.ticket)-1; i >= 0; i--) {
       // Daten synchronisieren, wenn das Ticket beim letzten Mal noch offen war
