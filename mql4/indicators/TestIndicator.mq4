@@ -41,7 +41,7 @@ int onTick() {
    datetime time = TimeCurrent();
    datetime sessionStart = GetServerSessionStartTime(time);
    while (sessionStart == -1) {
-      last_error = stdlib_GetLastError();
+      last_error = stdlib_PeekLastError();
       if (last_error != ERR_MARKET_CLOSED)
          return(last_error);
       time -= 1*DAY;

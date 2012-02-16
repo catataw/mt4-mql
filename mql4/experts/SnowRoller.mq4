@@ -235,7 +235,7 @@ int onTick() {
 
 
    if (__SCRIPT__ == "SnowRoller.2") {
-      last_error = ERR_RUNTIME_ERROR;
+      last_error = ERR_CANCELLED_BY_USER;
    }
    else {
       // (1) Sequenz wartet entweder auf Startsignal...
@@ -290,7 +290,7 @@ bool UpdateStatus() {
             // beim letzten Aufruf "pending" Order
             if (OrderType() != orders.type[i]) {                     // Order wurde ausgeführt
                if (!ChartMarkers.OrderFilled(orders.ticket[i], orders.type[i], orders.openPrice[i], Digits, ifInt(OrderType()==OP_BUY, CLR_LONG, CLR_SHORT)))
-                  return(_false(SetLastError(stdlib_GetLastError())));
+                  return(_false(SetLastError(stdlib_PeekLastError())));
 
                orders.type      [i] = OrderType();
                orders.openTime  [i] = OrderOpenTime();
@@ -328,7 +328,7 @@ bool UpdateStatus() {
 
             if (orders.type[i] <= OP_SELL) {                         // geschlossene Position
                if (!ChartMarkers.PositionClosed(orders.ticket[i], Digits, CLR_CLOSE))
-                  return(_false(SetLastError(stdlib_GetLastError())));
+                  return(_false(SetLastError(stdlib_PeekLastError())));
 
                if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
                else if (orders.type[i] == OP_BUY )             closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
@@ -1489,14 +1489,15 @@ bool SynchronizeStatus() {
    int size = ArraySize(orders.ticket);
    status = ifInt(size==0, STATUS_WAITING, STATUS_PROGRESSING);
 
-   bool pendingOrder, openPosition, openPositions, closedByStop, closedByFinish, finishedPositions;
+   bool pendingOrder, openPosition, closedPosition, closedByStop, closedByFinish, openPositions, finishedPositions;
    int levels[]; ArrayResize(levels, 0);
 
    for (i=0; i < size; i++) {
-      pendingOrder = IsPendingTradeOperation(orders.type[i]);
-      openPosition = !pendingOrder && orders.closeTime[i]==0;
+      pendingOrder   = IsPendingTradeOperation(orders.type[i]);
+      openPosition   = !pendingOrder && orders.closeTime[i]==0;
+      closedPosition = !pendingOrder && !openPosition;
 
-      if (orders.closeTime[i] > 0) {                                          // geschlossenes Ticket
+      if (closedPosition) {                                                            // geschlossenes Ticket
          if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
          else if (orders.type[i] == OP_BUY )             closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
          else if (orders.type[i] == OP_SELL)             closedByStop = GE(orders.closePrice[i], orders.stopLoss[i]);
@@ -1516,11 +1517,11 @@ bool SynchronizeStatus() {
 
             if (orders.level[i] > 0) {
                if (grid.level < 0) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
-               grid.level = MathMax(grid.level, orders.level[i]) +0.1;        // (int) double
+               grid.level = MathMax(grid.level, orders.level[i]) +0.1;                 // (int) double
             }
             else if (orders.level[i] < 0) {
                if (grid.level > 0) return(_false(catch("SynchronizeStatus(3)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
-               grid.level = MathMin(grid.level, orders.level[i]) -0.1;        // (int) double
+               grid.level = MathMin(grid.level, orders.level[i]) -0.1;                 // (int) double
             }
             else return(_false(catch("SynchronizeStatus(4)   illegal order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
@@ -1541,7 +1542,17 @@ bool SynchronizeStatus() {
          }
          else return(_false(catch("SynchronizeStatus(6)   illegal order status of #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
       }
+
+      // (2.1) Order visualisieren: [pendingOrder | openPosition | closedPosition]
+      bool success;
+      if      (pendingOrder)   success = ChartMarkers.OrderCreated_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+      else if (openPosition)   success = true;
+      else/*(closedPosition)*/ success = true;
+
+      if (!success)
+         return(_false(SetLastError(stdlib_PeekLastError())));
    }
+
        grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
    str.grid.totalPL = NumberToStr(grid.totalPL, "+.2");
 
