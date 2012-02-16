@@ -289,7 +289,7 @@ bool UpdateStatus() {
          if (wasPending) {
             // beim letzten Aufruf "pending" Order
             if (OrderType() != orders.type[i]) {                     // Order wurde ausgeführt
-               if (!ChartMarkers.OrderFilled(orders.ticket[i], orders.type[i], orders.openPrice[i], Digits, ifInt(OrderType()==OP_BUY, CLR_LONG, CLR_SHORT)))
+               if (!ChartMarkers.OrderFilled_A(orders.ticket[i], orders.type[i], orders.openPrice[i], Digits, ifInt(OrderType()==OP_BUY, CLR_LONG, CLR_SHORT)))
                   return(_false(SetLastError(stdlib_PeekLastError())));
 
                orders.type      [i] = OrderType();
@@ -1543,10 +1543,10 @@ bool SynchronizeStatus() {
          else return(_false(catch("SynchronizeStatus(6)   illegal order status of #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
       }
 
-      // (2.1) Order visualisieren: [pendingOrder | openPosition | closedPosition]
+      // (2.1) Order visualisieren
       bool success;
       if      (pendingOrder)   success = ChartMarkers.OrderCreated_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-      else if (openPosition)   success = true;
+      else if (openPosition)   success = ChartMarkers.OrderFilled_B(orders.ticket[i], ifInt(orders.type[i]==OP_BUY, OP_BUYSTOP, OP_SELLSTOP), NULL, Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]);
       else/*(closedPosition)*/ success = true;
 
       if (!success)
