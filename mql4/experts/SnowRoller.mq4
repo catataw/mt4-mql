@@ -81,6 +81,10 @@ string   orders.comment   [];
 bool     firstTick = true;
 
 string   str.LotSize;                                       // Speichervariablen für schnellere Abarbeitung von ShowStatus()
+string   str.Entry.limit         = "";
+string   str.grid.maxLevelLong   = "0";
+string   str.grid.maxLevelShort  = "0";
+string   str.grid.stops          = "0 stops";
 string   str.grid.stopsPL        = "0.00";
 string   str.grid.totalPL        = "0.00";
 string   str.grid.maxProfitLoss  = "0.00";
@@ -208,7 +212,7 @@ int deinit() {
    bool isConfigFile = IsFile(TerminalPath() + ifString(IsTesting(), "\\tester", "\\experts") +"\\files\\presets\\SR."+ sequenceId +".set");
 
    if (isConfigFile) {                                            // Ohne Config-Datei wurde Sequenz manuell abgebrochen und nicht gestartet.
-      if (UpdateStatus())                                         // Eine abgebrochene Sequenz braucht nicht gespeichert und nicht restauriert zu werden.
+      if (UpdateStatus())                                         // Eine abgebrochene Sequenz braucht weder gespeichert noch restauriert zu werden.
          SaveStatus();
 
       if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE)
@@ -228,9 +232,8 @@ int onTick() {
       return(last_error);
 
    if (__SCRIPT__ == "SnowRoller.2") {
-      debug("onTick()   status="+ SequenceStatusToStr(status) +"   size(orders.ticket)="+ ArraySize(orders.ticket));
       status = STATUS_DISABLED;
-      return(catch("onTick(1)"));
+      return(catch("onTick(0.1)"));
    }
 
    static int last.grid.level;
@@ -299,8 +302,11 @@ bool UpdateStatus() {
                if (grid.level > 0) grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;    // (int) double
                else                grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1;    // (int) double
 
-               str.grid.breakevenLong  = NumberToStr(grid.breakevenLong,  PriceFormat);
-               str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
+               str.grid.maxLevelLong  = ifString(grid.maxLevelLong==0, "", "+") + grid.maxLevelLong;
+               str.grid.maxLevelShort = grid.maxLevelShort;
+
+               //str.grid.breakevenLong  = NumberToStr(grid.breakevenLong,  PriceFormat);
+               //str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
             }
          }
          else {
@@ -315,7 +321,7 @@ bool UpdateStatus() {
          if (!isClosed) {                                            // weiterhin offenes Ticket
             grid.floatingPL += OrderSwap() + OrderCommission() + OrderProfit();
          }
-         else {                                                      // jetzt geschlossenes Ticket
+         else {                                                      // jetzt geschlossenes Ticket: gestrichene Order oder geschlossene Position
             orders.closeTime [i] = OrderCloseTime();                 // Bei Spikes kann eine PendingOrder ausgeführt *und* bereits geschlossen sein.
             orders.closePrice[i] = OrderClosePrice();
 
@@ -331,10 +337,12 @@ bool UpdateStatus() {
                if (closedByStop) {                                   // getriggerter Stop
                       grid.level   -= MathSign(orders.level[i]);
                       grid.stops++;
+                  str.grid.stops    = grid.stops +" stop"+ ifString(grid.stops==1, "", "s");
                       grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
-                  str.grid.stopsPL        = DoubleToStr(grid.stopsPL, 2);
-                  str.grid.breakevenLong  = NumberToStr(grid.breakevenLong,  PriceFormat);
-                  str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
+                  str.grid.stopsPL  = DoubleToStr(grid.stopsPL, 2);
+
+                //str.grid.breakevenLong  = NumberToStr(grid.breakevenLong,  PriceFormat);
+                //str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
                }
                else {                                                // am Sequenzende geschlossen (ggf. durch Tester)
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
@@ -761,12 +769,12 @@ int ShowStatus(bool init=false) {
    switch (status) {
       case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
-                                  msg = StringConcatenate(msg, " for crossing of ", NumberToStr(Entry.limit, PriceFormat));                                                                                                break;
-      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", grid.level, "  (", ifString(grid.maxLevelLong==0, "", "+"), grid.maxLevelLong, "/", grid.maxLevelShort, ")"); break;
-      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                                                                                                           break;
+                                  msg = StringConcatenate(msg, " for crossing of ", str.Entry.limit);                                                                                     break;
+      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")"); break;
+      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                                                                          break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled");
                                if (IsLastError())
-                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                                                                                                  break;
+                                  msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");                                                                                 break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
@@ -775,7 +783,7 @@ int ShowStatus(bool init=false) {
                                                                                                                                 NL,
                            "GridSize:       ", GridSize, " pip",                                                                NL,
                            "LotSize:         ", str.LotSize, " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",  NL,
-                           "Realized:       ", grid.stops, " stop"+ ifString(grid.stops==1, "", "s") +" = ", str.grid.stopsPL,  NL,
+                           "Realized:       ", str.grid.stops, " = ", str.grid.stopsPL,                                         NL,
                            "Breakeven:   ", str.grid.breakevenLong, " / ", str.grid.breakevenShort,                             NL,
                            "Profit/Loss:    ", str.grid.totalPL, "  (", str.grid.maxProfitLoss, "/", str.grid.maxDrawdown, ")", NL);
 
@@ -954,7 +962,8 @@ bool ValidateConfiguration() {
       Entry.limit = 0;
    }
    else if (StringIsNumeric(StartCondition)) {
-      Entry.limit = StrToDouble(StartCondition);
+          Entry.limit = StrToDouble(StartCondition);
+      str.Entry.limit = NumberToStr(Entry.limit, PriceFormat);
       if (LT(Entry.limit, 0))               return(_false(catch("ValidateConfiguration(7)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
       if (EQ(Entry.limit, 0))
          StartCondition = "";
@@ -979,6 +988,8 @@ bool ValidateConfiguration() {
 bool SaveStatus() {
    if (sequenceId == 0) return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
    if (IsLastError())   return(false);
+
+   debug("SaveStatus()   last_error = NO_ERROR");
 
    if (__SCRIPT__ == "SnowRoller.2")
       return(true);
@@ -1428,7 +1439,7 @@ bool SynchronizeStatus() {
       }
    }
 
-   // (1.3) gestrichene Orders können aus Datenarrays entfernt werden
+   // (1.3) gestrichene Orders aus Datenarrays entfernen
    for (i=ArraySize(orders.ticket)-1; i >= 0; i--) {
       if (IsPendingTradeOperation(orders.type[i])) /*&&*/ if (orders.closeTime[i]!=0)
          if (!Grid.DropTicket(orders.ticket[i]))
@@ -1470,10 +1481,12 @@ bool SynchronizeStatus() {
          closedByFinish = !closedByStop;
       }
 
-      grid.maxLevelLong  = MathMax(grid.maxLevelLong,  orders.level[i]) +0.1; // (int) double
-      grid.maxLevelShort = MathMin(grid.maxLevelShort, orders.level[i]) -0.1; // (int) double
-
       if (!pendingOrder) {
+             grid.maxLevelLong  = MathMax(grid.maxLevelLong,  orders.level[i]) +0.1;   // (int) double
+         str.grid.maxLevelLong  = ifString(grid.maxLevelLong==0, "", "+") + grid.maxLevelLong;
+             grid.maxLevelShort = MathMin(grid.maxLevelShort, orders.level[i]) -0.1;   // (int) double
+         str.grid.maxLevelShort = grid.maxLevelShort;
+
          if (openPosition) {
             openPositions = true;
             grid.floatingPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
@@ -1495,6 +1508,7 @@ bool SynchronizeStatus() {
          }
          else if (closedByStop) {
                 grid.stops++;
+            str.grid.stops    = grid.stops +" stop"+ ifString(grid.stops==1, "", "s");
                 grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
             str.grid.stopsPL  = DoubleToStr(grid.stopsPL, 2);
          }
