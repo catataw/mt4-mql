@@ -81,9 +81,7 @@ double   orders.commission  [];
 double   orders.profit      [];
 string   orders.comment     [];
 
-bool     firstTick = true;
-
-string   str.LotSize;                                       // Speichervariablen für schnellere Abarbeitung von ShowStatus()
+string   str.LotSize             = "";                      // Speichervariablen für schnellere Abarbeitung von ShowStatus()
 string   str.Entry.limit         = "";
 string   str.grid.maxLevelLong   = "0";
 string   str.grid.maxLevelShort  = "0";
@@ -98,6 +96,8 @@ string   str.grid.breakevenShort = "-";
 color    CLR_LONG  = Blue;
 color    CLR_SHORT = Red;
 color    CLR_CLOSE = Orange;
+
+bool     firstTick = true;
 
 
 /**
@@ -302,14 +302,11 @@ bool UpdateStatus() {
                orders.commission[i] = OrderCommission();
                orders.profit    [i] = OrderProfit();
 
-                   grid.level        += MathSign(orders.level[i]);
-                   grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;  // (int) double
-               str.grid.maxLevelLong  = ifString(grid.maxLevelLong==0, "", "+") + grid.maxLevelLong;
-                   grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1;  // (int) double
-               str.grid.maxLevelShort = grid.maxLevelShort;
+               grid.level        += MathSign(orders.level[i]);
+               grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                     // (int) double
+               grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel(); // (int) double
 
-               //str.grid.breakevenLong  = NumberToStr(grid.breakevenLong,  PriceFormat);
-               //str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
+               //SS.Grid.Breakeven();
             }
          }
          else {
@@ -329,7 +326,7 @@ bool UpdateStatus() {
             orders.closePrice[i] = OrderClosePrice();
 
             if (orders.type[i] != OP_UNDEFINED) {                    // geschlossene Position
-               if (!ChartMarkers.PositionClosed(orders.ticket[i], Digits, CLR_CLOSE))
+               if (!ChartMarkers.PositionClosed_A(orders.ticket[i], Digits, CLR_CLOSE))
                   return(_false(SetLastError(stdlib_PeekLastError())));
 
                if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
@@ -338,14 +335,11 @@ bool UpdateStatus() {
                else                                            closedByStop = false;
 
                if (closedByStop) {                                   // getriggerter Stop
-                      grid.level   -= MathSign(orders.level[i]);
-                      grid.stops++;
-                  str.grid.stops    = grid.stops +" stop"+ ifString(grid.stops==1, "", "s");
-                      grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
-                  str.grid.stopsPL  = DoubleToStr(grid.stopsPL, 2);
+                  grid.level   -= MathSign(orders.level[i]);
+                  grid.stops++;
+                  grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
 
-                //str.grid.breakevenLong  = NumberToStr(grid.breakevenLong,  PriceFormat);
-                //str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
+                  //SS.Grid.Breakeven();
                }
                else {                                                // bei Sequenzende geschlossen (ggf. durch Tester)
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
@@ -354,18 +348,15 @@ bool UpdateStatus() {
          }
       }
    }
-       grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
-   str.grid.totalPL = NumberToStr(grid.totalPL, "+.2");
+   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL; SS.Grid.TotalPL();
 
    if (GT(grid.totalPL, grid.maxProfitLoss)) {
-          grid.maxProfitLoss      = grid.totalPL;
-      str.grid.maxProfitLoss      = NumberToStr(grid.maxProfitLoss, "+.2");
-          grid.maxProfitLoss.time = TimeCurrent();
+      grid.maxProfitLoss      = grid.totalPL; SS.Grid.MaxProfitLoss();
+      grid.maxProfitLoss.time = TimeCurrent();
    }
    else if (LT(grid.totalPL, grid.maxDrawdown)) {
-          grid.maxDrawdown      = grid.totalPL;
-      str.grid.maxDrawdown      = NumberToStr(grid.maxDrawdown, "+.2");
-          grid.maxDrawdown.time = TimeCurrent();
+      grid.maxDrawdown      = grid.totalPL; SS.Grid.MaxDrawdown();
+      grid.maxDrawdown.time = TimeCurrent();
    }
 
    return(IsNoError(catch("UpdateStatus(2)")));
@@ -818,7 +809,7 @@ int ShowStatus(bool init=false) {
                                if (StringLen(StartCondition) > 0)
                                   msg = StringConcatenate(msg, " for crossing of ", str.Entry.limit);                                                                                     break;
       case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")"); break;
-      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished");                                                                                          break;
+      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")");    break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled", str.error);                                                                               break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
@@ -840,6 +831,75 @@ int ShowStatus(bool init=false) {
    if (!IsError(catch("ShowStatus(2)")))
       last_error = error;                                            // bei Funktionseintritt bereits existierenden Fehler restaurieren
    return(last_error);
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von LotSize.
+ */
+void SS.LotSize() {
+   str.LotSize = NumberToStr(LotSize, ".+");
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von Entry.limit.
+ */
+void SS.Entry.Limit() {
+   str.Entry.limit = NumberToStr(Entry.limit, PriceFormat);
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.MaxLevelLong und grid.MaxLevelShort.
+ */
+void SS.Grid.MaxLevel() {
+   if (grid.maxLevelLong > 0)
+      str.grid.maxLevelLong = StringConcatenate("+", grid.maxLevelLong);
+
+   str.grid.maxLevelShort = grid.maxLevelShort;
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.breakevenLong und grid.breakevenShort.
+ */
+void SS.Grid.Breakeven() {
+   str.grid.breakevenLong  = NumberToStr(grid.breakevenLong, PriceFormat);
+   str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.stops und grid.stopsPL.
+ */
+void SS.Grid.Stops() {
+   str.grid.stops   = StringConcatenate(grid.stops, " stop", ifString(grid.stops==1, "", "s"));
+   str.grid.stopsPL = DoubleToStr(grid.stopsPL, 2);
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.totalPL.
+ */
+void SS.Grid.TotalPL() {
+   str.grid.totalPL = NumberToStr(grid.totalPL, "+.2");
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.maxProfitLoss.
+ */
+void SS.Grid.MaxProfitLoss() {
+   str.grid.maxProfitLoss = NumberToStr(grid.maxProfitLoss, "+.2");
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.maxDrawdown.
+ */
+void SS.Grid.MaxDrawdown() {
+   str.grid.maxDrawdown = NumberToStr(grid.maxDrawdown, "+.2");
 }
 
 
@@ -999,7 +1059,7 @@ bool ValidateConfiguration() {
    if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(4)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
    if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(5)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
    if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(6)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   str.LotSize = NumberToStr(LotSize, ".+");                         // für ShowStatus()
+   SS.LotSize();
 
    // StartCondition
    StartCondition = StringReplace(StartCondition, " ", "");
@@ -1007,8 +1067,7 @@ bool ValidateConfiguration() {
       Entry.limit = 0;
    }
    else if (StringIsNumeric(StartCondition)) {
-          Entry.limit = StrToDouble(StartCondition);
-      str.Entry.limit = NumberToStr(Entry.limit, PriceFormat);
+      Entry.limit = StrToDouble(StartCondition); SS.Entry.Limit();
       if (LT(Entry.limit, 0))               return(_false(catch("ValidateConfiguration(7)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
       if (EQ(Entry.limit, 0))
          StartCondition = "";
@@ -1263,8 +1322,7 @@ bool RestoreStatus() {
       }
       else if (key == "LotSize") {
          if (!StringIsNumeric(value))                    return(_false(catch("RestoreStatus(7)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-             LotSize = StrToDouble(value);
-         str.LotSize = NumberToStr(LotSize, ".+");                   // für ShowStatus()
+         LotSize = StrToDouble(value); SS.LotSize();
          keys[I_LOTSIZE] = 1;
       }
       else if (key == "StartCondition") {
@@ -1326,8 +1384,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
    }
    else if (key == "grid.maxProfitLoss") {
       if (!StringIsNumeric(value))                                          return(_false(catch("RestoreStatus.Runtime(3)   illegal grid.maxProfitLoss \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-          grid.maxProfitLoss = StrToDouble(value);
-      str.grid.maxProfitLoss = NumberToStr(grid.maxProfitLoss, "+.2");
+      grid.maxProfitLoss = StrToDouble(value); SS.Grid.MaxProfitLoss();
    }
    else if (key == "grid.maxProfitLoss.time") {
       if (!StringIsDigit(value))                                            return(_false(catch("RestoreStatus.Runtime(4)   illegal grid.maxProfitLoss.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -1336,8 +1393,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
    }
    else if (key == "grid.maxDrawdown") {
       if (!StringIsNumeric(value))                                          return(_false(catch("RestoreStatus.Runtime(6)   illegal grid.maxDrawdown \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-          grid.maxDrawdown = StrToDouble(value);
-      str.grid.maxDrawdown = NumberToStr(grid.maxDrawdown, "+.2");
+      grid.maxDrawdown = StrToDouble(value); SS.Grid.MaxDrawdown();
    }
    else if (key == "grid.maxDrawdown.time") {
       if (!StringIsDigit(value))                                            return(_false(catch("RestoreStatus.Runtime(7)   illegal grid.maxDrawdown.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -1573,10 +1629,8 @@ bool SynchronizeStatus() {
       }
 
       if (!pendingOrder) {
-             grid.maxLevelLong  = MathMax(grid.maxLevelLong,  orders.level[i]) +0.1;   // (int) double
-         str.grid.maxLevelLong  = ifString(grid.maxLevelLong==0, "", "+") + grid.maxLevelLong;
-             grid.maxLevelShort = MathMin(grid.maxLevelShort, orders.level[i]) -0.1;   // (int) double
-         str.grid.maxLevelShort = grid.maxLevelShort;
+         grid.maxLevelLong  = MathMax(grid.maxLevelLong,  orders.level[i]) +0.1;                      // (int) double
+         grid.maxLevelShort = MathMin(grid.maxLevelShort, orders.level[i]) -0.1; SS.Grid.MaxLevel();  // (int) double
 
          if (openPosition) {
             openPositions = true;
@@ -1598,10 +1652,8 @@ bool SynchronizeStatus() {
             ArrayPushInt(levels, orders.level[i]);
          }
          else if (closedByStop) {
-                grid.stops++;
-            str.grid.stops    = grid.stops +" stop"+ ifString(grid.stops==1, "", "s");
-                grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
-            str.grid.stopsPL  = DoubleToStr(grid.stopsPL, 2);
+            grid.stops++;
+            grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
          }
          else if (closedByFinish) {
             grid.finishedPL  += orders.swap[i] + orders.commission[i] + orders.profit[i];
@@ -1611,20 +1663,24 @@ bool SynchronizeStatus() {
       }
 
       // (2.1) Order visualisieren
-      bool success;
+      bool success = true;
       if      (pendingOrder)                      success = ChartMarkers.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
       else if (openPosition) {
          if (orders.pendingType[i]==OP_UNDEFINED) success = ChartMarkers.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
          else                                     success = ChartMarkers.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]);
       }
-      else/*(closedPosition)*/ success = true;
-
+      else /*(closedPosition)*/ {
+         if (closedByFinish) {
+            if (orders.pendingType[i]==OP_UNDEFINED) success = ChartMarkers.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+            else                                     success = ChartMarkers.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]);
+            if (success)                             success = ChartMarkers.PositionClosed_B(orders.ticket[i], Digits, CLR_CLOSE, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]);
+         }
+      }
       if (!success)
          return(_false(SetLastError(stdlib_PeekLastError())));
    }
 
-       grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
-   str.grid.totalPL = NumberToStr(grid.totalPL, "+.2");
+   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL; SS.Grid.TotalPL();
 
    if (openPositions) {
       if (finishedPositions) return(_false(catch("SynchronizeStatus(7)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
@@ -1706,6 +1762,7 @@ int ResizeArrays(int size, bool reset=false) {
    return(catch("ResizeArrays()"));
 
    // Dummy-Calls
+   SS.Grid.Breakeven();
    SequenceStatusToStr(NULL);
 }
 
