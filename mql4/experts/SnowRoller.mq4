@@ -57,6 +57,7 @@ double   grid.stopsPL;                                      // P/L der getrigger
 double   grid.finishedPL;                                   // P/L sonstiger geschlossener Positionen (Sequenzende)
 double   grid.floatingPL;                                   // P/L offener Positionen
 double   grid.totalPL;                                      // Gesamt-P/L der Sequenz (stopsPL + finishedPL + floatingPL)
+double   grid.valueAtRisk;                                  // aktuelles maximales Risiko
 
 double   grid.maxProfitLoss;                                // maximal erreichter Gesamtprofit
 datetime grid.maxProfitLoss.time;                           // Zeitpunkt von grid.maxProfitLoss
@@ -88,6 +89,7 @@ string   str.grid.maxLevelShort  = "0";
 string   str.grid.stops          = "0 stops";
 string   str.grid.stopsPL        = "0.00";
 string   str.grid.totalPL        = "0.00";
+string   str.grid.valueAtRisk    = "0.00";
 string   str.grid.maxProfitLoss  = "0.00";
 string   str.grid.maxDrawdown    = "0.00";
 string   str.grid.breakevenLong  = "-";
@@ -303,9 +305,9 @@ bool UpdateStatus() {
                orders.profit    [i] = OrderProfit();
 
                grid.level        += MathSign(orders.level[i]);
-               grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                     // (int) double
-               grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel(); // (int) double
-
+               grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                        // (int) double
+               grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();    // (int) double
+               grid.valueAtRisk   = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
                //SS.Grid.Breakeven();
             }
          }
@@ -335,10 +337,10 @@ bool UpdateStatus() {
                else                                            closedByStop = false;
 
                if (closedByStop) {                                   // getriggerter Stop
-                  grid.level   -= MathSign(orders.level[i]);
+                  grid.level      -= MathSign(orders.level[i]);
                   grid.stops++;
-                  grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
-
+                  grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
+                  grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
                   //SS.Grid.Breakeven();
                }
                else {                                                // bei Sequenzende geschlossen (ggf. durch Tester)
@@ -815,13 +817,13 @@ int ShowStatus(bool init=false) {
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
-   msg = StringConcatenate(__SCRIPT__, msg,                                                                                     NL,
-                                                                                                                                NL,
-                           "GridSize:       ", GridSize, " pip",                                                                NL,
-                           "LotSize:         ", str.LotSize, " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",  NL,
-                           "Realized:       ", str.grid.stops, " = ", str.grid.stopsPL,                                         NL,
-                           "Breakeven:   ", str.grid.breakevenLong, " / ", str.grid.breakevenShort,                             NL,
-                           "Profit/Loss:    ", str.grid.totalPL, "  (", str.grid.maxProfitLoss, "/", str.grid.maxDrawdown, ")", NL);
+   msg = StringConcatenate(__SCRIPT__, msg,                                                                                                                NL,
+                                                                                                                                                           NL,
+                           "GridSize:       ", GridSize, " pip",                                                                                           NL,
+                           "LotSize:         ", str.LotSize, " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",                             NL,
+                           "Realized:       ", str.grid.stops, " = ", str.grid.stopsPL,                                                                    NL,
+                           "Breakeven:   ", str.grid.breakevenLong, " / ", str.grid.breakevenShort,                                                        NL,
+                           "Profit/Loss:    ", str.grid.totalPL, "  (", str.grid.maxProfitLoss, "/", str.grid.maxDrawdown, "/", str.grid.valueAtRisk, ")", NL);
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
@@ -884,6 +886,14 @@ void SS.Grid.Stops() {
  */
 void SS.Grid.TotalPL() {
    str.grid.totalPL = NumberToStr(grid.totalPL, "+.2");
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.valueAtRisk.
+ */
+void SS.Grid.ValueAtRisk() {
+   str.grid.valueAtRisk = NumberToStr(grid.valueAtRisk, "+.2");
 }
 
 
@@ -1120,6 +1130,7 @@ bool SaveStatus() {
    double   grid.finishedPL;           // nein: kann aus Orderdaten restauriert werden
    double   grid.floatingPL;           // nein: kann aus offenen Positionen restauriert werden
    double   grid.totalPL;              // nein: kann aus stopsPL, finishedPL und floatingPL restauriert werden
+   double   grid.valueAtRisk;          // nein: kann aus stopsPL und grid.level restauriert werden
    double   grid.maxProfitLoss;        // ja
    datetime grid.maxProfitLoss.time;   // ja
    double   grid.maxDrawdown;          // ja
@@ -1606,6 +1617,7 @@ bool SynchronizeStatus() {
    double grid.finishedPL;          // ok
    double grid.floatingPL;          // ok
    double grid.totalPL;             // ok
+   double grid.valueAtRisk;         // ok
    double grid.breakevenLong;       //    wird mit dem aktuellen TickValue als Näherung neuberechnet
    double grid.breakevenShort;      //    wird mit dem aktuellen TickValue als Näherung neuberechnet
    */
@@ -1650,10 +1662,12 @@ bool SynchronizeStatus() {
                return(_false(catch("SynchronizeStatus(5)   duplicate order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
             ArrayPushInt(levels, orders.level[i]);
+            grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
          }
          else if (closedByStop) {
             grid.stops++;
-            grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
+            grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
+            grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
          }
          else if (closedByFinish) {
             grid.finishedPL  += orders.swap[i] + orders.commission[i] + orders.profit[i];
