@@ -38,5 +38,20 @@ int onTick() {
    if (!done) {
       done = true;
    }
+
+   HandleEvent(EVENT_BAR_OPEN);
+
    return(catch("onTick()"));
+}
+
+
+/**
+ *
+ * @return int - Fehlerstatus
+ */
+int onBarOpen(int details[]) {
+
+   debug("onBarOpen("+ Tick +")   details = "+ IntArrayToStr(details, NULL));
+
+   return(catch("onBarOpen()"));
 }
