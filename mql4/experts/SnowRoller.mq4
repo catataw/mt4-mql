@@ -255,7 +255,6 @@ int onTick() {
       }
    }
 
-
    last.grid.level = grid.level;
    firstTick       = false;
 
@@ -294,9 +293,6 @@ bool UpdateStatus() {
          if (wasPending) {
             // beim letzten Aufruf Pending-Order
             if (OrderType() != orders.pendingType[i]) {              // Order wurde ausgeführt
-               if (!ChartMarkers.OrderFilled_A(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, ifInt(OrderType()==OP_BUY, CLR_LONG, CLR_SHORT)))
-                  return(_false(SetLastError(stdlib_PeekLastError())));
-
                orders.type      [i] = OrderType();
                orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
@@ -308,7 +304,10 @@ bool UpdateStatus() {
                grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                        // (int) double
                grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();    // (int) double
                grid.valueAtRisk   = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
-               //SS.Grid.Breakeven();
+               Grid.Breakeven();
+
+               if (!ChartMarker.OrderFilled(i))
+                  return(false);
             }
          }
          else {
@@ -328,7 +327,7 @@ bool UpdateStatus() {
             orders.closePrice[i] = OrderClosePrice();
 
             if (orders.type[i] != OP_UNDEFINED) {                    // geschlossene Position
-               if (!ChartMarkers.PositionClosed_A(orders.ticket[i], Digits, CLR_CLOSE))
+               if (!ChartMarker.PositionClosed_A(orders.ticket[i], Digits, CLR_CLOSE))
                   return(_false(SetLastError(stdlib_PeekLastError())));
 
                if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
@@ -341,11 +340,11 @@ bool UpdateStatus() {
                   grid.stops++;
                   grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
                   grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
-                  //SS.Grid.Breakeven();
                }
                else {                                                // bei Sequenzende geschlossen (ggf. durch Tester)
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
+               Grid.Breakeven();
             }
          }
       }
@@ -860,6 +859,26 @@ void SS.Grid.MaxLevel() {
       str.grid.maxLevelLong = StringConcatenate("+", grid.maxLevelLong);
 
    str.grid.maxLevelShort = grid.maxLevelShort;
+}
+
+
+/**
+ * Berechnet die aktuellen Breakeven-Werte der Sequenz neu.
+ */
+void Grid.Breakeven() {
+   return;
+
+   // Ziel: wenn floatingPL = -realizedPL, dann grid.totalPL = 0.00  => Breakeven-Punkt
+   // -----
+   // realizedPL = grid.stopsPL + grid.finishedPL;
+
+   // (1) Gesamtgröße der offenen Positionen ermitteln
+   // (2) avg(OpenPrice) der Gesamtposition berechnen
+   // (3) PipValue der Gesamtposition ermitteln
+   // (4) benötigte Pips für Breakeven berechnen (-realizedPL)
+   // (5) anhand von (2) und (4) Breakeven-Level berechnen
+
+   SS.Grid.Breakeven();
 }
 
 
@@ -1678,23 +1697,25 @@ bool SynchronizeStatus() {
 
       // (2.1) Order visualisieren
       bool success = true;
-      if      (pendingOrder)                      success = ChartMarkers.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-      else if (openPosition) {
-         if (orders.pendingType[i]==OP_UNDEFINED) success = ChartMarkers.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-         else                                     success = ChartMarkers.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]);
+      if      (pendingOrder) {                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
       }
-      else /*(closedPosition)*/ {
+      else if (openPosition) {                       // openPosition ist Folge von Pending- oder Market-Order
+         if (orders.pendingType[i]!=OP_UNDEFINED)    success = ChartMarker.OrderFilled(i);
+         else                                        success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+      }
+      else /*(closedPosition)*/ {                    // closedPosition ist Folge von openPosition
          if (closedByFinish) {
-            if (orders.pendingType[i]==OP_UNDEFINED) success = ChartMarkers.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-            else                                     success = ChartMarkers.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, ifInt(IsLongTradeOperation(orders.type[i]), CLR_LONG, CLR_SHORT), LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]);
-            if (success)                             success = ChartMarkers.PositionClosed_B(orders.ticket[i], Digits, CLR_CLOSE, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]);
+            if (orders.pendingType[i]!=OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
+            else                                     success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+            if (success)                             success = ChartMarker.PositionClosed_B(orders.ticket[i], Digits, CLR_CLOSE, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]);
          }
       }
-      if (!success)
+      if (!success && !IsLastError())
          return(_false(SetLastError(stdlib_PeekLastError())));
    }
 
    grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL; SS.Grid.TotalPL();
+   Grid.Breakeven();
 
    if (openPositions) {
       if (finishedPositions) return(_false(catch("SynchronizeStatus(7)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
@@ -1712,6 +1733,27 @@ bool SynchronizeStatus() {
    }
 
    return(IsNoError(catch("SynchronizeStatus(10)")));
+}
+
+
+/**
+ * Korrigiert die vom Terminal beim Ausführen einer Pending-Order gesetzten oder nicht gesetzten Chart-Marker.
+ *
+ * @param  int i - Ticket-Index der Datenarrays
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool ChartMarker.OrderFilled(int i) {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return(true);
+
+   if (i < 0 || ArraySize(orders.ticket) > i+1)
+      return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   if (!ChartMarker.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]))
+      return(_false(SetLastError(stdlib_PeekLastError())));
+
+   return(true);
 }
 
 
@@ -1776,7 +1818,6 @@ int ResizeArrays(int size, bool reset=false) {
    return(catch("ResizeArrays()"));
 
    // Dummy-Calls
-   SS.Grid.Breakeven();
    SequenceStatusToStr(NULL);
 }
 
