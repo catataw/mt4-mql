@@ -304,10 +304,9 @@ bool UpdateStatus() {
                grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                        // (int) double
                grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();    // (int) double
                grid.valueAtRisk   = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
-               Grid.Breakeven();
+               Grid.UpdateBreakeven();
 
-               if (!ChartMarker.OrderFilled(i))
-                  return(false);
+               if (!ChartMarker.OrderFilled(i)) return(false);
             }
          }
          else {
@@ -317,7 +316,7 @@ bool UpdateStatus() {
             orders.profit    [i] = OrderProfit();
          }
 
-         isClosed = OrderCloseTime() != 0;                           // ob die Order jetzt geschlossen ist
+         isClosed = OrderCloseTime() != 0;                            // ob die Order jetzt geschlossen ist
 
          if (!isClosed) {                                            // weiterhin offene Order
             grid.floatingPL += OrderSwap() + OrderCommission() + OrderProfit();
@@ -344,18 +343,18 @@ bool UpdateStatus() {
                else {                                                // bei Sequenzende geschlossen (ggf. durch Tester)
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
-               Grid.Breakeven();
+               Grid.UpdateBreakeven();
             }
          }
       }
    }
    grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL; SS.Grid.TotalPL();
 
-   if (GT(grid.totalPL, grid.maxProfitLoss)) {
+   if (grid.totalPL > grid.maxProfitLoss) {
       grid.maxProfitLoss      = grid.totalPL; SS.Grid.MaxProfitLoss();
       grid.maxProfitLoss.time = TimeCurrent();
    }
-   else if (LT(grid.totalPL, grid.maxDrawdown)) {
+   else if (grid.totalPL < grid.maxDrawdown) {
       grid.maxDrawdown      = grid.totalPL; SS.Grid.MaxDrawdown();
       grid.maxDrawdown.time = TimeCurrent();
    }
@@ -865,19 +864,29 @@ void SS.Grid.MaxLevel() {
 /**
  * Berechnet die aktuellen Breakeven-Werte der Sequenz neu.
  */
-void Grid.Breakeven() {
-   return;
+void Grid.UpdateBreakeven() {
+   // wenn floatingPL =  -realizedPL, dann grid.totalPL = 0.00  => Breakeven-Punkt auf aktueller Seite
+   double distance1 = ProfitToDistance(MathAbs(grid.stopsPL + grid.finishedPL));
 
-   // Ziel: wenn floatingPL = -realizedPL, dann grid.totalPL = 0.00  => Breakeven-Punkt
-   // -----
-   // realizedPL = grid.stopsPL + grid.finishedPL;
+   if (grid.level == 0) {                                            // realizedPL und valueAtRisk sind identisch, Abstand der Breakeven-Punkte ist gleich
+      grid.breakevenLong  = grid.base + distance1*Pips;
+      grid.breakevenShort = grid.base - distance1*Pips;
+   }
+   else {
+      // wenn floatingPL = -valueAtRisk, dann grid.totalPL = 0.00  => Breakeven-Punkt auf gegenüberliegender Seite
+      double distance2 = ProfitToDistance(MathAbs(grid.valueAtRisk));
 
-   // (1) Gesamtgröße der offenen Positionen ermitteln
-   // (2) avg(OpenPrice) der Gesamtposition berechnen
-   // (3) PipValue der Gesamtposition ermitteln
-   // (4) benötigte Pips für Breakeven berechnen (-realizedPL)
-   // (5) anhand von (2) und (4) Breakeven-Level berechnen
+      if (grid.level > 0) {
+         grid.breakevenLong  = grid.base + distance1*Pips;
+         grid.breakevenShort = grid.base - distance2*Pips;
+      }
+      else /*(grid.level < 0)*/ {
+         grid.breakevenLong  = grid.base + distance2*Pips;
+         grid.breakevenShort = grid.base - distance1*Pips;
+      }
+   }
 
+   //double profit = DistanceToProfit(distance);
    SS.Grid.Breakeven();
 }
 
@@ -886,8 +895,121 @@ void Grid.Breakeven() {
  * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.breakevenLong und grid.breakevenShort.
  */
 void SS.Grid.Breakeven() {
-   str.grid.breakevenLong  = NumberToStr(grid.breakevenLong, PriceFormat);
-   str.grid.breakevenShort = NumberToStr(grid.breakevenShort, PriceFormat);
+   return;
+   str.grid.breakevenLong  = DoubleToStr(grid.breakevenLong, PipDigits);
+   str.grid.breakevenShort = DoubleToStr(grid.breakevenShort, PipDigits);
+}
+
+
+/**
+ * Berechnet den notwendigen Abstand von der Gridbasis, um den angegebenen Gewinn zu erzielen.
+ *
+ * @param  double profit       - zu erzielender Gewinn
+ * @param  int    maxOpenLevel - Der höchste für die Berechnung zu berücksichtigende Level mit einer offenen Position. Getriggerte Stops
+ *                               zwischen diesem Level und dem zurückgegebenen Abstand fließen in die Berechnung mit ein (default: 0).
+ *
+ * @return double - Abstand in Pips oder 0, wenn ein Fehler auftrat
+ */
+double ProfitToDistance(double profit, int maxOpenLevel=0) {
+   if (GridSize <= 0)                                                            // Division durch 0 abfangen
+      return(_ZERO(catch("ProfitToDistance(1)  illegal GridSize = "+ GridSize, ERR_RUNTIME_ERROR)));
+
+   // TODO: Berücksichtigung von maxOpenLevel integrieren
+
+   /*
+   Formeln gelten für Sequenzstart an der Gridbasis:
+   -------------------------------------------------
+   gs        = GridSize
+   n         = Level
+   pipV(n)   = PipValue von Level n
+   profit(d) = profit(exp) + profit(lin)                                         // Summe aus exponentiellem (ganzer Level) und linearem Anteil (partieller nächster Level)
+
+
+   Level des exponentiellen Anteils ermitteln:
+   -------------------------------------------
+   expProfit(n)   = n * (n+1)/2 * gs * pipV(1)
+
+   =>          0 = n² + n - 2*profit/(gs*pipV(1))                                // Normalform quadratischer Gleichung
+
+   => (n + 0.5)² = n² + n + 0.25
+
+   => (n + 0.5)² - 0.25 - 2*profit/(gs*pipV(1)) = n² + n - 2*profit/(gs*pipV(1))
+
+   => (n + 0.5)² - 0.25 - 2*profit/(gs*pipV(1)) = 0
+
+   => (n + 0.5)² = 2*profit/(gs*pipV(1)) + 0.25
+
+   => (n + 0.5)  = (2*profit/(gs*pipV(1)) + 0.25)½                               // Quadratwurzel
+
+   =>          n = (2*profit/(gs*pipV(1)) + 0.25)½ - 0.5                         // n = rationale Zahl
+   */
+   int    gs   = GridSize;                                                       // Division durch 0 abfangen
+   double pipV = PipValue(LotSize);                                              if (LE(pipV, 0)) return(_ZERO(catch("ProfitToDistance(2)  illegal pipValue("+ NumberToStr(LotSize, ".+") +") = "+ NumberToStr(pipV, ".+"), ERR_RUNTIME_ERROR)));
+   int    n    = MathSqrt(2*profit/(gs*pipV) + 0.25) - 0.5 +0.000000001;         // (int) double
+
+   /*
+   Pips des linearen Anteils ermitteln:
+   ------------------------------------
+   linProfit(n.x) = 0.x * gs * pipV(n+1)
+
+   =>   linProfit = x * gs * pipV(n+1)
+
+   =>   linProfit = x * gs * (n+1) * pipV_1
+
+   =>           x = linProfit / (gs * (n+1) * pipV_1)
+   */
+   double linProfit = profit - n * (n+1)/2 * gs * pipV;                          // verbleibender linearer Anteil am Profit
+   double linPips   = linProfit / (gs * (n+1) * pipV);
+
+   // Gesamtdistanz berechnen
+   double distance = n * gs + linPips + gs;                                      // GridSize hinzu addieren, da der Sequenzstart erst bei Grid.Base + GridSize erfolgt
+
+   //debug("ProfitToDistance()   profit="+ DoubleToStr(profit, 2) +"  n="+ n +"  lin="+ DoubleToStr(linProfit, 2) +"  linPips="+ NumberToStr(linPips, ".+") +"  distance="+ NumberToStr(distance, ".+"));
+   return(distance);
+}
+
+
+/**
+ * Berechnet den theoretischen Profit im angegebenen Abstand von der Gridbasis.
+ *
+ * @param  double distance - Abstand in Pips von Grid.Base
+ *
+ * @return double - Profit oder 0, wenn ein Fehler auftrat
+ */
+double DistanceToProfit(double distance) {
+   if (GridSize <= 0)                                                // Division durch 0 abfangen
+      return(_ZERO(catch("DistanceToProfit(1)  illegal GridSize = "+ GridSize, ERR_RUNTIME_ERROR)));
+   if (LE(distance, GridSize)) {
+      if (LT(distance, 0))
+         return(_ZERO(catch("DistanceToProfit(2)  invalid parameter distance = "+ NumberToStr(distance, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+      return(0);
+   }
+   /*
+   d         = Distanz in Pip
+   gs        = GridSize
+   n         = Level
+   pipV(n)   = PipValue von Level n
+   profit(d) = profit(exp) + profit(lin)                             // Summe aus exponentiellem (ganzer Level) und linearem Anteil (partieller nächster Level)
+
+   Für Sequenzstart an der Gridbasis gilt:
+   ---------------------------------------
+   Ganzer Level:      expProfit(n.0) = n * (n+1)/2 * gs * pipV(1)    // am Ende des Levels
+   Partieller Level:  linProfit(n.x) =         0.x * gs * pipV(n+1)
+   PipValue:          pipV(n)        = n * pipV(LotSize)
+
+   profit(d) = expProfit((int) d) + linProfit(d % gs)
+   */
+   int    gs   = GridSize;
+   double d    = distance - gs;                                      // GridSize von distance abziehen, da Sequenzstart erst bei Grid.Base + GridSize erfolgt
+   int    n    = (d+0.000000001) / gs;
+   double pipV = PipValue(LotSize);
+
+   double expProfit = n * (n+1)/2 * gs * pipV;
+   double linProfit = MathModFix(d, gs) * gs * (n+1) * pipV;
+   double profit    = expProfit + linProfit;
+
+   //debug("DistanceToProfit()   gs="+ gs +"  d="+ d +"  n="+ n +"  exp="+ DoubleToStr(expProfit, 2) +"  lin="+ DoubleToStr(linProfit, 2) +"  profit="+ NumberToStr(profit, ".+"));
+   return(profit);
 }
 
 
@@ -1715,7 +1837,7 @@ bool SynchronizeStatus() {
    }
 
    grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL; SS.Grid.TotalPL();
-   Grid.Breakeven();
+   Grid.UpdateBreakeven();
 
    if (openPositions) {
       if (finishedPositions) return(_false(catch("SynchronizeStatus(7)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
@@ -1739,7 +1861,7 @@ bool SynchronizeStatus() {
 /**
  * Korrigiert die vom Terminal beim Ausführen einer Pending-Order gesetzten oder nicht gesetzten Chart-Marker.
  *
- * @param  int i - Ticket-Index der Datenarrays
+ * @param  int i - Index des Ordertickets in den Datenarrays
  *
  * @return bool - Erfolgsstatus
  */
@@ -1747,7 +1869,7 @@ bool ChartMarker.OrderFilled(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
 
-   if (i < 0 || ArraySize(orders.ticket) > i+1)
+   if (i < 0 || ArraySize(orders.ticket) < i+1)
       return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    if (!ChartMarker.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]))
@@ -1818,6 +1940,7 @@ int ResizeArrays(int size, bool reset=false) {
    return(catch("ResizeArrays()"));
 
    // Dummy-Calls
+   DistanceToProfit(NULL);
    SequenceStatusToStr(NULL);
 }
 
