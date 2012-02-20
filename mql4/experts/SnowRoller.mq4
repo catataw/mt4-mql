@@ -1013,6 +1013,8 @@ bool Grid.UpdateBreakeven() {
 void Grid.DrawBreakeven() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
+   if (EQ(grid.breakevenLong, 0))                                          // ohne initialisierten Breakeven sofortige Rückkehr
+      return;
 
    static double   last.grid.breakevenLong, last.grid.breakevenShort;      // Daten der zuletzt gezeichneten Indikatorwerte
    static datetime last.drawingTime;
