@@ -1008,7 +1008,7 @@ bool Grid.UpdateBreakeven() {
 
 
 /**
- * Aktualisiert die Kurve des Breakeven-Indikators.
+ * Aktualisiert den Breakeven-Indikator.
  */
 void Grid.DrawBreakeven() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
@@ -1845,8 +1845,6 @@ bool SynchronizeStatus() {
          if (!Grid.DropTicket(orders.ticket[i]))
             return(false);
    }
-
-   // (1.4) Arrays nach OrderOpenTime() sortieren
 
 
    // (2) übrige Laufzeitvariablen restaurieren
