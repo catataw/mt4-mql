@@ -84,6 +84,7 @@ string   orders.comment     [];
 
 string   str.LotSize             = "";                      // Speichervariablen für schnellere Abarbeitung von ShowStatus()
 string   str.Entry.limit         = "";
+string   str.grid.base           = "";
 string   str.grid.maxLevelLong   = "0";
 string   str.grid.maxLevelShort  = "0";
 string   str.grid.stops          = "0 stops";
@@ -424,7 +425,7 @@ bool StartSequence() {
    }
 
    // Grid-Base definieren
-   grid.base = ifDouble(EQ(Entry.limit, 0), Bid, Entry.limit);
+   grid.base = ifDouble(EQ(Entry.limit, 0), Bid, Entry.limit); SS.Grid.Base();
 
    // Stop-Orders in den Markt legen
    if (!UpdatePendingOrders())
@@ -817,7 +818,7 @@ int ShowStatus(bool init=false) {
 
    msg = StringConcatenate(__SCRIPT__, msg,                                                                                                                NL,
                                                                                                                                                            NL,
-                           "GridSize:       ", GridSize, " pip",                                                                                           NL,
+                           "Grid:            ", GridSize, " pip @ ", str.grid.base,                                                                        NL,
                            "LotSize:         ", str.LotSize, " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",                             NL,
                            "Realized:       ", str.grid.stops, " = ", str.grid.stopsPL,                                                                    NL,
                            "Breakeven:   ", str.grid.breakevenLong, " / ", str.grid.breakevenShort,                                                        NL,
@@ -838,6 +839,9 @@ int ShowStatus(bool init=false) {
  * ShowStatus(): Aktualisiert die String-Repräsentation von LotSize.
  */
 void SS.LotSize() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
    str.LotSize = NumberToStr(LotSize, ".+");
 }
 
@@ -846,7 +850,21 @@ void SS.LotSize() {
  * ShowStatus(): Aktualisiert die String-Repräsentation von Entry.limit.
  */
 void SS.Entry.Limit() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
    str.Entry.limit = NumberToStr(Entry.limit, PriceFormat);
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.base.
+ */
+void SS.Grid.Base() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
+   str.grid.base = NumberToStr(grid.base, PriceFormat);
 }
 
 
@@ -854,10 +872,80 @@ void SS.Entry.Limit() {
  * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.MaxLevelLong und grid.MaxLevelShort.
  */
 void SS.Grid.MaxLevel() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
    if (grid.maxLevelLong > 0)
       str.grid.maxLevelLong = StringConcatenate("+", grid.maxLevelLong);
-
    str.grid.maxLevelShort = grid.maxLevelShort;
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.stops und grid.stopsPL.
+ */
+void SS.Grid.Stops() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
+   str.grid.stops   = StringConcatenate(grid.stops, " stop", ifString(grid.stops==1, "", "s"));
+   str.grid.stopsPL = DoubleToStr(grid.stopsPL, 2);
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.totalPL.
+ */
+void SS.Grid.TotalPL() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
+   str.grid.totalPL = NumberToStr(grid.totalPL, "+.2");
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.valueAtRisk.
+ */
+void SS.Grid.ValueAtRisk() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
+   str.grid.valueAtRisk = NumberToStr(grid.valueAtRisk, "+.2");
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.maxProfitLoss.
+ */
+void SS.Grid.MaxProfitLoss() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
+   str.grid.maxProfitLoss = NumberToStr(grid.maxProfitLoss, "+.2");
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.maxDrawdown.
+ */
+void SS.Grid.MaxDrawdown() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
+   str.grid.maxDrawdown = NumberToStr(grid.maxDrawdown, "+.2");
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.breakevenLong und grid.breakevenShort.
+ */
+void SS.Grid.Breakeven() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
+   str.grid.breakevenLong  = DoubleToStr(grid.breakevenLong, PipDigits);
+   str.grid.breakevenShort = DoubleToStr(grid.breakevenShort, PipDigits);
 }
 
 
@@ -865,6 +953,9 @@ void SS.Grid.MaxLevel() {
  * Berechnet die aktuellen Breakeven-Werte der Sequenz neu.
  */
 void Grid.UpdateBreakeven() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
    // wenn floatingPL =  -realizedPL, dann grid.totalPL = 0.00  => Breakeven-Punkt auf aktueller Seite
    double distance1 = ProfitToDistance(MathAbs(grid.stopsPL + grid.finishedPL));
 
@@ -885,19 +976,7 @@ void Grid.UpdateBreakeven() {
          grid.breakevenShort = grid.base - distance1*Pips;
       }
    }
-
-   //double profit = DistanceToProfit(distance);
    SS.Grid.Breakeven();
-}
-
-
-/**
- * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.breakevenLong und grid.breakevenShort.
- */
-void SS.Grid.Breakeven() {
-   return;
-   str.grid.breakevenLong  = DoubleToStr(grid.breakevenLong, PipDigits);
-   str.grid.breakevenShort = DoubleToStr(grid.breakevenShort, PipDigits);
 }
 
 
@@ -952,17 +1031,17 @@ double ProfitToDistance(double profit, int maxOpenLevel=0) {
    ------------------------------------
    linProfit(n.x) = 0.x * gs * pipV(n+1)
 
-   =>   linProfit = x * gs * pipV(n+1)
+   =>   linProfit = linPips * pipV(n+1)
 
-   =>   linProfit = x * gs * (n+1) * pipV_1
+   =>   linProfit = linPips * (n+1)*pipV(1)
 
-   =>           x = linProfit / (gs * (n+1) * pipV_1)
+   =>     linPips = linProfit / ((n+1)*pipV(1))
    */
    double linProfit = profit - n * (n+1)/2 * gs * pipV;                          // verbleibender linearer Anteil am Profit
-   double linPips   = linProfit / (gs * (n+1) * pipV);
+   double linPips   = linProfit / ((n+1) * pipV);
 
    // Gesamtdistanz berechnen
-   double distance = n * gs + linPips + gs;                                      // GridSize hinzu addieren, da der Sequenzstart erst bei Grid.Base + GridSize erfolgt
+   double distance  = (n+1) * gs + linPips;                                      // GridSize hinzu addieren, da der Sequenzstart erst bei Grid.Base + GridSize erfolgt
 
    //debug("ProfitToDistance()   profit="+ DoubleToStr(profit, 2) +"  n="+ n +"  lin="+ DoubleToStr(linProfit, 2) +"  linPips="+ NumberToStr(linPips, ".+") +"  distance="+ NumberToStr(distance, ".+"));
    return(distance);
@@ -1005,52 +1084,11 @@ double DistanceToProfit(double distance) {
    double pipV = PipValue(LotSize);
 
    double expProfit = n * (n+1)/2 * gs * pipV;
-   double linProfit = MathModFix(d, gs) * gs * (n+1) * pipV;
+   double linProfit = MathModFix(d, gs) * (n+1) * pipV;
    double profit    = expProfit + linProfit;
 
    //debug("DistanceToProfit()   gs="+ gs +"  d="+ d +"  n="+ n +"  exp="+ DoubleToStr(expProfit, 2) +"  lin="+ DoubleToStr(linProfit, 2) +"  profit="+ NumberToStr(profit, ".+"));
    return(profit);
-}
-
-
-/**
- * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.stops und grid.stopsPL.
- */
-void SS.Grid.Stops() {
-   str.grid.stops   = StringConcatenate(grid.stops, " stop", ifString(grid.stops==1, "", "s"));
-   str.grid.stopsPL = DoubleToStr(grid.stopsPL, 2);
-}
-
-
-/**
- * ShowStatus(): Aktualisiert die String-Repräsentation von grid.totalPL.
- */
-void SS.Grid.TotalPL() {
-   str.grid.totalPL = NumberToStr(grid.totalPL, "+.2");
-}
-
-
-/**
- * ShowStatus(): Aktualisiert die String-Repräsentation von grid.valueAtRisk.
- */
-void SS.Grid.ValueAtRisk() {
-   str.grid.valueAtRisk = NumberToStr(grid.valueAtRisk, "+.2");
-}
-
-
-/**
- * ShowStatus(): Aktualisiert die String-Repräsentation von grid.maxProfitLoss.
- */
-void SS.Grid.MaxProfitLoss() {
-   str.grid.maxProfitLoss = NumberToStr(grid.maxProfitLoss, "+.2");
-}
-
-
-/**
- * ShowStatus(): Aktualisiert die String-Repräsentation von grid.maxDrawdown.
- */
-void SS.Grid.MaxDrawdown() {
-   str.grid.maxDrawdown = NumberToStr(grid.maxDrawdown, "+.2");
 }
 
 
@@ -1531,7 +1569,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
    */
    if (key == "grid.base") {
       if (!StringIsNumeric(value))                                          return(_false(catch("RestoreStatus.Runtime(1)   illegal grid.base \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      grid.base = StrToDouble(value);
+      grid.base = StrToDouble(value); SS.Grid.Base();
       if (LT(grid.base, 0))                                                 return(_false(catch("RestoreStatus.Runtime(2)   illegal grid.base "+ NumberToStr(grid.base, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
    }
    else if (key == "grid.maxProfitLoss") {
