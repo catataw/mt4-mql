@@ -365,8 +365,8 @@ bool UpdateStatus() {
    }
 
 
-   if (!breakevenUpdated) {
-      HandleEvent(EVENT_BAR_OPEN);                                   // BarOpen-Event verarbeiten, wenn Breakeven nicht schon während desselben Ticks aktualisiert wurde
+   if (!breakevenUpdated) /*&&*/ if (grid.breakevenLong > 0) {
+      HandleEvent(EVENT_BAR_OPEN);                                   // BarOpen-Event verarbeiten, wenn Breakeven initialisiert ist und nicht bereits aktualisiert wurde
    }
 
    return(IsNoError(catch("UpdateStatus(2)")));
@@ -972,7 +972,7 @@ void SS.Grid.Breakeven() {
 
 
 /**
- * Berechnet die Breakeven-Werte der Sequenz neu und zeigt sie grafisch an.
+ * Berechnet die Breakeven-Werte der Sequenz.
  *
  * @return bool - Erfolgsstatus
  */
@@ -1013,34 +1013,49 @@ bool Grid.UpdateBreakeven() {
 void Grid.DrawBreakeven() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
-   if (EQ(grid.breakevenLong, 0))                                          // ohne initialisierten Breakeven sofortige Rückkehr
+   if (EQ(grid.breakevenLong, 0))                                                // ohne initialisiertes Breakeven sofortige Rückkehr
       return;
 
-   static double   last.grid.breakevenLong, last.grid.breakevenShort;      // Daten der zuletzt gezeichneten Indikatorwerte
-   static datetime last.drawingTime;
+   static double   last.grid.breakevenLong, last.grid.breakevenShort;            // Daten der zuletzt gezeichneten Indikatorwerte
+   static datetime last.startTimeLong, last.startTimeShort, last.drawingTime;
 
-   datetime drawingTime = TimeCurrent();
+   datetime now = TimeCurrent();
 
-   // Trendlinien zeichnen                                                 // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
-   if (last.drawingTime != 0) {
-      string labelL = StringConcatenate("SR.", sequenceId, ".L ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(drawingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
-      if (ObjectCreate(labelL, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenLong, drawingTime, grid.breakevenLong)) {
+
+   // Trendlinien zeichnen
+   if (last.drawingTime != 0) {                                                  // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
+      string labelL = StringConcatenate("SR.", sequenceId, ".L ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(last.startTimeLong, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
+      if (ObjectCreate(labelL, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenLong, now, grid.breakevenLong)) {
          ObjectSet(labelL, OBJPROP_RAY  , false          );
          ObjectSet(labelL, OBJPROP_COLOR, Color.Breakeven);
+         if (EQ(last.grid.breakevenLong, grid.breakevenLong)) last.startTimeLong = last.drawingTime;
+         else                                                 last.startTimeLong = now;
       }
-      else GetLastError();
+      else {
+         GetLastError();                                                         // ERR_OBJECT_ALREADY_EXISTS
+         ObjectSet(labelL, OBJPROP_TIME2, now);                                  // vorhandene Trendlinien werden möglichst verlängert (verhindert Erzeugung unzähliger gleicher Objekte)
+      }
 
-      string labelS = StringConcatenate("SR.", sequenceId, ".S ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(drawingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
-      if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, drawingTime, grid.breakevenShort)) {
+      string labelS = StringConcatenate("SR.", sequenceId, ".S ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(last.startTimeShort, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
+      if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, now, grid.breakevenShort)) {
          ObjectSet(labelS, OBJPROP_RAY  , false          );
          ObjectSet(labelS, OBJPROP_COLOR, Color.Breakeven);
+         if (EQ(last.grid.breakevenShort, grid.breakevenShort)) last.startTimeShort = last.drawingTime;
+         else                                                   last.startTimeShort = now;
       }
-      else GetLastError();
+      else {
+         GetLastError();                                                         // ERR_OBJECT_ALREADY_EXISTS
+         ObjectSet(labelS, OBJPROP_TIME2, now);                                  // vorhandene Trendlinien werden möglichst verlängert (verhindert Erzeugung unzähliger gleicher Objekte)
+      }
+   }
+   else {
+      last.startTimeLong  = now;
+      last.startTimeShort = now;
    }
 
    last.grid.breakevenLong  = grid.breakevenLong;
    last.grid.breakevenShort = grid.breakevenShort;
-   last.drawingTime         = drawingTime;
+   last.drawingTime         = now;
 }
 
 
