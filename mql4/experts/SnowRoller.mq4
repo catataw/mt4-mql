@@ -26,8 +26,10 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 extern int    GridSize                       = 20;
 extern double LotSize                        = 0.1;
 extern string StartCondition                 = "";          // {LimitValue}
-extern string ______________________________ = "==== Sequence to Manage =============";
+extern string _1____________________________ = "==== Sequence to Manage =============";
 extern string Sequence.ID                    = "";
+extern string _2____________________________ = "";
+extern color  Color.Breakeven                = Magenta;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -36,6 +38,7 @@ int      intern.GridSize;                                   // Input-Parameter s
 double   intern.LotSize;                                    // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
 string   intern.StartCondition;                             // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
 string   intern.Sequence.ID;                                // und in init() wieder daraus restauriert.
+color    intern.Color.Breakeven;
 
 int      status = STATUS_WAITING;
 
@@ -173,6 +176,7 @@ int init() {
       LotSize          = intern.LotSize;                             // Inputvariablen restauriert.
       StartCondition   = intern.StartCondition;
       Sequence.ID      = intern.Sequence.ID;
+      Color.Breakeven  = intern.Color.Breakeven;
    }
 
    // ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -212,6 +216,7 @@ int deinit() {
       intern.LotSize          = LotSize;
       intern.StartCondition   = StartCondition;
       intern.Sequence.ID      = Sequence.ID;
+      intern.Color.Breakeven  = Color.Breakeven;
       return(catch("deinit(1)"));
    }
 
@@ -281,7 +286,7 @@ bool UpdateStatus() {
 
    grid.floatingPL = 0;
 
-   bool wasPending, isClosed, closedByStop;
+   bool wasPending, isClosed, closedByStop, breakevenUpdated;
    int  orders = ArraySize(orders.ticket);
 
    for (int i=0; i < orders; i++) {
@@ -305,7 +310,7 @@ bool UpdateStatus() {
                grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                        // (int) double
                grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();    // (int) double
                grid.valueAtRisk   = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
-               Grid.UpdateBreakeven();
+               breakevenUpdated   = Grid.UpdateBreakeven();
 
                if (!ChartMarker.OrderFilled(i)) return(false);
             }
@@ -344,7 +349,7 @@ bool UpdateStatus() {
                else {                                                // bei Sequenzende geschlossen (ggf. durch Tester)
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
-               Grid.UpdateBreakeven();
+               breakevenUpdated = Grid.UpdateBreakeven();
             }
          }
       }
@@ -360,7 +365,25 @@ bool UpdateStatus() {
       grid.maxDrawdown.time = TimeCurrent();
    }
 
+
+   if (!breakevenUpdated) {
+      HandleEvent(EVENT_BAR_OPEN);                                   // BarOpen-Event verarbeiten, wenn Breakeven nicht schon während desselben Ticks aktualisiert wurde
+   }
+
    return(IsNoError(catch("UpdateStatus(2)")));
+}
+
+
+/**
+ * Handler für BarOpen-Events.
+ *
+ * @param int data[] - eventspezifische Informationen
+ *
+ * @return int - Fehlerstatus
+ */
+int onBarOpen(int data[]) {
+   Grid.DrawBreakeven();
+   return(catch("onBarOpen()"));
 }
 
 
@@ -938,7 +961,7 @@ void SS.Grid.MaxDrawdown() {
 
 
 /**
- * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.breakevenLong und grid.breakevenShort.
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.breakevenLong und grid.breakevenShort.
  */
 void SS.Grid.Breakeven() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
@@ -950,21 +973,23 @@ void SS.Grid.Breakeven() {
 
 
 /**
- * Berechnet die aktuellen Breakeven-Werte der Sequenz neu.
+ * Berechnet die Breakeven-Werte der Sequenz neu und zeigt sie grafisch an.
+ *
+ * @return bool - Erfolgsstatus
  */
-void Grid.UpdateBreakeven() {
+bool Grid.UpdateBreakeven() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
-      return;
+      return(true);
 
-   // wenn floatingPL =  -realizedPL, dann grid.totalPL = 0.00  => Breakeven-Punkt auf aktueller Seite
-   double distance1 = ProfitToDistance(MathAbs(grid.stopsPL + grid.finishedPL));
+   // wenn floatingPL = -realizedPL, dann totalPL = 0.00      => Breakeven-Punkt auf aktueller Seite
+   double distance1 = ProfitToDistance(MathAbs(grid.stopsPL + grid.finishedPL), grid.level);
 
    if (grid.level == 0) {                                            // realizedPL und valueAtRisk sind identisch, Abstand der Breakeven-Punkte ist gleich
       grid.breakevenLong  = grid.base + distance1*Pips;
       grid.breakevenShort = grid.base - distance1*Pips;
    }
    else {
-      // wenn floatingPL = -valueAtRisk, dann grid.totalPL = 0.00  => Breakeven-Punkt auf gegenüberliegender Seite
+      // wenn floatingPL = -valueAtRisk, dann totalPL = 0.00  => Breakeven-Punkt auf gegenüberliegender Seite
       double distance2 = ProfitToDistance(MathAbs(grid.valueAtRisk));
 
       if (grid.level > 0) {
@@ -976,7 +1001,45 @@ void Grid.UpdateBreakeven() {
          grid.breakevenShort = grid.base - distance1*Pips;
       }
    }
+
+   Grid.DrawBreakeven();
    SS.Grid.Breakeven();
+   return(true);
+}
+
+
+/**
+ * Aktualisiert die Kurve des Breakeven-Indikators.
+ */
+void Grid.DrawBreakeven() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
+   static double   last.grid.breakevenLong, last.grid.breakevenShort;      // Daten der zuletzt gezeichneten Indikatorwerte
+   static datetime last.drawingTime;
+
+   datetime drawingTime = TimeCurrent();
+
+   // Trendlinien zeichnen                                                 // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
+   if (last.drawingTime != 0) {
+      string labelL = StringConcatenate("SR.", sequenceId, ".L ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(drawingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
+      if (ObjectCreate(labelL, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenLong, drawingTime, grid.breakevenLong)) {
+         ObjectSet(labelL, OBJPROP_RAY  , false          );
+         ObjectSet(labelL, OBJPROP_COLOR, Color.Breakeven);
+      }
+      else GetLastError();
+
+      string labelS = StringConcatenate("SR.", sequenceId, ".S ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(drawingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
+      if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, drawingTime, grid.breakevenShort)) {
+         ObjectSet(labelS, OBJPROP_RAY  , false          );
+         ObjectSet(labelS, OBJPROP_COLOR, Color.Breakeven);
+      }
+      else GetLastError();
+   }
+
+   last.grid.breakevenLong  = grid.breakevenLong;
+   last.grid.breakevenShort = grid.breakevenShort;
+   last.drawingTime         = drawingTime;
 }
 
 
