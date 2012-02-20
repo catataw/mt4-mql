@@ -26,10 +26,9 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 extern int    GridSize                       = 20;
 extern double LotSize                        = 0.1;
 extern string StartCondition                 = "";          // {LimitValue}
-extern string _1____________________________ = "==== Sequence to Manage =============";
-extern string Sequence.ID                    = "";
-extern string _2____________________________ = "";
 extern color  Color.Breakeven                = Magenta;
+extern string ______________________________ = "==== Sequence to Manage =============";
+extern string Sequence.ID                    = "";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -37,8 +36,8 @@ extern color  Color.Breakeven                = Magenta;
 int      intern.GridSize;                                   // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
 double   intern.LotSize;                                    // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
 string   intern.StartCondition;                             // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
-string   intern.Sequence.ID;                                // und in init() wieder daraus restauriert.
-color    intern.Color.Breakeven;
+color    intern.Color.Breakeven;                            // und in init() wieder daraus restauriert.
+string   intern.Sequence.ID;
 
 int      status = STATUS_WAITING;
 
@@ -175,8 +174,8 @@ int init() {
       GridSize         = intern.GridSize;                            // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
       LotSize          = intern.LotSize;                             // Inputvariablen restauriert.
       StartCondition   = intern.StartCondition;
-      Sequence.ID      = intern.Sequence.ID;
       Color.Breakeven  = intern.Color.Breakeven;
+      Sequence.ID      = intern.Sequence.ID;
    }
 
    // ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -215,8 +214,8 @@ int deinit() {
       intern.GridSize         = GridSize;
       intern.LotSize          = LotSize;
       intern.StartCondition   = StartCondition;
-      intern.Sequence.ID      = Sequence.ID;
       intern.Color.Breakeven  = Color.Breakeven;
+      intern.Sequence.ID      = Sequence.ID;
       return(catch("deinit(1)"));
    }
 
