@@ -209,6 +209,9 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
+   if (IsError(onDeinit()))
+      return(last_error);
+
    if (UninitializeReason() == REASON_CHARTCHANGE) {
       // Input-Parameter sind nicht statisch: für's nächste init() in intern.* zwischenspeichern
       intern.GridSize         = GridSize;
@@ -1021,7 +1024,6 @@ void Grid.DrawBreakeven() {
 
    datetime now = TimeCurrent();
 
-
    // Trendlinien zeichnen
    if (last.drawingTime != 0) {                                                  // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
       string labelL = StringConcatenate("SR.", sequenceId, ".L ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(last.startTimeLong, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
@@ -1046,7 +1048,7 @@ void Grid.DrawBreakeven() {
       else {
          GetLastError();                                                         // ERR_OBJECT_ALREADY_EXISTS
          ObjectSet(labelS, OBJPROP_TIME2, now);                                  // vorhandene Trendlinien werden möglichst verlängert (verhindert Erzeugung unzähliger gleicher Objekte)
-      }
+   }
    }
    else {
       last.startTimeLong  = now;
@@ -1062,18 +1064,12 @@ void Grid.DrawBreakeven() {
 /**
  * Berechnet den notwendigen Abstand von der Gridbasis, um den angegebenen Gewinn zu erzielen.
  *
- * @param  double profit       - zu erzielender Gewinn
- * @param  int    maxOpenLevel - Der höchste für die Berechnung zu berücksichtigende Level mit einer offenen Position. Getriggerte Stops
- *                               zwischen diesem Level und dem zurückgegebenen Abstand fließen in die Berechnung mit ein (default: 0).
+ * @param  double profit - zu erzielender Gewinn
+ * @param  int    level  - aktueller Gridlevel (Stops zwischen dem Level und dem resultierendenn Abstand werden berücksichtigt
  *
  * @return double - Abstand in Pips oder 0, wenn ein Fehler auftrat
  */
-double ProfitToDistance(double profit, int maxOpenLevel=0) {
-   if (GridSize <= 0)                                                            // Division durch 0 abfangen
-      return(_ZERO(catch("ProfitToDistance(1)  illegal GridSize = "+ GridSize, ERR_RUNTIME_ERROR)));
-
-   // TODO: Berücksichtigung von maxOpenLevel integrieren
-
+double ProfitToDistance(double profit, int level=0) {
    /*
    Formeln gelten für Sequenzstart an der Gridbasis:
    -------------------------------------------------
@@ -1101,8 +1097,11 @@ double ProfitToDistance(double profit, int maxOpenLevel=0) {
 
    =>          n = (2*profit/(gs*pipV(1)) + 0.25)½ - 0.5                         // n = rationale Zahl
    */
-   int    gs   = GridSize;                                                       // Division durch 0 abfangen
-   double pipV = PipValue(LotSize);                                              if (LE(pipV, 0)) return(_ZERO(catch("ProfitToDistance(2)  illegal pipValue("+ NumberToStr(LotSize, ".+") +") = "+ NumberToStr(pipV, ".+"), ERR_RUNTIME_ERROR)));
+
+   // TODO: Berücksichtigung von level integrieren
+
+   int    gs   = GridSize;
+   double pipV = PipValue(LotSize);
    int    n    = MathSqrt(2*profit/(gs*pipV) + 0.25) - 0.5 +0.000000001;         // (int) double
 
    /*
@@ -1120,9 +1119,10 @@ double ProfitToDistance(double profit, int maxOpenLevel=0) {
    double linPips   = linProfit / ((n+1) * pipV);
 
    // Gesamtdistanz berechnen
-   double distance  = (n+1) * gs + linPips;                                      // GridSize hinzu addieren, da der Sequenzstart erst bei Grid.Base + GridSize erfolgt
+   n++;                                                                          // GridSize hinzu addieren, da der Sequenzstart erst bei Grid.Base + GridSize erfolgt
+   double distance  = n * gs + linPips;
 
-   //debug("ProfitToDistance()   profit="+ DoubleToStr(profit, 2) +"  n="+ n +"  lin="+ DoubleToStr(linProfit, 2) +"  linPips="+ NumberToStr(linPips, ".+") +"  distance="+ NumberToStr(distance, ".+"));
+   debug("ProfitToDistance()   profit="+ DoubleToStr(profit, 2) +"  n="+ (n-1) +"  lin="+ DoubleToStr(linProfit, 2) +"  linPips="+ NumberToStr(linPips, ".+") +"  distance="+ NumberToStr(distance, ".+"));
    return(distance);
 }
 
@@ -1135,11 +1135,9 @@ double ProfitToDistance(double profit, int maxOpenLevel=0) {
  * @return double - Profit oder 0, wenn ein Fehler auftrat
  */
 double DistanceToProfit(double distance) {
-   if (GridSize <= 0)                                                // Division durch 0 abfangen
-      return(_ZERO(catch("DistanceToProfit(1)  illegal GridSize = "+ GridSize, ERR_RUNTIME_ERROR)));
    if (LE(distance, GridSize)) {
       if (LT(distance, 0))
-         return(_ZERO(catch("DistanceToProfit(2)  invalid parameter distance = "+ NumberToStr(distance, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+         return(_ZERO(catch("DistanceToProfit()  invalid parameter distance = "+ NumberToStr(distance, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
       return(0);
    }
    /*
