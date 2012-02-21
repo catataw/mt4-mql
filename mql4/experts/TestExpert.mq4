@@ -24,6 +24,12 @@ int init() {
  * @return int - Fehlerstatus
  */
 int deinit() {
+   if (IsError(onDeinit()))
+      return(last_error);
+
+   if (IsTesting()) /*&&*/ if (!DeletePendingOrders(CLR_NONE))       // Der Tester schließt beim Beenden nur offene Positionen,
+      return(SetLastError(stdlib_PeekLastError()));                  // offene Pending-Orders werden jedoch nicht gelöscht.
+
    return(catch("deinit()"));
 }
 

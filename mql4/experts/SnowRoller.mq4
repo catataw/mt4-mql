@@ -113,7 +113,6 @@ bool     firstTick = true;
 int init() {
    if (IsError(onInit(T_EXPERT)))
       return(ShowStatus(true));
-
    /*
    Zuerst wird die aktuelle Sequenz-ID bestimmt, dann deren Konfiguration geladen und validiert. Zum Schluß werden die Daten der ggf. laufenden Sequenz restauriert.
    Es gibt 4 unterschiedliche init()-Szenarien:
@@ -211,6 +210,9 @@ int init() {
 int deinit() {
    if (IsError(onDeinit()))
       return(last_error);
+
+   if (IsTesting()) /*&&*/ if (!DeletePendingOrders(CLR_NONE))       // Der Tester schließt beim Beenden nur offene Positionen,
+      return(SetLastError(stdlib_PeekLastError()));                  // offene Pending-Orders werden jedoch nicht gelöscht.
 
    if (UninitializeReason() == REASON_CHARTCHANGE) {
       // Input-Parameter sind nicht statisch: für's nächste init() in intern.* zwischenspeichern
@@ -312,7 +314,8 @@ bool UpdateStatus() {
                grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                        // (int) double
                grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();    // (int) double
                grid.valueAtRisk   = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
-               breakevenUpdated   = Grid.UpdateBreakeven();
+
+               Grid.UpdateBreakeven(); breakevenUpdated = true;
 
                if (!ChartMarker.OrderFilled(i)) return(false);
             }
@@ -351,7 +354,7 @@ bool UpdateStatus() {
                else {                                                // bei Sequenzende geschlossen (ggf. durch Tester)
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
-               breakevenUpdated = Grid.UpdateBreakeven();
+               Grid.UpdateBreakeven(); breakevenUpdated = true;
             }
          }
       }
@@ -992,7 +995,7 @@ bool Grid.UpdateBreakeven() {
    }
    else {
       // wenn floatingPL = -valueAtRisk, dann totalPL = 0.00  => Breakeven-Punkt auf gegenüberliegender Seite
-      double distance2 = ProfitToDistance(MathAbs(grid.valueAtRisk));
+      double distance2 = ProfitToDistance(MathAbs(grid.valueAtRisk), 0);
 
       if (grid.level > 0) {
          grid.breakevenLong  = grid.base + distance1*Pips;
@@ -1006,7 +1009,7 @@ bool Grid.UpdateBreakeven() {
 
    Grid.DrawBreakeven();
    SS.Grid.Breakeven();
-   return(true);
+   return(IsNoError(catch("Grid.UpdateBreakeven()")));
 }
 
 
@@ -1069,7 +1072,11 @@ void Grid.DrawBreakeven() {
  *
  * @return double - Abstand in Pips oder 0, wenn ein Fehler auftrat
  */
-double ProfitToDistance(double profit, int level=0) {
+double ProfitToDistance(double profit, int level) {
+   if (EQ(profit, 0))
+      return(GridSize);
+   if (level < 0)
+      level *= -1;
    /*
    Formeln gelten für Sequenzstart an der Gridbasis:
    -------------------------------------------------
@@ -1097,12 +1104,15 @@ double ProfitToDistance(double profit, int level=0) {
 
    =>          n = (2*profit/(gs*pipV(1)) + 0.25)½ - 0.5                         // n = rationale Zahl
    */
-
-   // TODO: Berücksichtigung von level integrieren
-
    int    gs   = GridSize;
    double pipV = PipValue(LotSize);
    int    n    = MathSqrt(2*profit/(gs*pipV) + 0.25) - 0.5 +0.000000001;         // (int) double
+
+   while (n < level-1) {                                                         // Sind wir im Plus und oberhalb von Breakeven liegen Stops, muß
+      profit += gs * pipV;                                                       // ihr Triggern auf dem "Weg zu Breakeven" mit einkalkuliert werden.
+      level--;
+      n = MathSqrt(2*profit/(gs*pipV) + 0.25) - 0.5 +0.000000001;                // (int) double
+   }
 
    /*
    Pips des linearen Anteils ermitteln:
@@ -1119,10 +1129,9 @@ double ProfitToDistance(double profit, int level=0) {
    double linPips   = linProfit / ((n+1) * pipV);
 
    // Gesamtdistanz berechnen
-   n++;                                                                          // GridSize hinzu addieren, da der Sequenzstart erst bei Grid.Base + GridSize erfolgt
-   double distance  = n * gs + linPips;
+   double distance  = n * gs + linPips + gs;                                     // 1 x GridSize hinzu addieren, da der Sequenzstart erst bei Grid.Base + GridSize erfolgt
 
-   debug("ProfitToDistance()   profit="+ DoubleToStr(profit, 2) +"  n="+ (n-1) +"  lin="+ DoubleToStr(linProfit, 2) +"  linPips="+ NumberToStr(linPips, ".+") +"  distance="+ NumberToStr(distance, ".+"));
+   //debug("ProfitToDistance()   profit="+ DoubleToStr(profit, 2) +"  n="+ n +"  lin="+ DoubleToStr(linProfit, 2) +"  linPips="+ NumberToStr(linPips, ".+") +"  distance="+ NumberToStr(distance, ".+"));
    return(distance);
 }
 
