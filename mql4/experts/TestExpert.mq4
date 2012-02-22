@@ -14,6 +14,19 @@ int init() {
    if (IsError(onInit(T_EXPERT)))
       return(last_error);
 
+
+   int array[3][3];
+
+   array[0][0] = 3; array[0][1] = -3; array[0][2] = 3;
+   array[1][0] = 2; array[1][1] = -2; array[1][2] = 2;
+   array[2][0] = 1; array[2][1] = -1; array[2][2] = 1;
+
+   debug("init()   array = "+ IntsToStr(array, NULL));
+
+   ArraySort(array);
+
+   debug("init()   array = "+ IntsToStr(array, NULL));
+
    return(catch("init()"));
 }
 
@@ -44,20 +57,5 @@ int onTick() {
    if (!done) {
       done = true;
    }
-
-   HandleEvent(EVENT_BAR_OPEN);
-
    return(catch("onTick()"));
-}
-
-
-/**
- *
- * @return int - Fehlerstatus
- */
-int onBarOpen(int details[]) {
-
-   debug("onBarOpen("+ Tick +")   details = "+ IntArrayToStr(details, NULL));
-
-   return(catch("onBarOpen()"));
 }

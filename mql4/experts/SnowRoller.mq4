@@ -1009,6 +1009,7 @@ bool Grid.UpdateBreakeven() {
 
    Grid.DrawBreakeven();
    SS.Grid.Breakeven();
+
    return(IsNoError(catch("Grid.UpdateBreakeven()")));
 }
 
@@ -1051,7 +1052,7 @@ void Grid.DrawBreakeven() {
       else {
          GetLastError();                                                         // ERR_OBJECT_ALREADY_EXISTS
          ObjectSet(labelS, OBJPROP_TIME2, now);                                  // vorhandene Trendlinien werden möglichst verlängert (verhindert Erzeugung unzähliger gleicher Objekte)
-   }
+      }
    }
    else {
       last.startTimeLong  = now;
@@ -1881,14 +1882,16 @@ bool SynchronizeStatus() {
    double grid.floatingPL;          // ok
    double grid.totalPL;             // ok
    double grid.valueAtRisk;         // ok
-   double grid.breakevenLong;       //    wird mit dem aktuellen TickValue als Näherung neuberechnet
-   double grid.breakevenShort;      //    wird mit dem aktuellen TickValue als Näherung neuberechnet
+   double grid.breakevenLong;       // ok
+   double grid.breakevenShort;      // ok
    */
    int size = ArraySize(orders.ticket);
    status = ifInt(size==0, STATUS_WAITING, STATUS_PROGRESSING);
 
-   bool pendingOrder, openPosition, closedPosition, closedByStop, closedByFinish, openPositions, finishedPositions;
-   int levels[]; ArrayResize(levels, 0);
+   bool   pendingOrder, openPosition, closedPosition, closedByStop, closedByFinish, openPositions, finishedPositions;
+   int    levels[];    ArrayResize(levels, 0);
+   double events[][5]; ArrayResize(events, 0);
+   double profitLoss, valueAtRisk1=GridSize * PipValue(LotSize);                       // valueAtRisk eines Stops
 
    for (i=0; i < size; i++) {
       pendingOrder   = orders.type[i] == OP_UNDEFINED;
@@ -1904,12 +1907,16 @@ bool SynchronizeStatus() {
       }
 
       if (!pendingOrder) {
-         grid.maxLevelLong  = MathMax(grid.maxLevelLong,  orders.level[i]) +0.1;                      // (int) double
-         grid.maxLevelShort = MathMin(grid.maxLevelShort, orders.level[i]) -0.1; SS.Grid.MaxLevel();  // (int) double
+         grid.maxLevelLong  = MathMax(grid.maxLevelLong,  orders.level[i]) +0.1;       // (int) double
+         grid.maxLevelShort = MathMin(grid.maxLevelShort, orders.level[i]) -0.1;       // (int) double
+         profitLoss         = orders.swap[i] + orders.commission[i] + orders.profit[i];
+
+         // Breakeven-relevante Events zwischenspeichern
+         PushEvent(events, orders.openTime[i], orders.level[i], valueAtRisk1, NULL, NULL);
 
          if (openPosition) {
             openPositions = true;
-            grid.floatingPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
+            grid.floatingPL += profitLoss;
 
             if (orders.level[i] > 0) {
                if (grid.level < 0) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
@@ -1925,21 +1932,27 @@ bool SynchronizeStatus() {
                return(_false(catch("SynchronizeStatus(5)   duplicate order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
             ArrayPushInt(levels, orders.level[i]);
-            grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
+            grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * valueAtRisk1;
          }
          else if (closedByStop) {
             grid.stops++;
-            grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
-            grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
+            grid.stopsPL    += profitLoss;
+            grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * valueAtRisk1;
+
+            // Breakeven-relevante Events zwischenspeichern
+            PushEvent(events, orders.closeTime[i], orders.level[i], NULL, profitLoss, NULL);
          }
          else if (closedByFinish) {
-            grid.finishedPL  += orders.swap[i] + orders.commission[i] + orders.profit[i];
+            grid.finishedPL  += profitLoss;
             finishedPositions = true;
+
+            // Breakeven-relevante Events zwischenspeichern
+            PushEvent(events, orders.closeTime[i], orders.level[i], NULL, NULL, profitLoss);
          }
          else return(_false(catch("SynchronizeStatus(6)   illegal order status of #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
       }
 
-      // (2.1) Order visualisieren
+      // (2.1) Orders visualisieren
       bool success = true;
       if      (pendingOrder) {                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
       }
@@ -1958,8 +1971,7 @@ bool SynchronizeStatus() {
          return(_false(SetLastError(stdlib_PeekLastError())));
    }
 
-   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL; SS.Grid.TotalPL();
-   Grid.UpdateBreakeven();
+   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
 
    if (openPositions) {
       if (finishedPositions) return(_false(catch("SynchronizeStatus(7)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
@@ -1976,7 +1988,63 @@ bool SynchronizeStatus() {
       status = STATUS_FINISHED;
    }
 
+
+   // (3) Breakeven-relevante Events zeitlich sortieren und Indikatoren restaurieren
+   ArraySort(events);
+   size = ArrayRange(events, 0);
+
+   for (i=0; i < size; i++) {
+   }
+
+   Grid.UpdateBreakeven();
+   debug("SynchronizeStatus()   size(events)="+ ArrayRange(events, 0) +"   elements="+ ArraySize(events));
+
+   //debug("SynchronizeStatus()   events = "+ DoublesToStr(events, NULL));
+
+   int array1[6];
+   int array2[2][3];
+
+   ArrayCopy(array1, array2); //, int start_dest=0, int start_source=0, int count=WHOLE_ARRAY)
+
+   if (!IsError(catch("SynchronizeStatus(0.1)"))) {
+      debug("SynchronizeStatus()   array2 = "+ IntsToStr(array1, NULL));
+      debug("SynchronizeStatus()   array1 = "+ IntsToStr(array1, NULL));
+   }
+
+
+   SS.Grid.MaxLevel();
+   SS.Grid.Stops();
+   SS.Grid.ValueAtRisk();
+   SS.Grid.TotalPL();
+
    return(IsNoError(catch("SynchronizeStatus(10)")));
+}
+
+
+/**
+ * Fügt den Breakeven-relevanten Events ein weiteres hinzu.
+ *
+ * @param  double   events[]    - Array mit bereits gespeicherten Events
+ * @param  datetime time        - Zeitpunkt des neuen Events
+ * @param  int      level       - Gridlevel des neuen Events
+ * @param  double   valueAtRisk - VAR-Änderung des neuen Events
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool PushEvent(double& events[][], datetime time, int level, double valueAtRisk, double value4, double value5) {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+
+   int size = ArrayRange(events, 0);
+   ArrayResize(events, size+1);
+
+   events[size][0] = time;
+   events[size][1] = level;
+   events[size][2] = valueAtRisk;
+   events[size][3] = value4;
+   events[size][4] = value5;
+
+   return(IsNoError(catch("PushEvent()")));
 }
 
 

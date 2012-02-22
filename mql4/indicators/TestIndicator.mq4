@@ -75,5 +75,5 @@ int onTick() {
 double ohlc[4];
 int bar   = 4000;
 int error = iOHLC(NULL, PERIOD_H1, bar, ohlc);
-debug("onTick()   ohlc = "+ PriceArrayToStr(ohlc, PriceFormat, NULL) + ifString(error==NO_ERROR, "", "   error = "+ ErrorToStr(error)));
+debug("onTick()   ohlc = "+ RatesToStr(ohlc, NULL) + ifString(error==NO_ERROR, "", "   error = "+ ErrorToStr(error)));
 */
