@@ -1666,7 +1666,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
    else if (key == "grid.maxProfitLoss.time") {
       if (!StringIsDigit(value))                                            return(_false(catch("RestoreStatus.Runtime(4)   illegal grid.maxProfitLoss.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       grid.maxProfitLoss.time = StrToInteger(value);
-      if (grid.maxProfitLoss.time==0 && NE(grid.maxProfitLoss, 0))          return(_false(catch("RestoreStatus.Runtime(5)   grid.maxProfitLoss/grid.maxProfitLoss.time mis-match "+ NumberToStr(grid.maxProfitLoss, ".2") +"/\""+ TimeToStr(grid.maxProfitLoss.time, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (grid.maxProfitLoss.time==0 && NE(grid.maxProfitLoss, 0))          return(_false(catch("RestoreStatus.Runtime(5)   grid.maxProfitLoss/grid.maxProfitLoss.time mis-match "+ NumberToStr(grid.maxProfitLoss, ".2") +"/'"+ TimeToStr(grid.maxProfitLoss.time, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
    }
    else if (key == "grid.maxDrawdown") {
       if (!StringIsNumeric(value))                                          return(_false(catch("RestoreStatus.Runtime(6)   illegal grid.maxDrawdown \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -1675,7 +1675,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
    else if (key == "grid.maxDrawdown.time") {
       if (!StringIsDigit(value))                                            return(_false(catch("RestoreStatus.Runtime(7)   illegal grid.maxDrawdown.time \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       grid.maxDrawdown.time = StrToInteger(value);
-      if (grid.maxDrawdown.time==0 && NE(grid.maxDrawdown, 0))              return(_false(catch("RestoreStatus.Runtime(8)   grid.maxDrawdown/grid.maxDrawdown.time mis-match "+ NumberToStr(grid.maxDrawdown, ".2") +"/\""+ TimeToStr(grid.maxDrawdown.time, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (grid.maxDrawdown.time==0 && NE(grid.maxDrawdown, 0))              return(_false(catch("RestoreStatus.Runtime(8)   grid.maxDrawdown/grid.maxDrawdown.time mis-match "+ NumberToStr(grid.maxDrawdown, ".2") +"/'"+ TimeToStr(grid.maxDrawdown.time, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
    }
    else if (StringStartsWith(key, "order.")) {
       // Orderindex
@@ -1711,7 +1711,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
       string strPendingTime = StringTrim(values[3]);
       if (!StringIsDigit(strPendingTime))                                   return(_false(catch("RestoreStatus.Runtime(19)   illegal pending order time \""+ strPendingTime +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       datetime pendingTime = StrToInteger(strPendingTime);
-      if (pendingType==OP_UNDEFINED && pendingTime!=0)                      return(_false(catch("RestoreStatus.Runtime(20)   pending order type/time mis-match OP_UNDEFINED/\""+ TimeToStr(pendingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (pendingType==OP_UNDEFINED && pendingTime!=0)                      return(_false(catch("RestoreStatus.Runtime(20)   pending order type/time mis-match OP_UNDEFINED/'"+ TimeToStr(pendingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       if (pendingType!=OP_UNDEFINED && pendingTime==0)                      return(_false(catch("RestoreStatus.Runtime(21)   pending order type/time mis-match "+ OperationTypeToStr(pendingType) +"/0 in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // pendingPrice
@@ -1738,7 +1738,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
       string strOpenTime = StringTrim(values[6]);
       if (!StringIsDigit(strOpenTime))                                      return(_false(catch("RestoreStatus.Runtime(30)   illegal order open time \""+ strOpenTime +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       datetime openTime = StrToInteger(strOpenTime);
-      if (type==OP_UNDEFINED && openTime!=0)                                return(_false(catch("RestoreStatus.Runtime(31)   order type/time mis-match OP_UNDEFINED/\""+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (type==OP_UNDEFINED && openTime!=0)                                return(_false(catch("RestoreStatus.Runtime(31)   order type/time mis-match OP_UNDEFINED/'"+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       if (type!=OP_UNDEFINED && openTime==0)                                return(_false(catch("RestoreStatus.Runtime(32)   order type/time mis-match "+ OperationTypeToStr(type) +"/0 in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // openPrice
@@ -1753,8 +1753,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
       string strCloseTime = StringTrim(values[8]);
       if (!StringIsDigit(strCloseTime))                                     return(_false(catch("RestoreStatus.Runtime(37)   illegal order close time \""+ strCloseTime +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       datetime closeTime = StrToInteger(strCloseTime);
-      if (closeTime!=0 && closeTime < pendingTime)                          return(_false(catch("RestoreStatus.Runtime(38)   pending order open/delete time mis-match \""+ TimeToStr(pendingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\"/\""+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      if (closeTime!=0 && closeTime < openTime)                             return(_false(catch("RestoreStatus.Runtime(39)   order open/close time mis-match \""+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\"/\""+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (closeTime!=0 && closeTime < pendingTime)                          return(_false(catch("RestoreStatus.Runtime(38)   pending order open/delete time mis-match '"+ TimeToStr(pendingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'/'"+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (closeTime!=0 && closeTime < openTime)                             return(_false(catch("RestoreStatus.Runtime(39)   order open/close time mis-match '"+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'/'"+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // closePrice
       string strClosePrice = StringTrim(values[9]);
@@ -1988,6 +1988,16 @@ bool SynchronizeStatus() {
       status = STATUS_FINISHED;
    }
 
+   SS.Grid.MaxLevel();
+   SS.Grid.Stops();
+   SS.Grid.ValueAtRisk();
+   SS.Grid.TotalPL();
+
+   if (__SCRIPT__ != "SnowRoller.2")
+      return(IsNoError(catch("SynchronizeStatus(10)")));
+
+
+
 
    // (3) Breakeven-relevante Events zeitlich sortieren und Indikatoren restaurieren
    ArraySort(events);
@@ -1995,28 +2005,15 @@ bool SynchronizeStatus() {
 
    for (i=0; i < size; i++) {
    }
-
    Grid.UpdateBreakeven();
+
    debug("SynchronizeStatus()   size(events)="+ ArrayRange(events, 0) +"   elements="+ ArraySize(events));
 
-   //debug("SynchronizeStatus()   events = "+ DoublesToStr(events, NULL));
-
-   int array1[6];
-   int array2[2][3];
-
-   ArrayCopy(array1, array2); //, int start_dest=0, int start_source=0, int count=WHOLE_ARRAY)
-
-   if (!IsError(catch("SynchronizeStatus(0.1)"))) {
-      debug("SynchronizeStatus()   array2 = "+ IntsToStr(array1, NULL));
-      debug("SynchronizeStatus()   array1 = "+ IntsToStr(array1, NULL));
-   }
 
 
-   SS.Grid.MaxLevel();
-   SS.Grid.Stops();
-   SS.Grid.ValueAtRisk();
-   SS.Grid.TotalPL();
 
+   if (!IsLastError() && IsError(stdlib_PeekLastError()))
+      return(_false(SetLastError(stdlib_PeekLastError())));
    return(IsNoError(catch("SynchronizeStatus(10)")));
 }
 
