@@ -17,6 +17,11 @@
 #define STATUS_FINISHED       2
 #define STATUS_DISABLED       3
 
+#define DM_NONE               0           // OrderDisplay-Modes
+#define DM_POSITIONS          1
+#define DM_TRADES             2
+#define DM_ALL                3
+
 
 int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereich 101-1023)
 
@@ -25,8 +30,10 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 
 extern int    GridSize                       = 20;
 extern double LotSize                        = 0.1;
-extern string StartCondition                 = "";          // {LimitValue}
+extern string StartCondition                 = "";
 extern color  Color.Breakeven                = Magenta;
+extern string OrderDisplay                   = "positions";
+extern string OrderDisplay.Help              = "all | trades | positions | none";
 extern string ______________________________ = "==== Sequence to Manage =============";
 extern string Sequence.ID                    = "";
 
@@ -37,6 +44,7 @@ int      intern.GridSize;                                   // Input-Parameter s
 double   intern.LotSize;                                    // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
 string   intern.StartCondition;                             // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
 color    intern.Color.Breakeven;                            // und in init() wieder daraus restauriert.
+string   intern.OrderDisplay;
 string   intern.Sequence.ID;
 
 int      status = STATUS_WAITING;
@@ -102,6 +110,7 @@ color    CLR_LONG  = Blue;
 color    CLR_SHORT = Red;
 color    CLR_CLOSE = Orange;
 
+int      displayMode;
 bool     firstTick = true;
 
 
@@ -174,6 +183,7 @@ int init() {
       LotSize          = intern.LotSize;                             // Inputvariablen restauriert.
       StartCondition   = intern.StartCondition;
       Color.Breakeven  = intern.Color.Breakeven;
+      OrderDisplay     = intern.OrderDisplay;
       Sequence.ID      = intern.Sequence.ID;
    }
 
@@ -220,6 +230,7 @@ int deinit() {
       intern.LotSize          = LotSize;
       intern.StartCondition   = StartCondition;
       intern.Color.Breakeven  = Color.Breakeven;
+      intern.OrderDisplay     = OrderDisplay;
       intern.Sequence.ID      = Sequence.ID;
       return(catch("deinit(1)"));
    }
@@ -290,7 +301,7 @@ bool UpdateStatus() {
 
    grid.floatingPL = 0;
 
-   bool wasPending, isClosed, closedByStop, breakevenUpdated;
+   bool wasPending, isClosed, closedByStop, beUpdated;
    int  orders = ArraySize(orders.ticket);
 
    for (int i=0; i < orders; i++) {
@@ -315,7 +326,7 @@ bool UpdateStatus() {
                grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();    // (int) double
                grid.valueAtRisk   = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
 
-               Grid.UpdateBreakeven(); breakevenUpdated = true;
+               Grid.UpdateBreakeven(); beUpdated = true;
 
                if (!ChartMarker.OrderFilled(i)) return(false);
             }
@@ -337,8 +348,7 @@ bool UpdateStatus() {
             orders.closePrice[i] = OrderClosePrice();
 
             if (orders.type[i] != OP_UNDEFINED) {                    // geschlossene Position
-               if (!ChartMarker.PositionClosed_A(orders.ticket[i], Digits, CLR_CLOSE))
-                  return(_false(SetLastError(stdlib_PeekLastError())));
+               if (!ChartMarker.PositionClosed(i)) return(false);
 
                if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
                else if (orders.type[i] == OP_BUY )             closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
@@ -354,7 +364,7 @@ bool UpdateStatus() {
                else {                                                // bei Sequenzende geschlossen (ggf. durch Tester)
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
-               Grid.UpdateBreakeven(); breakevenUpdated = true;
+               Grid.UpdateBreakeven(); beUpdated = true;
             }
          }
       }
@@ -371,7 +381,7 @@ bool UpdateStatus() {
    }
 
 
-   if (!breakevenUpdated) /*&&*/ if (grid.breakevenLong > 0) {
+   if (!beUpdated) /*&&*/ if (grid.breakevenLong > 0) {
       HandleEvent(EVENT_BAR_OPEN);                                   // BarOpen-Event verarbeiten, wenn Breakeven initialisiert ist und nicht bereits aktualisiert wurde
    }
 
@@ -978,11 +988,13 @@ void SS.Grid.Breakeven() {
 
 
 /**
- * Berechnet die Breakeven-Werte der Sequenz.
+ * Berechnet die aktuellen Breakeven-Werte.
+ *
+ * @param  datetime time - Zeitpunkt, für Breakeven-Indikator (default: aktueller Zeitpunkt)
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.UpdateBreakeven() {
+bool Grid.UpdateBreakeven(datetime time=0) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
 
@@ -1007,7 +1019,7 @@ bool Grid.UpdateBreakeven() {
       }
    }
 
-   Grid.DrawBreakeven();
+   Grid.DrawBreakeven(time);
    SS.Grid.Breakeven();
 
    return(IsNoError(catch("Grid.UpdateBreakeven()")));
@@ -1016,8 +1028,10 @@ bool Grid.UpdateBreakeven() {
 
 /**
  * Aktualisiert den Breakeven-Indikator.
+ *
+ * @param  datetime time - Zeitpunkt der zu zeichnenden Werte (default: aktueller Zeitpunkt)
  */
-void Grid.DrawBreakeven() {
+void Grid.DrawBreakeven(datetime time=0) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
    if (EQ(grid.breakevenLong, 0))                                                // ohne initialisiertes Breakeven sofortige Rückkehr
@@ -1026,7 +1040,9 @@ void Grid.DrawBreakeven() {
    static double   last.grid.breakevenLong, last.grid.breakevenShort;            // Daten der zuletzt gezeichneten Indikatorwerte
    static datetime last.startTimeLong, last.startTimeShort, last.drawingTime;
 
-   datetime now = TimeCurrent();
+   if (time == 0)
+      time = TimeCurrent();
+   datetime now = time;
 
    // Trendlinien zeichnen
    if (last.drawingTime != 0) {                                                  // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
@@ -1113,6 +1129,7 @@ double ProfitToDistance(double profit, int level) {
       profit += gs * pipV;                                                       // ihr Triggern auf dem "Weg zu Breakeven" mit einkalkuliert werden.
       level--;
       n = MathSqrt(2*profit/(gs*pipV) + 0.25) - 0.5 +0.000000001;                // (int) double
+      //debug("ProfitToDistance()   new n="+ n);
    }
 
    /*
@@ -1350,12 +1367,25 @@ bool ValidateConfiguration() {
    }
    else                                     return(_false(catch("ValidateConfiguration(8)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
 
+   // OrderDisplay
+   OrderDisplay = StringTrim(OrderDisplay);
+   if (StringLen(OrderDisplay) == 0)
+      OrderDisplay = "positions";
+   string char = StringToUpper(StringLeft(OrderDisplay, 1));
+   if      (char == "A") displayMode = DM_ALL;
+   else if (char == "T") displayMode = DM_TRADES;
+   else if (char == "P") displayMode = DM_POSITIONS;
+   else if (char == "N") displayMode = DM_NONE;
+   else                                     return(_false(catch("ValidateConfiguration(9)  Invalid input parameter OrderDisplay = \""+ OrderDisplay +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+   string modes[] = {"none", "positions", "trades", "all"};
+   OrderDisplay = modes[displayMode];
+
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
 
    // TODO: Nach Parameteränderung die neue Konfiguration mit einer evt. bereits laufenden Sequenz abgleichen
    //       oder Parameter werden geändert, ohne vorher im Input-Dialog die Konfigurationsdatei der Sequenz zu laden.
 
-   return(IsNoError(catch("ValidateConfiguration(9)")));
+   return(IsNoError(catch("ValidateConfiguration(10)")));
 }
 
 
@@ -1884,10 +1914,14 @@ bool SynchronizeStatus() {
    /*double*/ grid.breakevenLong  = 0;                //
    /*double*/ grid.breakevenShort = 0;                //
 
+   #define E_OPEN          1                          // Event-Types: {PositionOpen | PositionCloseByStop | PositionCloseByFinish}
+   #define E_CLOSESTOP     2
+   #define E_CLOSEFINISH   3
+
    bool   pendingOrder, openPosition, closedPosition, closedByStop, openPositions, finishedPositions;
    double profitLoss, valueAtRisk, pipValue=PipValue(LotSize);
    int    levels[];    ArrayResize(levels, 0);
-   double events[][5]; ArrayResize(events, 0);
+   double events[][6]; ArrayResize(events, 0);
 
    int size = ArraySize(orders.ticket);
 
@@ -1907,7 +1941,7 @@ bool SynchronizeStatus() {
       if (!pendingOrder) {
          profitLoss  = orders.swap[i] + orders.commission[i] + orders.profit[i];
          valueAtRisk = (GridSize-Sync.GetOpenSlippage(i)) * pipValue;
-         Sync.PushBreakevenEvent(events, orders.openTime[i], orders.level[i], NULL, NULL, -valueAtRisk); // Breakeven-History (valueAtRisk um Slippage justiert)
+         Sync.PushBreakevenEvent(events, orders.openTime[i], E_OPEN, orders.level[i], NULL, NULL, -valueAtRisk); // Breakeven-History (valueAtRisk um Slippage justiert)
 
          if (openPosition) {
             openPositions    = true;
@@ -1927,12 +1961,11 @@ bool SynchronizeStatus() {
             ArrayPushInt(levels, orders.level[i]);
          }
          else if (closedByStop) {                                                         // Breakeven-History (valueAtRisk entsprechend korrigiert)
-            Sync.PushBreakevenEvent(events, orders.closeTime[i], orders.level[i], profitLoss, NULL, profitLoss+valueAtRisk);
-            grid.stops++;
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], E_CLOSESTOP, orders.level[i], profitLoss, NULL, profitLoss+valueAtRisk);
          }
-         else /*(closedByFinish)*/ {                                                      // Breakeven-History
-            Sync.PushBreakevenEvent(events, orders.closeTime[i], orders.level[i], NULL, profitLoss, NULL);
-            finishedPositions = true;
+         else /*(closedByFinish)*/ {
+            finishedPositions = true;                                                     // Breakeven-History
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], E_CLOSEFINISH, orders.level[i], NULL, profitLoss, NULL);
          }
       }
 
@@ -1945,11 +1978,14 @@ bool SynchronizeStatus() {
          else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
       }
       else if (closedByStop) {                      // closedPosition ist Folge von openPosition
+         if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
+         else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+         if (success)                               success = ChartMarker.PositionClosed(i);
       }
       else  /*(closedByFinish)*/ {
          if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
          else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-         if (success)                               success = ChartMarker.PositionClosed_B(orders.ticket[i], Digits, CLR_CLOSE, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]);
+         if (success)                               success = ChartMarker.PositionClosed(i);
       }
       if (!success && !IsLastError())
          SetLastError(stdlib_PeekLastError());
@@ -1971,23 +2007,36 @@ bool SynchronizeStatus() {
    }
 
 
-   // (3) Breakeven-Änderungen zeitlich sortieren und Indikator restaurieren
+   // (3) Breakeven-Änderungen zeitlich sortieren und Indikator neu zeichnen
    ArraySort(events);
    size = ArrayRange(events, 0);
+   int time, lastTime, minute, lastMinute, type, level; grid.level=0;
 
    for (i=0; i < size; i++) {
-      grid.stopsPL     += events[i][2];
-      grid.finishedPL  += events[i][3];
-      grid.valueAtRisk += events[i][4];
-
-      if (__SCRIPT__ == "SnowRoller.2") {
-         //Grid.UpdateBreakeven();
+      time              = events[i][0] +0.1;                            // (int) double
+      // zwischen den BE-Events liegende BarOpen(M1)-Events simulieren
+      if (lastTime > 0) {
+         minute = time/60; lastMinute = lastTime/60;
+         while (lastMinute < minute-1) {                                // TODO: fehlende Sessions überspringen (Wochenende)
+            lastMinute++;
+            Grid.DrawBreakeven(lastMinute * MINUTES);
+         }
       }
+      type              = events[i][1] +0.1;                            // (int) double
+      level             = events[i][2] + MathSign(events[i][2])*0.1;    // (int) double
+      grid.stopsPL     += events[i][3];
+      grid.finishedPL  += events[i][4];
+      grid.valueAtRisk += events[i][5];
+
+      if      (type == E_OPEN)      { grid.level = level; }
+      else if (type == E_CLOSESTOP) { grid.level = level-MathSign(level); grid.stops++; }
+
+      Grid.UpdateBreakeven(time);
+      lastTime = time;
    }
-   debug("SynchronizeStatus()   size(events)="+ ArrayRange(events, 0) +"  grid.valueAtRisk="+ NumberToStr(grid.valueAtRisk, ".2+") +"  grid.stopsPL="+ NumberToStr(grid.stopsPL, ".2+") +"  grid.finishedPL="+ NumberToStr(grid.finishedPL, ".2+"));
+
 
    grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
-
    SS.Grid.MaxLevel();
    SS.Grid.Stops();
    SS.Grid.TotalPL();
@@ -2002,6 +2051,7 @@ bool SynchronizeStatus() {
  *
  * @param  double   events[]    - Array mit bereits gespeicherten Events
  * @param  datetime time        - Zeitpunkt des neuen Events
+ * @param  int      type        - Event-Typ: PositionOpen | PositionCloseByStop | PositionCloseByFinish
  * @param  int      level       - Gridlevel des neuen Events
  * @param  double   stopsPL     - Änderung des Profit/Loss durch ausgestoppte Positionen
  * @param  double   finishedPL  - Änderung des Profit/Loss durch sonstige geschlossene Positionen
@@ -2009,24 +2059,21 @@ bool SynchronizeStatus() {
  *
  * @return bool - Erfolgsstatus
  */
-bool Sync.PushBreakevenEvent(double& events[][], datetime time, int level, double stopsPL, double finishedPL, double valueAtRisk) {
+bool Sync.PushBreakevenEvent(double& events[][], datetime time, int type, int level, double stopsPL, double finishedPL, double valueAtRisk) {
    int size = ArrayRange(events, 0);
    ArrayResize(events, size+1);
 
    events[size][0] = time;
-   events[size][1] = level;
-   events[size][2] = stopsPL;
-   events[size][3] = finishedPL;
-   events[size][4] = valueAtRisk;
+   events[size][1] = type;
+   events[size][2] = level;
+   events[size][3] = stopsPL;
+   events[size][4] = finishedPL;
+   events[size][5] = valueAtRisk;
 
    grid.maxLevelLong  = MathMax(grid.maxLevelLong,  level) +0.1;     // (int) double
    grid.maxLevelShort = MathMin(grid.maxLevelShort, level) -0.1;     // (int) double
 
-   /*
-   if ((level<0 && grid.maxLevelLong>0) || (level>0 && grid.maxLevelShort<0))
-      return(_false(catch("Sync.PushBreakevenEvent(1)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
-   */
-   return(IsNoError(catch("Sync.PushBreakevenEvent(2)")));
+   return(IsNoError(catch("Sync.PushBreakevenEvent()")));
 }
 
 
@@ -2070,6 +2117,26 @@ bool ChartMarker.OrderFilled(int i) {
    if (!ChartMarker.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]))
       return(_false(SetLastError(stdlib_PeekLastError())));
 
+   return(true);
+}
+
+
+/**
+ * Korrigiert die vom Terminal beim Schließen einer Position gesetzten oder nicht gesetzten Chart-Marker.
+ *
+ * @param  int i - Index des Ordertickets in den Datenarrays
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool ChartMarker.PositionClosed(int i) {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return(true);
+
+   if (i < 0 || ArraySize(orders.ticket) < i+1)
+      return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   if (!ChartMarker.PositionClosed_B(orders.ticket[i], Digits, CLR_CLOSE, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]))
+      return(_false(SetLastError(stdlib_PeekLastError())));
    return(true);
 }
 
