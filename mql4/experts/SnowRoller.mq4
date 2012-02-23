@@ -1107,9 +1107,9 @@ double ProfitToDistance(double profit, int level) {
    -------------------------------------------
    expProfit(n)   = n * (n+1)/2 * gs * pipV(1)
 
-   =>          0 = n² + n - 2*profit/(gs*pipV(1))                                // Normalform quadratischer Gleichung
+   =>          0 = n² + n - 2*profit/(gs*pipV(1))                                // Normalform
 
-   => (n + 0.5)² = n² + n + 0.25
+   => (n + 0.5)² = n² + n + 0.25                                                 // Binom
 
    => (n + 0.5)² - 0.25 - 2*profit/(gs*pipV(1)) = n² + n - 2*profit/(gs*pipV(1))
 
@@ -1241,7 +1241,7 @@ int StoreChartSequenceId() {
    if (ObjectFind(label) != -1)
       ObjectDelete(label);
    ObjectCreate(label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                 // negativer Wert (im nicht sichtbaren Bereich)
+   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                    // negativer Wert (im nicht sichtbaren Bereich)
 
    return(catch("StoreChartSequenceId()"));
 }
