@@ -1871,27 +1871,25 @@ bool SynchronizeStatus() {
 
 
    // (2) übrige Laufzeitvariablen restaurieren
-   /*
-   int    status;                   // ok
-   int    grid.level;               // ok
-   int    grid.maxLevelLong;        // ok
-   int    grid.maxLevelShort;       // ok
-   int    grid.stops;               // ok
-   double grid.stopsPL;             // ok
-   double grid.finishedPL;          // ok
-   double grid.floatingPL;          // ok
-   double grid.totalPL;             // ok
-   double grid.valueAtRisk;         // ok
-   double grid.breakevenLong;       // ok
-   double grid.breakevenShort;      // ok
-   */
-   int size = ArraySize(orders.ticket);
-   status = ifInt(size==0, STATUS_WAITING, STATUS_PROGRESSING);
+   /*int   */ status              = STATUS_WAITING;   // ok
+   /*int   */ grid.level          = 0;                // ok
+   /*int   */ grid.maxLevelLong   = 0;                // ok
+   /*int   */ grid.maxLevelShort  = 0;                // ok
+   /*int   */ grid.stops          = 0;                // ok
+   /*double*/ grid.stopsPL        = 0;                // ok
+   /*double*/ grid.finishedPL     = 0;                // ok
+   /*double*/ grid.floatingPL     = 0;                // ok
+   /*double*/ grid.totalPL        = 0;                // ok
+   /*double*/ grid.valueAtRisk    = 0;                // ok
+   /*double*/ grid.breakevenLong  = 0;                //
+   /*double*/ grid.breakevenShort = 0;                //
 
-   bool   pendingOrder, openPosition, closedPosition, closedByStop, closedByFinish, openPositions, finishedPositions;
+   bool   pendingOrder, openPosition, closedPosition, closedByStop, openPositions, finishedPositions;
+   double profitLoss, valueAtRisk, pipValue=PipValue(LotSize);
    int    levels[];    ArrayResize(levels, 0);
    double events[][5]; ArrayResize(events, 0);
-   double expectedPrice, slippage, profitLoss, pipValue=PipValue(LotSize), valueAtRisk, valueAtRisk1=GridSize * pipValue;
+
+   int size = ArraySize(orders.ticket);
 
    for (i=0; i < size; i++) {
       pendingOrder   = orders.type[i] == OP_UNDEFINED;
@@ -1903,135 +1901,97 @@ bool SynchronizeStatus() {
          else if (orders.type[i] == OP_BUY )             closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
          else if (orders.type[i] == OP_SELL)             closedByStop = GE(orders.closePrice[i], orders.stopLoss[i]);
          else                                            closedByStop = false;
-         closedByFinish = !closedByStop;
+         if (!closedByStop && openPositions) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
       }
 
       if (!pendingOrder) {
-         grid.maxLevelLong  = MathMax(grid.maxLevelLong,  orders.level[i]) +0.1;          // (int) double
-         grid.maxLevelShort = MathMin(grid.maxLevelShort, orders.level[i]) -0.1;          // (int) double
-
-         expectedPrice = NormalizeDouble(grid.base + orders.level[i] * GridSize * Pips, Digits);
-         valueAtRisk   = valueAtRisk1;                                                    // valueAtRisk *nur* dieser Position, ohne Slippage
-         profitLoss    = orders.swap[i] + orders.commission[i] + orders.profit[i];
-
-         // Breakeven-relevante Änderungen speichern
-         if (NE(orders.openPrice[i], expectedPrice)) {
-            if (orders.type[i] == OP_BUY) slippage = expectedPrice - orders.openPrice[i]; // Slippage zugunsten ist positiv, zu ungunsten negativ
-            else                          slippage = orders.openPrice[i] - expectedPrice;
-            valueAtRisk -= slippage/Pips * pipValue;                                      // valueAtRisk der Position um Slippage justieren
-            debug("SynchronizeStatus()   open slippage detected, expectedPrice="+ NumberToStr(expectedPrice, PriceFormat) +"   openPrice="+ NumberToStr(orders.openPrice[i], PriceFormat));
-         }
-         PushEvent(events, orders.openTime[i], orders.level[i], -valueAtRisk, NULL, NULL);
+         profitLoss  = orders.swap[i] + orders.commission[i] + orders.profit[i];
+         valueAtRisk = (GridSize-Sync.GetOpenSlippage(i)) * pipValue;
+         Sync.PushBreakevenEvent(events, orders.openTime[i], orders.level[i], NULL, NULL, -valueAtRisk); // Breakeven-History (valueAtRisk um Slippage justiert)
 
          if (openPosition) {
-            openPositions = true;
+            openPositions    = true;
             grid.floatingPL += profitLoss;
 
             if (orders.level[i] > 0) {
-               if (grid.level < 0)                   return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
+               if (grid.level < 0)                   return(_false(catch("SynchronizeStatus(3)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
                grid.level = MathMax(grid.level, orders.level[i]) +0.1;                    // (int) double
             }
             else if (orders.level[i] < 0) {
-               if (grid.level > 0)                   return(_false(catch("SynchronizeStatus(3)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
+               if (grid.level > 0)                   return(_false(catch("SynchronizeStatus(4)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
                grid.level = MathMin(grid.level, orders.level[i]) -0.1;                    // (int) double
             }
-            else                                     return(_false(catch("SynchronizeStatus(4)   illegal order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+            else                                     return(_false(catch("SynchronizeStatus(5)   illegal order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
-            if (IntInArray(orders.level[i], levels)) return(_false(catch("SynchronizeStatus(5)   duplicate order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+            if (IntInArray(orders.level[i], levels)) return(_false(catch("SynchronizeStatus(6)   duplicate order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
             ArrayPushInt(levels, orders.level[i]);
-
-            grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * valueAtRisk1;         // TODO: aufdröseln
          }
-         else if (closedByStop) {
+         else if (closedByStop) {                                                         // Breakeven-History (valueAtRisk entsprechend korrigiert)
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], orders.level[i], profitLoss, NULL, profitLoss+valueAtRisk);
             grid.stops++;
-            grid.stopsPL    += profitLoss;
-            grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * valueAtRisk1;         // TODO: aufdröseln
-
-            // Breakeven-relevante Änderungen speichern
-            PushEvent(events, orders.closeTime[i], orders.level[i], profitLoss + valueAtRisk, profitLoss, NULL);
          }
-         else if (closedByFinish) {
-            grid.finishedPL  += profitLoss;
+         else /*(closedByFinish)*/ {                                                      // Breakeven-History
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], orders.level[i], NULL, profitLoss, NULL);
             finishedPositions = true;
-
-            // Breakeven-relevante Änderungen speichern
-            PushEvent(events, orders.closeTime[i], orders.level[i], NULL, NULL, profitLoss);
          }
-         else return(_false(catch("SynchronizeStatus(6)   illegal order status of #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
       }
 
       // (2.1) Order visualisieren
       bool success = true;
-      if      (pendingOrder) {                         success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+      if      (pendingOrder) {                      success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
       }
-      else if (openPosition) {                         // openPosition ist Folge von Pending- oder Market-Order
-         if (orders.pendingType[i] != OP_UNDEFINED)    success = ChartMarker.OrderFilled(i);
-         else                                          success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+      else if (openPosition) {                      // openPosition ist Folge von Pending- oder Market-Order
+         if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
+         else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
       }
-      else /*(closedPosition)*/ {                      // closedPosition ist Folge von openPosition
-         if (closedByFinish) {
-            if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
-            else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-            if (success)                               success = ChartMarker.PositionClosed_B(orders.ticket[i], Digits, CLR_CLOSE, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]);
-         }
+      else if (closedByStop) {                      // closedPosition ist Folge von openPosition
+      }
+      else  /*(closedByFinish)*/ {
+         if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
+         else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+         if (success)                               success = ChartMarker.PositionClosed_B(orders.ticket[i], Digits, CLR_CLOSE, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]);
       }
       if (!success && !IsLastError())
-         return(_false(SetLastError(stdlib_PeekLastError())));
+         SetLastError(stdlib_PeekLastError());
+
+      if (IsLastError())
+         return(false);
    }
 
-   // (2.2) Status setzen
+   // (2.2) Status bestimmen
    if (openPositions) {
-      if (finishedPositions)                              return(_false(catch("SynchronizeStatus(7)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
-      int openLevels = ArraySize(levels);
-      if (grid.level > 0) {
-         if (openLevels !=  levels[ArrayMaximum(levels)]) return(_false(catch("SynchronizeStatus(8)   illegal sequence status, one or more open positions missed", ERR_RUNTIME_ERROR)));
-      }
-      else {
-         if (openLevels != -levels[ArrayMinimum(levels)]) return(_false(catch("SynchronizeStatus(9)   illegal sequence status, one or more open positions missed", ERR_RUNTIME_ERROR)));
-      }
+      int maxLevel = MathMax(MathAbs(ArrayMinimum(levels)), MathAbs(ArrayMaximum(levels))) +0.1;
+      if (ArraySize(levels) != maxLevel) return(_false(catch("SynchronizeStatus(7)   illegal sequence status, one or more open positions missed", ERR_RUNTIME_ERROR)));
+      status = STATUS_PROGRESSING;
    }
    else if (finishedPositions) {
       status = STATUS_FINISHED;
    }
 
 
-   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
-   SS.Grid.MaxLevel();
-   SS.Grid.Stops();
-   SS.Grid.ValueAtRisk();
-   SS.Grid.TotalPL();
-
-
-   if (__SCRIPT__ != "SnowRoller.2")
-      return(IsNoError(catch("SynchronizeStatus(10)")));
-
-
-
-   // (3) Breakeven-relevante Änderungen zeitlich sortieren und Indikator restaurieren
+   // (3) Breakeven-Änderungen zeitlich sortieren und Indikator restaurieren
    ArraySort(events);
    size = ArrayRange(events, 0);
 
-   double stopsPL, finishedPL; valueAtRisk=0;
-
    for (i=0; i < size; i++) {
-      valueAtRisk += events[i][2];
-      stopsPL     += events[i][3];
-      finishedPL  += events[i][4];
-      //Grid.UpdateBreakeven();
+      grid.stopsPL     += events[i][2];
+      grid.finishedPL  += events[i][3];
+      grid.valueAtRisk += events[i][4];
+
+      if (__SCRIPT__ == "SnowRoller.2") {
+         //Grid.UpdateBreakeven();
+      }
    }
-   debug("SynchronizeStatus()   size(events)="+ ArrayRange(events, 0) +"  valueAtRisk="+ NumberToStr(valueAtRisk, ".2+") +"  stopsPL="+ NumberToStr(stopsPL, ".2+") +"  finishedPL="+ NumberToStr(finishedPL, ".2+"));
+   debug("SynchronizeStatus()   size(events)="+ ArrayRange(events, 0) +"  grid.valueAtRisk="+ NumberToStr(grid.valueAtRisk, ".2+") +"  grid.stopsPL="+ NumberToStr(grid.stopsPL, ".2+") +"  grid.finishedPL="+ NumberToStr(grid.finishedPL, ".2+"));
 
-
-
+   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
 
    SS.Grid.MaxLevel();
    SS.Grid.Stops();
-   SS.Grid.ValueAtRisk();
    SS.Grid.TotalPL();
+   SS.Grid.ValueAtRisk();
 
-   if (!IsLastError() && IsError(stdlib_PeekLastError()))
-      return(_false(SetLastError(stdlib_PeekLastError())));
-   return(IsNoError(catch("SynchronizeStatus(10)")));
+   return(IsNoError(catch("SynchronizeStatus(8)")));
 }
 
 
@@ -2041,26 +2001,53 @@ bool SynchronizeStatus() {
  * @param  double   events[]    - Array mit bereits gespeicherten Events
  * @param  datetime time        - Zeitpunkt des neuen Events
  * @param  int      level       - Gridlevel des neuen Events
- * @param  double   valueAtRisk - VAR-Änderung des neuen Events
  * @param  double   stopsPL     - Änderung des Profit/Loss durch ausgestoppte Positionen
  * @param  double   finishedPL  - Änderung des Profit/Loss durch sonstige geschlossene Positionen
+ * @param  double   valueAtRisk - VAR-Änderung des neuen Events
  *
  * @return bool - Erfolgsstatus
  */
-bool PushEvent(double& events[][], datetime time, int level, double valueAtRisk, double stopsPL, double finishedPL) {
-   if (IsLastError() || status==STATUS_DISABLED)
-      return(false);
-
+bool Sync.PushBreakevenEvent(double& events[][], datetime time, int level, double stopsPL, double finishedPL, double valueAtRisk) {
    int size = ArrayRange(events, 0);
    ArrayResize(events, size+1);
 
    events[size][0] = time;
    events[size][1] = level;
-   events[size][2] = valueAtRisk;
-   events[size][3] = stopsPL;
-   events[size][4] = finishedPL;
+   events[size][2] = stopsPL;
+   events[size][3] = finishedPL;
+   events[size][4] = valueAtRisk;
 
-   return(IsNoError(catch("PushEvent()")));
+   grid.maxLevelLong  = MathMax(grid.maxLevelLong,  level) +0.1;     // (int) double
+   grid.maxLevelShort = MathMin(grid.maxLevelShort, level) -0.1;     // (int) double
+
+   /*
+   if ((level<0 && grid.maxLevelLong>0) || (level>0 && grid.maxLevelShort<0))
+      return(_false(catch("Sync.PushBreakevenEvent(1)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
+   */
+   return(IsNoError(catch("Sync.PushBreakevenEvent(2)")));
+}
+
+
+/**
+ * Ermittelt die OpenPrice-Slippage der Position.
+ *
+ * @param  int i - Index der Position in den Datenarrays
+ *
+ * @return double - Slippage
+ */
+double Sync.GetOpenSlippage(int i) {
+   if (orders.type[i] == OP_UNDEFINED)                               // pendingOrder
+      return(0);
+
+   double slippage, expectedPrice=NormalizeDouble(grid.base + orders.level[i] * GridSize * Pips, Digits);
+
+   if (NE(orders.openPrice[i], expectedPrice)) {
+      if (orders.type[i] == OP_BUY) slippage = expectedPrice - orders.openPrice[i];    // Slippage zugunsten ist positiv, zu ungunsten negativ
+      else                          slippage = orders.openPrice[i] - expectedPrice;
+      slippage = NormalizeDouble(slippage/Pips, Digits-PipDigits);                     // in Pip
+      debug("Sync.GetOpenSlippage()   open price slippage of #"+ orders.ticket[i] +" = "+ DoubleToStr(slippage, Digits-PipDigits) +" pip");
+   }
+   return(slippage);
 }
 
 
