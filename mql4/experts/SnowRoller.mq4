@@ -1960,7 +1960,9 @@ bool SynchronizeStatus() {
 
    // (2.2) Status bestimmen
    if (openPositions) {
-      int maxLevel = MathMax(MathAbs(ArrayMinimum(levels)), MathAbs(ArrayMaximum(levels))) +0.1;
+      int min      = levels[ArrayMinimum(levels)];
+      int max      = levels[ArrayMaximum(levels)];
+      int maxLevel = MathMax(MathAbs(min), MathAbs(max)) +0.1;                            // (int) double
       if (ArraySize(levels) != maxLevel) return(_false(catch("SynchronizeStatus(7)   illegal sequence status, one or more open positions missed", ERR_RUNTIME_ERROR)));
       status = STATUS_PROGRESSING;
    }
