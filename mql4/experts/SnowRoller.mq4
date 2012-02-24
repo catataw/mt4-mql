@@ -383,6 +383,7 @@ bool UpdateStatus() {
 
    if (!beUpdated) /*&&*/ if (grid.breakevenLong > 0) {
       HandleEvent(EVENT_BAR_OPEN);                                   // BarOpen-Event verarbeiten, wenn Breakeven initialisiert ist und nicht bereits aktualisiert wurde
+    //HandleEvent(EVENT_BAR_OPEN, F_PERIOD_M1);
    }
 
    return(IsNoError(catch("UpdateStatus(2)")));
@@ -1241,7 +1242,7 @@ int StoreChartSequenceId() {
    if (ObjectFind(label) != -1)
       ObjectDelete(label);
    ObjectCreate(label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                    // negativer Wert (im nicht sichtbaren Bereich)
+   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                 // negativer Wert (im nicht sichtbaren Bereich)
 
    return(catch("StoreChartSequenceId()"));
 }
