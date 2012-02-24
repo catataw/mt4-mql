@@ -7,6 +7,19 @@
  *
  * @see Different pyramiding schemes:  http://www.actionforex.com/articles-library/money-management-articles/pyramiding:-a-risky-strategy-200603035356/
  * @see Schwager about pyramiding:     http://www.forexjournal.com/fx-education/money-management/450-pyramiding-and-the-management-of-profitable-trades.html
+ *
+ *
+ *  TODO:
+ *  -----
+ *  - STATUS_FINISHED implementieren
+ *  - STATUS_MONITORING implementieren
+ *  - Upload des Sequenz-Status implementieren
+ *  - Heartbeat implementieren
+ *  - im Tester bei VisualMode=off Sequenz-ID im Fenster-Titel anzeigen
+ *  - im Tester Laufzeit optimieren (I/O-Operationen, Logging, sonstiges)
+ *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
+ *  - Anzeige des Breakeven-Indikator beim Beenden reparieren
+ *  - Statusdatei: OrderComment() durch ClosedByStop ersetzen
  */
 #include <stdlib.mqh>
 #include <win32api.mqh>
@@ -48,6 +61,7 @@ string   intern.OrderDisplay;
 string   intern.Sequence.ID;
 
 int      status = STATUS_WAITING;
+bool     test   = false;                                    // ob die Sequenz im Tester erzeugt wurde (für Visualisierung von Tests in Live-Charts)
 
 int      sequenceId;
 string   sequenceSymbol;                                    // für Restart
@@ -92,7 +106,8 @@ double   orders.commission  [];
 double   orders.profit      [];
 string   orders.comment     [];
 
-string   str.LotSize             = "";                      // Speichervariablen für schnellere Abarbeitung von ShowStatus()
+string   str.test                = "";                      // Speichervariablen für schnellere Abarbeitung von ShowStatus()
+string   str.LotSize             = "";
 string   str.Entry.limit         = "";
 string   str.grid.base           = "";
 string   str.grid.maxLevelLong   = "0";
@@ -163,6 +178,7 @@ int init() {
          }
          else if (ValidateConfiguration()) {                         // Zum Schluß neue Sequenz anlegen.
             sequenceId = CreateSequenceId();
+            test       = IsTesting(); SS.Test();
             if (StartCondition != "")                                // Ohne StartCondition erfolgt sofortiger Einstieg, in diesem Fall wird der
                SaveStatus();                                         // Status erst nach Sicherheitsabfrage in StartSequence() gespeichert.
          }
@@ -221,9 +237,6 @@ int deinit() {
    if (IsError(onDeinit()))
       return(last_error);
 
-   if (IsTesting()) /*&&*/ if (!DeletePendingOrders(CLR_NONE))       // Der Tester schließt beim Beenden nur offene Positionen,
-      return(SetLastError(stdlib_PeekLastError()));                  // offene Pending-Orders werden jedoch nicht gelöscht.
-
    if (UninitializeReason() == REASON_CHARTCHANGE) {
       // Input-Parameter sind nicht statisch: für's nächste init() in intern.* zwischenspeichern
       intern.GridSize         = GridSize;
@@ -242,7 +255,7 @@ int deinit() {
          SaveStatus();
 
       if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE)
-         StoreChartSequenceId();
+         StoreChartSequenceId();                                  // TODO: Test-ID speichern
    }
    return(catch("deinit(2)"));
 }
@@ -845,12 +858,12 @@ int ShowStatus(bool init=false) {
    }
 
    switch (status) {
-      case STATUS_WAITING:     msg = StringConcatenate(":  sequence ", sequenceId, " waiting");
+      case STATUS_WAITING:     msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
                                   msg = StringConcatenate(msg, " for crossing of ", str.Entry.limit);                                                                                     break;
-      case STATUS_PROGRESSING: msg = StringConcatenate(":  sequence ", sequenceId, " progressing at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")"); break;
-      case STATUS_FINISHED:    msg = StringConcatenate(":  sequence ", sequenceId, " finished at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")");    break;
-      case STATUS_DISABLED:    msg = StringConcatenate(":  sequence ", sequenceId, " disabled", str.error);                                                                               break;
+      case STATUS_PROGRESSING: msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " progressing at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")"); break;
+      case STATUS_FINISHED:    msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " finished at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")");    break;
+      case STATUS_DISABLED:    msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " disabled", str.error);                                                                               break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
@@ -871,6 +884,15 @@ int ShowStatus(bool init=false) {
    if (!IsError(catch("ShowStatus(2)")))
       last_error = error;                                            // bei Funktionseintritt bereits existierenden Fehler restaurieren
    return(last_error);
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von test.
+ */
+void SS.Test() {
+   if (test) str.test = "test ";
+   else      str.test = "";
 }
 
 
@@ -1215,13 +1237,17 @@ bool IsInputSequenceId() {
  */
 bool RestoreInputSequenceId() {
    if (IsInputSequenceId()) {
-      string strValue = StringTrim(Sequence.ID);
+      string strValue = StringToUpper(StringTrim(Sequence.ID));
 
+      if (StringLeft(strValue, 1) == "T") {
+         test     = true; SS.Test();
+         strValue = StringRight(strValue, -1);
+      }
       if (StringIsInteger(strValue)) {
          int iValue = StrToInteger(strValue);
          if (1000 <= iValue) /*&&*/ if (iValue <= 16383) {
             sequenceId  = iValue;
-            Sequence.ID = strValue;
+            Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
             return(true);
          }
       }
@@ -1454,10 +1480,10 @@ bool SaveStatus() {
 
    // (1.1) Input-Parameter zusammenstellen
    string lines[];  ArrayResize(lines, 0);
-   ArrayPushString(lines, /*string*/ "Sequence.ID="   +             sequenceId    );
-   ArrayPushString(lines, /*int   */ "GridSize="      +             GridSize      );
-   ArrayPushString(lines, /*double*/ "LotSize="       + NumberToStr(LotSize, ".+"));
-   ArrayPushString(lines, /*string*/ "StartCondition="+             StartCondition);
+   ArrayPushString(lines, /*string*/ "Sequence.ID="   + ifString(IsTest(), "T", "") + sequenceId    );
+   ArrayPushString(lines, /*int   */ "GridSize="      +                               GridSize      );
+   ArrayPushString(lines, /*double*/ "LotSize="       +                   NumberToStr(LotSize, ".+"));
+   ArrayPushString(lines, /*string*/ "StartCondition="+                               StartCondition);
 
    // (1.2) Laufzeit-Variablen zusammenstellen
    int size = ArraySize(orders.ticket);
@@ -1488,7 +1514,7 @@ bool SaveStatus() {
    }
 
 
-   // (2) Daten in lokaler Datei (über-)schreiben
+   // (2) Daten in lokaler Datei speichern/überschreiben
    string filename = "presets\\SR."+ sequenceId +".set";             // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch ist
                                                                      // das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
    int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);
@@ -1571,11 +1597,11 @@ bool RestoreStatus() {
 
    // (1) bei nicht existierender lokaler Konfiguration die Datei neu vom Server laden
    string filesDir = TerminalPath() + ifString(IsTesting(), "\\tester", "\\experts") +"\\files\\";
-   string fileName = "presets\\SR."+ sequenceId +".set";             // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
-                                                                     // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+   string fileName = "presets\\"+ ifString(IsTest(), "tester\\", "") +"SR."+ sequenceId +".set";   // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
+                                                                                                   // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
    if (!IsFile(filesDir + fileName)) {
-      if (IsTesting())
-         return(_false(catch("RestoreStatus(2)   status file for sequence "+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+      if (IsTesting() || IsTest())
+         return(_false(catch("RestoreStatus(2)   status file for sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_FILE_NOT_FOUND)));
 
       // TODO: Existenz von wget.exe prüfen
 
@@ -1602,7 +1628,7 @@ bool RestoreStatus() {
       return(_false(SetLastError(stdlib_PeekLastError())));
    if (size == 0) {
       FileDelete(fileName);
-      return(_false(catch("RestoreStatus(3)   status for sequence "+ sequenceId +" not found", ERR_RUNTIME_ERROR)));
+      return(_false(catch("RestoreStatus(3)   status for sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_RUNTIME_ERROR)));
    }
 
 
@@ -1619,8 +1645,13 @@ bool RestoreStatus() {
       string key=StringTrim(parts[0]), value=StringTrim(parts[1]);
 
       if (key == "Sequence.ID") {
+         value = StringToUpper(value);
+         if (StringLeft(value, 1) == "T") {
+            test  = true; SS.Test();
+            value = StringRight(value, -1);
+         }
          if (value != StringConcatenate("", sequenceId)) return(_false(catch("RestoreStatus(5)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-         Sequence.ID = sequenceId;
+         Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
          keys[I_SEQUENCE_ID] = 1;
       }
       else if (key == "GridSize") {
@@ -1912,12 +1943,12 @@ bool SynchronizeStatus() {
    /*double*/ grid.floatingPL     = 0;                // ok
    /*double*/ grid.totalPL        = 0;                // ok
    /*double*/ grid.valueAtRisk    = 0;                // ok
-   /*double*/ grid.breakevenLong  = 0;                //
-   /*double*/ grid.breakevenShort = 0;                //
+   /*double*/ grid.breakevenLong  = 0;                // ok
+   /*double*/ grid.breakevenShort = 0;                // ok
 
-   #define E_OPEN          1                          // Event-Types: {PositionOpen | PositionCloseByStop | PositionCloseByFinish}
-   #define E_CLOSESTOP     2
-   #define E_CLOSEFINISH   3
+   #define EVENT_OPEN         1                       // Event-Types: {PositionOpen | PositionCloseByStop | PositionCloseByFinish}
+   #define EVENT_CLOSESTOP    2
+   #define EVENT_CLOSEFINISH  3
 
    bool   pendingOrder, openPosition, closedPosition, closedByStop, openPositions, finishedPositions;
    double profitLoss, valueAtRisk, pipValue=PipValue(LotSize);
@@ -1931,42 +1962,31 @@ bool SynchronizeStatus() {
       openPosition   = !pendingOrder && orders.closeTime[i]==0;
       closedPosition = !pendingOrder && !openPosition;
 
-      if (closedPosition) {                                                               // geschlossenes Ticket
+      if (closedPosition) {                                          // geschlossenes Ticket
          if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
          else if (orders.type[i] == OP_BUY )             closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
          else if (orders.type[i] == OP_SELL)             closedByStop = GE(orders.closePrice[i], orders.stopLoss[i]);
          else                                            closedByStop = false;
-         if (!closedByStop && openPositions) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
+         if (!closedByStop && openPositions)         return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
       }
 
       if (!pendingOrder) {
          profitLoss  = orders.swap[i] + orders.commission[i] + orders.profit[i];
          valueAtRisk = (GridSize-Sync.GetOpenSlippage(i)) * pipValue;
-         Sync.PushBreakevenEvent(events, orders.openTime[i], E_OPEN, orders.level[i], NULL, NULL, -valueAtRisk); // Breakeven-History (valueAtRisk um Slippage justiert)
+         Sync.PushBreakevenEvent(events, orders.openTime[i], EVENT_OPEN, orders.level[i], NULL, NULL, -valueAtRisk); // Breakeven-History (valueAtRisk um Slippage justiert)
 
          if (openPosition) {
             openPositions    = true;
             grid.floatingPL += profitLoss;
-
-            if (orders.level[i] > 0) {
-               if (grid.level < 0)                   return(_false(catch("SynchronizeStatus(3)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
-               grid.level = MathMax(grid.level, orders.level[i]) +0.1;                    // (int) double
-            }
-            else if (orders.level[i] < 0) {
-               if (grid.level > 0)                   return(_false(catch("SynchronizeStatus(4)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
-               grid.level = MathMin(grid.level, orders.level[i]) -0.1;                    // (int) double
-            }
-            else                                     return(_false(catch("SynchronizeStatus(5)   illegal order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
-
-            if (IntInArray(orders.level[i], levels)) return(_false(catch("SynchronizeStatus(6)   duplicate order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+            if (IntInArray(orders.level[i], levels)) return(_false(catch("SynchronizeStatus(3)   duplicate order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
             ArrayPushInt(levels, orders.level[i]);
          }
-         else if (closedByStop) {                                                         // Breakeven-History (valueAtRisk entsprechend korrigiert)
-            Sync.PushBreakevenEvent(events, orders.closeTime[i], E_CLOSESTOP, orders.level[i], profitLoss, NULL, profitLoss+valueAtRisk);
+         else if (closedByStop) {                                    // Breakeven-History (valueAtRisk entsprechend korrigiert)
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSESTOP, orders.level[i], profitLoss, NULL, profitLoss+valueAtRisk);
          }
          else /*(closedByFinish)*/ {
-            finishedPositions = true;                                                     // Breakeven-History
-            Sync.PushBreakevenEvent(events, orders.closeTime[i], E_CLOSEFINISH, orders.level[i], NULL, profitLoss, NULL);
+            finishedPositions = true;                                // Breakeven-History
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSEFINISH, orders.level[i], NULL, profitLoss, NULL);
          }
       }
 
@@ -1997,10 +2017,11 @@ bool SynchronizeStatus() {
 
    // (2.2) Status bestimmen
    if (openPositions) {
-      int min      = levels[ArrayMinimum(levels)];
-      int max      = levels[ArrayMaximum(levels)];
+      int min = levels[ArrayMinimum(levels)];
+      int max = levels[ArrayMaximum(levels)];
+      if (min < 0 && max > 0)            return(_false(catch("SynchronizeStatus(4)   illegal sequence status, both long and short open positions found", ERR_RUNTIME_ERROR)));
       int maxLevel = MathMax(MathAbs(min), MathAbs(max)) +0.1;                            // (int) double
-      if (ArraySize(levels) != maxLevel) return(_false(catch("SynchronizeStatus(7)   illegal sequence status, one or more open positions missed", ERR_RUNTIME_ERROR)));
+      if (ArraySize(levels) != maxLevel) return(_false(catch("SynchronizeStatus(5)   illegal sequence status, one or more open positions missed", ERR_RUNTIME_ERROR)));
       status = STATUS_PROGRESSING;
    }
    else if (finishedPositions) {
@@ -2014,23 +2035,24 @@ bool SynchronizeStatus() {
    int time, lastTime, minute, lastMinute, type, level; grid.level=0;
 
    for (i=0; i < size; i++) {
-      time              = events[i][0] +0.1;                            // (int) double
+      time = events[i][0] +0.1;                                      // (int) double
+
       // zwischen den BE-Events liegende BarOpen(M1)-Events simulieren
       if (lastTime > 0) {
          minute = time/60; lastMinute = lastTime/60;
-         while (lastMinute < minute-1) {                                // TODO: fehlende Sessions überspringen (Wochenende)
+         while (lastMinute < minute-1) {                             // TODO: fehlende Sessions überspringen (Wochenende)
             lastMinute++;
             Grid.DrawBreakeven(lastMinute * MINUTES);
          }
       }
-      type              = events[i][1] +0.1;                            // (int) double
-      level             = events[i][2] + MathSign(events[i][2])*0.1;    // (int) double
+      type              = events[i][1] +0.1;                         // (int) double
+      level             = events[i][2] + MathSign(events[i][2])*0.1; // (int) double
       grid.stopsPL     += events[i][3];
       grid.finishedPL  += events[i][4];
       grid.valueAtRisk += events[i][5];
 
-      if      (type == E_OPEN)      { grid.level = level; }
-      else if (type == E_CLOSESTOP) { grid.level = level-MathSign(level); grid.stops++; }
+      if      (type == EVENT_OPEN)      { grid.level = level; }
+      else if (type == EVENT_CLOSESTOP) { grid.level = level-MathSign(level); grid.stops++; }
 
       Grid.UpdateBreakeven(time);
       lastTime = time;
@@ -2043,7 +2065,7 @@ bool SynchronizeStatus() {
    SS.Grid.TotalPL();
    SS.Grid.ValueAtRisk();
 
-   return(IsNoError(catch("SynchronizeStatus(8)")));
+   return(IsNoError(catch("SynchronizeStatus(6)")));
 }
 
 
@@ -2052,7 +2074,7 @@ bool SynchronizeStatus() {
  *
  * @param  double   events[]    - Array mit bereits gespeicherten Events
  * @param  datetime time        - Zeitpunkt des neuen Events
- * @param  int      type        - Event-Typ: PositionOpen | PositionCloseByStop | PositionCloseByFinish
+ * @param  int      type        - Event-Typ: EVENT_OPEN | EVENT_CLOSESTOP | EVENT_CLOSEFINISH
  * @param  int      level       - Gridlevel des neuen Events
  * @param  double   stopsPL     - Änderung des Profit/Loss durch ausgestoppte Positionen
  * @param  double   finishedPL  - Änderung des Profit/Loss durch sonstige geschlossene Positionen
@@ -2086,7 +2108,7 @@ bool Sync.PushBreakevenEvent(double& events[][], datetime time, int type, int le
  * @return double - Slippage
  */
 double Sync.GetOpenSlippage(int i) {
-   if (orders.type[i] == OP_UNDEFINED)                               // pendingOrder
+   if (orders.type[i] == OP_UNDEFINED)                               // Pending-Order
       return(0);
 
    double slippage, expectedPrice=NormalizeDouble(grid.base + orders.level[i] * GridSize * Pips, Digits);
@@ -2204,7 +2226,18 @@ int ResizeArrays(int size, bool reset=false) {
 
    // Dummy-Calls
    DistanceToProfit(NULL);
+   IsTest();
    SequenceStatusToStr(NULL);
+}
+
+
+/**
+ * Ob die Sequenz im Tester erzeugt wurde (für Visualisierung von Tests in Live-Charts).
+ *
+ * @return bool
+ */
+bool IsTest() {
+   return(IsTesting() || test);
 }
 
 
