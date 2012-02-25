@@ -213,6 +213,9 @@ int init() {
       return(last_error);
 
 
+   GetTesterWindow();
+
+
    // (3) ggf. EA's aktivieren
    int reasons1[] = { REASON_REMOVE, REASON_CHARTCLOSE, REASON_APPEXIT };
    if (IntInArray(UninitializeReason(), reasons1)) /*&&*/ if (!IsExpertEnabled())
@@ -2256,4 +2259,44 @@ string SequenceStatusToStr(int status) {
       case STATUS_DISABLED   : return("STATUS_DISABLED"   );
    }
    return(_empty(catch("SequenceStatusToStr()  invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
+}
+
+
+/**
+ * Gibt das aktuelle Fensterhandle des Strategy Testers zurück.
+ *
+ * @return int - Handle oder 0, falls ein Fehler auftrat
+ */
+int GetTesterWindow() {
+   int hTestWnd;
+
+   int hTermWnd = GetTerminalWindow();
+   debug("GetTesterWindow()   hTermWnd=0x"+ IntToHexStr(hTermWnd) +"   class=\""+ GetClassName(hTermWnd) +"\"   title=\""+ GetWindowText(hTermWnd) +"\"");
+
+   // alle Child-Windows des Terminal-Window durchlaufen
+   int hWndNext = GetTopWindow(hTermWnd);
+
+   while (hWndNext != 0) {
+      debug("GetTesterWindow()   hChild=0x"+ IntToHexStr(hWndNext) +"   class=\""+ GetClassName(hWndNext) +"\"   title=\""+ GetWindowText(hWndNext) +"\"");
+      hWndNext = GetWindow(hWndNext, GW_HWNDNEXT);
+   }
+
+   return(hTestWnd);
+
+   /*
+   // alle Top-level-Windows durchlaufen
+   int processId[1], hWndNext=GetTopWindow(NULL), myProcessId=GetCurrentProcessId();
+
+   while (hWndNext != 0) {
+      GetWindowThreadProcessId(hWndNext, processId);
+      if (processId[0]==myProcessId) && if (GetClassName(hWndNext)==MT4_TERMINAL_CLASSNAME)
+         break;
+      hWndNext = GetWindow(hWndNext, GW_HWNDNEXT);
+   }
+   if (hWndNext == 0) {
+      catch("GetTerminalWindow(2)   could not find terminal window", ERR_RUNTIME_ERROR);
+      hWnd = 0;
+   }
+   hWnd = hWndNext;
+   */
 }
