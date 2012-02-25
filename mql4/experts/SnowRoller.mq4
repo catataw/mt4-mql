@@ -15,7 +15,6 @@
  *  - STATUS_MONITORING implementieren
  *  - Upload des Sequenz-Status implementieren
  *  - Heartbeat implementieren
- *  - im Tester bei VisualMode=off Sequenz-ID im Fenster-Titel anzeigen
  *  - im Tester Laufzeit optimieren (I/O-Operationen, Logging, sonstiges)
  *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
  *  - Anzeige des Breakeven-Indikator beim Beenden reparieren
@@ -177,8 +176,8 @@ int init() {
                   SynchronizeStatus();
          }
          else if (ValidateConfiguration()) {                         // Zum Schluß neue Sequenz anlegen.
-            sequenceId = CreateSequenceId();
-            test       = IsTesting(); SS.Test();
+            sequenceId = CreateSequenceId(); SS.SequenceId();
+            test       = IsTesting();        SS.Test();
             if (StartCondition != "")                                // Ohne StartCondition erfolgt sofortiger Einstieg, in diesem Fall wird der
                SaveStatus();                                         // Status erst nach Sicherheitsabfrage in StartSequence() gespeichert.
          }
@@ -211,9 +210,6 @@ int init() {
    ShowStatus(true);
    if (IsLastError())
       return(last_error);
-
-
-   GetTesterWindow();
 
 
    // (3) ggf. EA's aktivieren
@@ -891,6 +887,20 @@ int ShowStatus(bool init=false) {
 
 
 /**
+ * ShowStatus(): Aktualisiert die Anzeige der Sequenz-ID in der Titelzeile des Strategy Testers.
+ */
+void SS.SequenceId() {
+   if (IsTesting()) {
+      int    hWnd = GetTesterWindow();
+      string text = StringConcatenate("Tester - SR.", sequenceId);
+
+      if (!SetWindowTextA(hWnd, text))
+         catch("SS.SequenceId() ->user32::SetWindowTextA()   error="+ RtlGetLastWin32Error(), ERR_WIN32_ERROR);
+   }
+}
+
+
+/**
  * ShowStatus(): Aktualisiert die String-Repräsentation von test.
  */
 void SS.Test() {
@@ -1249,7 +1259,7 @@ bool RestoreInputSequenceId() {
       if (StringIsInteger(strValue)) {
          int iValue = StrToInteger(strValue);
          if (1000 <= iValue) /*&&*/ if (iValue <= 16383) {
-            sequenceId  = iValue;
+            sequenceId  = iValue; SS.SequenceId();
             Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
             return(true);
          }
@@ -1287,6 +1297,7 @@ bool RestoreChartSequenceId() {
 
    if (ObjectFind(label)!=-1) /*&&*/ if (ObjectType(label)==OBJ_LABEL) {
       sequenceId = MathAbs(ObjectGet(label, OBJPROP_XDISTANCE)) +0.1;   // (int) double
+      SS.SequenceId();
       return(_true(catch("RestoreChartSequenceId(1)")));
    }
    return(_false(catch("RestoreChartSequenceId(2)")));
@@ -1319,7 +1330,7 @@ bool RestoreRunningSequenceId() {
          continue;
 
       if (IsMyOrder()) {
-         sequenceId = OrderMagicNumber() & 0x3FFF;                   // 14 Bits (Bits 1-14) => sequenceId
+         sequenceId = OrderMagicNumber() & 0x3FFF; SS.SequenceId();  // 14 Bits (Bits 1-14) => sequenceId
          return(_true(catch("RestoreRunningSequenceId(1)")));
       }
    }
@@ -2259,44 +2270,4 @@ string SequenceStatusToStr(int status) {
       case STATUS_DISABLED   : return("STATUS_DISABLED"   );
    }
    return(_empty(catch("SequenceStatusToStr()  invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
-}
-
-
-/**
- * Gibt das aktuelle Fensterhandle des Strategy Testers zurück.
- *
- * @return int - Handle oder 0, falls ein Fehler auftrat
- */
-int GetTesterWindow() {
-   int hTestWnd;
-
-   int hTermWnd = GetTerminalWindow();
-   debug("GetTesterWindow()   hTermWnd=0x"+ IntToHexStr(hTermWnd) +"   class=\""+ GetClassName(hTermWnd) +"\"   title=\""+ GetWindowText(hTermWnd) +"\"");
-
-   // alle Child-Windows des Terminal-Window durchlaufen
-   int hWndNext = GetTopWindow(hTermWnd);
-
-   while (hWndNext != 0) {
-      debug("GetTesterWindow()   hChild=0x"+ IntToHexStr(hWndNext) +"   class=\""+ GetClassName(hWndNext) +"\"   title=\""+ GetWindowText(hWndNext) +"\"");
-      hWndNext = GetWindow(hWndNext, GW_HWNDNEXT);
-   }
-
-   return(hTestWnd);
-
-   /*
-   // alle Top-level-Windows durchlaufen
-   int processId[1], hWndNext=GetTopWindow(NULL), myProcessId=GetCurrentProcessId();
-
-   while (hWndNext != 0) {
-      GetWindowThreadProcessId(hWndNext, processId);
-      if (processId[0]==myProcessId) && if (GetClassName(hWndNext)==MT4_TERMINAL_CLASSNAME)
-         break;
-      hWndNext = GetWindow(hWndNext, GW_HWNDNEXT);
-   }
-   if (hWndNext == 0) {
-      catch("GetTerminalWindow(2)   could not find terminal window", ERR_RUNTIME_ERROR);
-      hWnd = 0;
-   }
-   hWnd = hWndNext;
-   */
 }
