@@ -849,7 +849,7 @@ int ShowStatus(bool init=false) {
 
    int error = last_error;                                           // bei Funktionseintritt bereits existierenden Fehler zwischenspeichern
 
-   static string msg, str.error;
+   static string msg, str.stopValue, str.error;
 
    if (IsLastError()) {
       status    = STATUS_DISABLED;
@@ -859,7 +859,7 @@ int ShowStatus(bool init=false) {
    switch (status) {
       case STATUS_WAITING:     msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
-                                  msg = StringConcatenate(msg, " for crossing of ", str.Entry.limit);                                                                                     break;
+                                  msg = StringConcatenate(msg, " for crossing of ", str.Entry.limit);                                                                                                   break;
       case STATUS_PROGRESSING: msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " progressing at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")"); break;
       case STATUS_FINISHED:    msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " finished at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")");    break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " disabled", str.error);                                                                               break;
@@ -867,10 +867,14 @@ int ShowStatus(bool init=false) {
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
+   if (!IsLastError()) {
+      str.stopValue = DoubleToStr(GridSize * PipValue(LotSize), 2);
+   }
+
    msg = StringConcatenate(__SCRIPT__, msg,                                                                                                                NL,
                                                                                                                                                            NL,
                            "Grid:            ", GridSize, " pip @ ", str.grid.base,                                                                        NL,
-                           "LotSize:         ", str.LotSize, " lot = ", DoubleToStr(GridSize * PipValue(LotSize), 2), "/stop",                             NL,
+                           "LotSize:         ", str.LotSize, " lot = ", str.stopValue, "/stop",                                                            NL,
                            "Realized:       ", str.grid.stops, " = ", str.grid.stopsPL,                                                                    NL,
                            "Breakeven:   ", str.grid.breakevenLong, " / ", str.grid.breakevenShort,                                                        NL,
                            "Profit/Loss:    ", str.grid.totalPL, "  (", str.grid.maxProfitLoss, "/", str.grid.maxDrawdown, "/", str.grid.valueAtRisk, ")", NL);
@@ -891,7 +895,10 @@ int ShowStatus(bool init=false) {
  */
 void SS.SequenceId() {
    if (IsTesting()) {
-      int    hWnd = GetTesterWindow();
+      int hWnd = GetTesterWindow();
+      if (hWnd == 0)
+         return(_ZERO(SetLastError(stdlib_PeekLastError())));
+
       string text = StringConcatenate("Tester - SR.", sequenceId);
 
       if (!SetWindowTextA(hWnd, text))
@@ -2044,13 +2051,14 @@ bool SynchronizeStatus() {
 
 
    // (3) Breakeven-Änderungen zeitlich sortieren und Indikator neu zeichnen
-   ArraySort(events);
    size = ArrayRange(events, 0);
-   int time, lastTime, minute, lastMinute, type, level; grid.level=0;
+   if (size > 0)
+      ArraySort(events);
+
+   int time, lastTime, minute, lastMinute, type, level;
 
    for (i=0; i < size; i++) {
       time = events[i][0] +0.1;                                      // (int) double
-
       // zwischen den BE-Events liegende BarOpen(M1)-Events simulieren
       if (lastTime > 0) {
          minute = time/60; lastMinute = lastTime/60;
