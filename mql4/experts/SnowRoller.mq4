@@ -13,10 +13,11 @@
  *  -----
  *  - STATUS_FINISHED implementieren
  *  - STATUS_MONITORING implementieren
+ *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
  *  - Upload des Sequenz-Status implementieren
  *  - Heartbeat implementieren
  *  - im Tester Laufzeit optimieren (I/O-Operationen, Logging, sonstiges)
- *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
+ *  - Anzeige der Gridbasis implementieren
  *  - Anzeige des Breakeven-Indikator beim Beenden reparieren
  *  - Statusdatei: OrderComment() durch ClosedByStop ersetzen
  */
@@ -29,10 +30,11 @@
 #define STATUS_FINISHED       2
 #define STATUS_DISABLED       3
 
-#define DM_NONE               0           // OrderDisplay-Modes
-#define DM_POSITIONS          1
-#define DM_TRADES             2
-#define DM_ALL                3
+// OrderDisplay-Modes
+#define DM_NONE               0           // keine
+#define DM_PYRAMID            1           // Pending, Open,               ClosedByFinish
+#define DM_TRADES             2           // Pending, Open, ClosedByStop, ClosedByFinish
+#define DM_ALL                3           // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
 
 
 int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereich 101-1023)
@@ -40,14 +42,14 @@ int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereic
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
 
-extern int    GridSize                       = 20;
-extern double LotSize                        = 0.1;
-extern string StartCondition                 = "";
-extern color  Color.Breakeven                = Magenta;
-extern string OrderDisplay                   = "positions";
-extern string OrderDisplay.Help              = "all | trades | positions | none";
-extern string ______________________________ = "==== Sequence to Manage =============";
-extern string Sequence.ID                    = "";
+extern int    GridSize                        = 20;
+extern double LotSize                         = 0.1;
+extern string StartCondition                  = "";
+extern string OrderDisplayMode                = "Pyramid";
+extern string OrderDisplayMode.Help           = "None | Pyramid | Trades | All";
+extern color  Color.Breakeven                 = Magenta;
+extern string _______________________________ = "======== Sequence to Manage =========";
+extern string Sequence.ID                     = "";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -55,8 +57,8 @@ extern string Sequence.ID                    = "";
 int      intern.GridSize;                                   // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
 double   intern.LotSize;                                    // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
 string   intern.StartCondition;                             // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
-color    intern.Color.Breakeven;                            // und in init() wieder daraus restauriert.
-string   intern.OrderDisplay;
+string   intern.OrderDisplayMode;                           // und in init() wieder daraus restauriert.
+color    intern.Color.Breakeven;
 string   intern.Sequence.ID;
 
 int      status = STATUS_WAITING;
@@ -124,7 +126,7 @@ color    CLR_LONG  = Blue;
 color    CLR_SHORT = Red;
 color    CLR_CLOSE = Orange;
 
-int      displayMode;
+int      orderDisplayMode;
 bool     firstTick = true;
 
 
@@ -197,8 +199,8 @@ int init() {
       GridSize         = intern.GridSize;                            // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
       LotSize          = intern.LotSize;                             // Inputvariablen restauriert.
       StartCondition   = intern.StartCondition;
+      OrderDisplayMode = intern.OrderDisplayMode;
       Color.Breakeven  = intern.Color.Breakeven;
-      OrderDisplay     = intern.OrderDisplay;
       Sequence.ID      = intern.Sequence.ID;
    }
 
@@ -241,8 +243,8 @@ int deinit() {
       intern.GridSize         = GridSize;
       intern.LotSize          = LotSize;
       intern.StartCondition   = StartCondition;
+      intern.OrderDisplayMode = OrderDisplayMode;
       intern.Color.Breakeven  = Color.Breakeven;
-      intern.OrderDisplay     = OrderDisplay;
       intern.Sequence.ID      = Sequence.ID;
       return(catch("deinit(1)"));
    }
@@ -340,7 +342,8 @@ bool UpdateStatus() {
 
                Grid.UpdateBreakeven(); beUpdated = true;
 
-               if (!ChartMarker.OrderFilled(i)) return(false);
+               if (!ChartMarker.OrderFilled(i))
+                  return(false);
             }
          }
          else {
@@ -360,7 +363,8 @@ bool UpdateStatus() {
             orders.closePrice[i] = OrderClosePrice();
 
             if (orders.type[i] != OP_UNDEFINED) {                    // geschlossene Position
-               if (!ChartMarker.PositionClosed(i)) return(false);
+               if (!ChartMarker.PositionClosed(i))
+                  return(false);
 
                if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
                else if (orders.type[i] == OP_BUY )             closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
@@ -623,7 +627,7 @@ bool Grid.DeleteOrder(int ticket) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
 
-   if (!OrderDeleteEx(ticket, CLR_NONE))
+   if (!OrderDeleteEx(ticket, CLR_NONE))                             // TODO: in OrderDisplayMode DM_ALL Farbe setzen
       return(_false(SetLastError(stdlib_PeekLastError())));
 
    if (!Grid.DropTicket(ticket))
@@ -773,8 +777,12 @@ int PendingStopOrder(int type, int level) {
    double stopLoss    = stopPrice + ifDouble(level<0, GridSize, -GridSize) * Pips;
    int    magicNumber = CreateMagicNumber(level);
    string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
+   color  markerColor = ifInt(level > 0, CLR_LONG, CLR_SHORT);
 
-   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, NULL, stopLoss, NULL, comment, magicNumber, NULL, ifInt(level > 0, CLR_LONG, CLR_SHORT));
+   if (orderDisplayMode == DM_NONE)
+      markerColor = CLR_NONE;
+
+   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, NULL, stopLoss, NULL, comment, magicNumber, NULL, markerColor);
    if (ticket == -1)
       SetLastError(stdlib_PeekLastError());
 
@@ -1415,18 +1423,18 @@ bool ValidateConfiguration() {
    }
    else                                     return(_false(catch("ValidateConfiguration(8)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
 
-   // OrderDisplay
-   OrderDisplay = StringTrim(OrderDisplay);
-   if (StringLen(OrderDisplay) == 0)
-      OrderDisplay = "positions";
-   string char = StringToUpper(StringLeft(OrderDisplay, 1));
-   if      (char == "A") displayMode = DM_ALL;
-   else if (char == "T") displayMode = DM_TRADES;
-   else if (char == "P") displayMode = DM_POSITIONS;
-   else if (char == "N") displayMode = DM_NONE;
-   else                                     return(_false(catch("ValidateConfiguration(9)  Invalid input parameter OrderDisplay = \""+ OrderDisplay +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
-   string modes[] = {"none", "positions", "trades", "all"};
-   OrderDisplay = modes[displayMode];
+   // OrderDisplayMode
+   OrderDisplayMode = StringTrim(OrderDisplayMode);
+   if (StringLen(OrderDisplayMode) == 0)
+      OrderDisplayMode = "Pyramid";
+   string char = StringToUpper(StringLeft(OrderDisplayMode, 1));
+   if      (char == "N") orderDisplayMode = DM_NONE;
+   else if (char == "P") orderDisplayMode = DM_PYRAMID;
+   else if (char == "T") orderDisplayMode = DM_TRADES;
+   else if (char == "A") orderDisplayMode = DM_ALL;
+   else                                     return(_false(catch("ValidateConfiguration(9)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+   string modes[] = {"None", "Pyramid", "Trades", "All"};
+   OrderDisplayMode = modes[orderDisplayMode];
 
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
 
@@ -2012,22 +2020,33 @@ bool SynchronizeStatus() {
       }
 
       // (2.1) Order visualisieren
+      // #define DM_NONE      0  // keine
+      // #define DM_PYRAMID   1  // Pending, Open,               ClosedByFinish
+      // #define DM_TRADES    2  // Pending, Open, ClosedByStop, ClosedByFinish
+      // #define DM_ALL       3  // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
       bool success = true;
-      if      (pendingOrder) {                      success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+      if      (pendingOrder) {
+         if (orderDisplayMode > DM_NONE)               success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
       }
-      else if (openPosition) {                      // openPosition ist Folge von Pending- oder Market-Order
-         if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
-         else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+      else if (openPosition) {                         // openPosition ist Folge von Pending- oder Market-Order
+         if (orderDisplayMode > DM_NONE) {
+            if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
+            else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+         }
       }
-      else if (closedByStop) {                      // closedPosition ist Folge von openPosition
-         if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
-         else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-         if (success)                               success = ChartMarker.PositionClosed(i);
+      else if (closedByStop) {                         // closedPosition ist Folge von openPosition
+         if (orderDisplayMode >= DM_TRADES) {
+            if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
+            else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+            if (success)                               success = ChartMarker.PositionClosed(i);
+         }
       }
       else  /*(closedByFinish)*/ {
-         if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
-         else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-         if (success)                               success = ChartMarker.PositionClosed(i);
+         if (orderDisplayMode > DM_NONE) {
+            if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
+            else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
+            if (success)                               success = ChartMarker.PositionClosed(i);
+         }
       }
       if (!success && !IsLastError())
          SetLastError(stdlib_PeekLastError());
@@ -2155,6 +2174,14 @@ double Sync.GetOpenSlippage(int i) {
 bool ChartMarker.OrderFilled(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
+   /*
+   #define DM_NONE      0     // keine
+   #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
+   #define DM_TRADES    2     // Pending, Open, ClosedByStop, ClosedByFinish
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
+   */
+   if (orderDisplayMode == DM_NONE)
+      return(true);
 
    if (i < 0 || ArraySize(orders.ticket) < i+1)
       return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
@@ -2176,9 +2203,25 @@ bool ChartMarker.OrderFilled(int i) {
 bool ChartMarker.PositionClosed(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
+   /*
+   #define DM_NONE      0     // keine
+   #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
+   #define DM_TRADES    2     // Pending, Open, ClosedByStop, ClosedByFinish
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
+   */
+   if (orderDisplayMode == DM_NONE)
+      return(true);
 
    if (i < 0 || ArraySize(orders.ticket) < i+1)
       return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   bool closedByStop;
+   if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
+   else if (orders.type[i] == OP_BUY )             closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
+   else if (orders.type[i] == OP_SELL)             closedByStop = GE(orders.closePrice[i], orders.stopLoss[i]);
+   else                                            closedByStop = false;
+   if (closedByStop) /*&&*/ if (orderDisplayMode < DM_TRADES)
+      return(true);
 
    if (!ChartMarker.PositionClosed_B(orders.ticket[i], Digits, CLR_CLOSE, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]))
       return(_false(SetLastError(stdlib_PeekLastError())));
