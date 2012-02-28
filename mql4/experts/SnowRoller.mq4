@@ -1,5 +1,5 @@
 /**
- * Snowroller - Pyramiding Grid EA
+ * SnowRoller - Pyramiding Grid EA
  *
  * @see 7bit Strategy:   http://www.forexfactory.com/showthread.php?t=226059&page=999
  *      7bit Journal:    http://www.forexfactory.com/showthread.php?t=239717&page=999
@@ -11,11 +11,12 @@
  *
  *  TODO:
  *  -----
- *  - STATUS_FINISHED implementieren
- *  - STATUS_MONITORING implementieren
+ *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
+ *  - UpdateStatus() muß Slippage berücksichtigen
  *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
  *  - Upload des Sequenz-Status implementieren
  *  - Heartbeat implementieren
+ *  - Client-Side-Limits implementieren
  *  - im Tester Laufzeit optimieren (I/O-Operationen, Logging, sonstiges)
  *  - Anzeige der Gridbasis implementieren
  *  - Anzeige des Breakeven-Indikator beim Beenden reparieren
@@ -268,6 +269,8 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int onTick() {
+   debug("onTick()   Tick = "+ Tick);
+
    if (status==STATUS_FINISHED || status==STATUS_DISABLED)
       return(last_error);
 
