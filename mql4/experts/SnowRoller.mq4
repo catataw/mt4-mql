@@ -14,9 +14,9 @@
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
  *  - UpdateStatus() muß Slippage berücksichtigen
  *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
+ *  - Client-Side-Limits implementieren
  *  - Upload des Sequenz-Status implementieren
  *  - Heartbeat implementieren
- *  - Client-Side-Limits implementieren
  *  - im Tester Laufzeit optimieren (I/O-Operationen, Logging, sonstiges)
  *  - Anzeige der Gridbasis implementieren
  *  - Anzeige des Breakeven-Indikator beim Beenden reparieren
