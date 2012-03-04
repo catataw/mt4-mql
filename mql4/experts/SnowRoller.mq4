@@ -39,8 +39,7 @@ int Strategy.Id = 103;                       // eindeutige ID der Strategie (Ber
 // OrderDisplay-Modes
 #define DM_NONE               0              // - keine Anzeige -
 #define DM_PYRAMID            1              // Pending, Open,               ClosedByFinish
-#define DM_TRADES             2              // Pending, Open, ClosedByStop, ClosedByFinish
-#define DM_ALL                3              // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
+#define DM_ALL                2              // Pending, Open, ClosedByStop, ClosedByFinish
 
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
@@ -49,8 +48,8 @@ extern int    GridSize                        = 20;
 extern double LotSize                         = 0.1;
 extern string StartCondition                  = "";
 extern string OrderDisplayMode                = "Pyramid";
-extern string OrderDisplayMode.Help           = "None | Pyramid | Trades | All";
-extern color  Color.Breakeven                 = Blue;       // Blue|Magenta
+extern string OrderDisplayMode.Help           = "None | Pyramid | All";
+extern color  Color.Breakeven                 = Blue;
 extern string _______________________________ = "======== Sequence to Manage =========";
 extern string Sequence.ID                     = "";
 
@@ -353,16 +352,14 @@ bool UpdateStatus() {
                orders.swap      [i] = OrderSwap();
                orders.commission[i] = OrderCommission();
                orders.profit    [i] = OrderProfit();
+               if (!ChartMarker.OrderFilled(i))
+                  return(false);
 
                grid.level        += MathSign(orders.level[i]);
                grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                        // (int) double
                grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();    // (int) double
                grid.valueAtRisk   = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
-
                Grid.UpdateBreakeven(); beUpdated = true;
-
-               if (!ChartMarker.OrderFilled(i))
-                  return(false);
             }
          }
          else {
@@ -646,7 +643,7 @@ bool Grid.DeleteOrder(int ticket) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
 
-   if (!OrderDeleteEx(ticket, CLR_NONE))                             // TODO: in OrderDisplayMode DM_ALL Farbe setzen
+   if (!OrderDeleteEx(ticket, CLR_NONE))
       return(_false(SetLastError(stdlib_PeekLastError())));
 
    if (!Grid.DropTicket(ticket))
@@ -1472,11 +1469,10 @@ bool ValidateConfiguration(int reason=NULL) {
    else                                     return(_false(catch("ValidateConfiguration(11)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
 
    // OrderDisplayMode
-   string modes[] = {"None", "Pyramid", "Trades", "All"};
+   string modes[] = {"None", "Pyramid", "All"};
    switch (StringGetChar(StringToUpper(StringTrim(OrderDisplayMode) +"P"), 0)) {
       case 'N': orderDisplayMode = DM_NONE;    break;
       case 'P': orderDisplayMode = DM_PYRAMID; break;                // default für leeren Input-Parameter
-      case 'T': orderDisplayMode = DM_TRADES;  break;
       case 'A': orderDisplayMode = DM_ALL;     break;
       default:                              return(_false(catch("ValidateConfiguration(12)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
@@ -2072,8 +2068,7 @@ bool SynchronizeStatus() {
       // (2.1) Order visualisieren
       // #define DM_NONE      0  // - keine Anzeige -
       // #define DM_PYRAMID   1  // Pending, Open,               ClosedByFinish
-      // #define DM_TRADES    2  // Pending, Open, ClosedByStop, ClosedByFinish
-      // #define DM_ALL       3  // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
+      // #define DM_ALL       2  // Pending, Open, ClosedByStop, ClosedByFinish
       bool success = true;
       if      (pendingOrder) {
          if (orderDisplayMode > DM_NONE)               success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
@@ -2085,7 +2080,7 @@ bool SynchronizeStatus() {
          }
       }
       else if (closedByStop) {                         // closedPosition ist Folge von openPosition
-         if (orderDisplayMode >= DM_TRADES) {
+         if (orderDisplayMode == DM_ALL) {
             if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
             else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
             if (success)                               success = ChartMarker.PositionClosed(i);
@@ -2224,21 +2219,20 @@ double Sync.GetOpenSlippage(int i) {
 bool ChartMarker.OrderFilled(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
+   if (i < 0 || ArraySize(orders.ticket) < i+1)
+      return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
-   #define DM_TRADES    2     // Pending, Open, ClosedByStop, ClosedByFinish
-   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
+   #define DM_ALL       2     // Pending, Open, ClosedByStop, ClosedByFinish
    */
-   if (orderDisplayMode == DM_NONE)
-      return(true);
+   color markerColor = CLR_NONE;
 
-   if (i < 0 || ArraySize(orders.ticket) < i+1)
-      return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (orderDisplayMode > DM_NONE)
+      markerColor = ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT);
 
-   if (!ChartMarker.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]))
+   if (!ChartMarker.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, markerColor, LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]))
       return(_false(SetLastError(stdlib_PeekLastError())));
-
    return(true);
 }
 
@@ -2253,27 +2247,27 @@ bool ChartMarker.OrderFilled(int i) {
 bool ChartMarker.PositionClosed(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
+   if (i < 0 || ArraySize(orders.ticket) < i+1)
+      return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
-   #define DM_TRADES    2     // Pending, Open, ClosedByStop, ClosedByFinish
-   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
+   #define DM_ALL       2     // Pending, Open, ClosedByStop, ClosedByFinish
    */
-   if (orderDisplayMode == DM_NONE)
-      return(true);
+   color markerColor = CLR_NONE;
 
-   if (i < 0 || ArraySize(orders.ticket) < i+1)
-      return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (orderDisplayMode > DM_NONE) {
+      bool closedByStop;
+      if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
+      else if (orders.type[i] == OP_BUY )             closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
+      else if (orders.type[i] == OP_SELL)             closedByStop = GE(orders.closePrice[i], orders.stopLoss[i]);
+      else                                            closedByStop = false;
 
-   bool closedByStop;
-   if (StringIEndsWith(orders.comment[i], "[sl]")) closedByStop = true;
-   else if (orders.type[i] == OP_BUY )             closedByStop = LE(orders.closePrice[i], orders.stopLoss[i]);
-   else if (orders.type[i] == OP_SELL)             closedByStop = GE(orders.closePrice[i], orders.stopLoss[i]);
-   else                                            closedByStop = false;
-   if (closedByStop) /*&&*/ if (orderDisplayMode < DM_TRADES)
-      return(true);
+      if (!closedByStop || orderDisplayMode==DM_ALL)
+         markerColor = CLR_CLOSE;
+   }
 
-   if (!ChartMarker.PositionClosed_B(orders.ticket[i], Digits, CLR_CLOSE, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]))
+   if (!ChartMarker.PositionClosed_B(orders.ticket[i], Digits, markerColor, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]))
       return(_false(SetLastError(stdlib_PeekLastError())));
    return(true);
 }
@@ -2342,6 +2336,7 @@ int ResizeArrays(int size, bool reset=false) {
    // Dummy-Calls
    DistanceToProfit(NULL);
    IsTestSequence();
+   OrderDisplayModeToStr(NULL);
    SequenceStatusToStr(NULL);
 }
 
@@ -2353,6 +2348,23 @@ int ResizeArrays(int size, bool reset=false) {
  */
 bool IsTestSequence() {
    return(IsTesting() || testSequence);
+}
+
+
+/**
+ * Gibt die lesbare Konstante eines OrderDisplay-Modes zurück.
+ *
+ * @param  int mode - OrderDisplay-Mode
+ *
+ * @return string
+ */
+string OrderDisplayModeToStr(int mode) {
+   switch (mode) {
+      case DM_NONE   : return("DM_NONE"   );
+      case DM_PYRAMID: return("DM_PYRAMID");
+      case DM_ALL    : return("DM_ALL"    );
+   }
+   return(_empty(catch("OrderDisplayModeToStr()  invalid parameter mode = "+ mode, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
