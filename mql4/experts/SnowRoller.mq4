@@ -11,9 +11,10 @@
  *
  *  TODO:
  *  -----
- *  - REASON_PARAMETERS verarbeiten
+ *  - onBarOpen(PERIOD_M1) implementieren
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
  *  - UpdateStatus() muß Slippage berücksichtigen
+ *  - StartTime und StartCondition "level-X @ price" implementieren
  *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
  *  - Client-Side-Limits implementieren
  *  - Upload des Sequenz-Status implementieren
@@ -71,7 +72,6 @@ datetime sequenceStartup;                                   // für Restart
 datetime sequenceShutdown;                                  // für Restart
 bool     testSequence = false;                              // ob die Sequenz im Tester erzeugt wurde; nicht, ob ein Test läuft
                                                             // (für Visualisierung von Tests in Live-Charts)
-
 double   Entry.limit;
 double   Entry.lastBid;
 
@@ -202,12 +202,8 @@ int init() {
             SaveStatus();
          }
          */
-         if (OrderDisplayMode != last.OrderDisplayMode) {
-            debug("init()   REASON_PARAMETERS:   last.OrderDisplayMode=\""+ last.OrderDisplayMode +"\"   OrderDisplayMode=\""+ OrderDisplayMode +"\"");
-         }
-         if (Color.Breakeven  != last.Color.Breakeven) {
-            RecolorBreakeven();
-         }
+         if (OrderDisplayMode != last.OrderDisplayMode) RedrawOrders();
+         if (Color.Breakeven  != last.Color.Breakeven)  RecolorBreakeven();
       }
    }
 
@@ -2064,41 +2060,12 @@ bool SynchronizeStatus() {
             Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSEFINISH, orders.level[i], NULL, profitLoss, NULL);
          }
       }
-
-      // (2.1) Order visualisieren
-      // #define DM_NONE      0  // - keine Anzeige -
-      // #define DM_PYRAMID   1  // Pending, Open,               ClosedByFinish
-      // #define DM_ALL       2  // Pending, Open, ClosedByStop, ClosedByFinish
-      bool success = true;
-      if      (pendingOrder) {
-         if (orderDisplayMode > DM_NONE)               success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(IsLongTradeOperation(orders.pendingType[i]), CLR_LONG, CLR_SHORT), orders.pendingType[i], LotSize, Symbol(), orders.pendingTime[i], orders.pendingPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-      }
-      else if (openPosition) {                         // openPosition ist Folge von Pending- oder Market-Order
-         if (orderDisplayMode > DM_NONE) {
-            if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
-            else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-         }
-      }
-      else if (closedByStop) {                         // closedPosition ist Folge von openPosition
-         if (orderDisplayMode == DM_ALL) {
-            if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
-            else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-            if (success)                               success = ChartMarker.PositionClosed(i);
-         }
-      }
-      else  /*(closedByFinish)*/ {
-         if (orderDisplayMode > DM_NONE) {
-            if (orders.pendingType[i] != OP_UNDEFINED) success = ChartMarker.OrderFilled(i);
-            else                                       success = ChartMarker.OrderSent_B(orders.ticket[i], Digits, ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT), orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.stopLoss[i], 0, orders.comment[i]);
-            if (success)                               success = ChartMarker.PositionClosed(i);
-         }
-      }
-      if (!success && !IsLastError())
-         SetLastError(stdlib_PeekLastError());
-
       if (IsLastError())
          return(false);
    }
+
+   // (2.1) Orders visualisieren
+   RedrawOrders();
 
    // (2.2) Status bestimmen
    if (openPositions) {
@@ -2206,6 +2173,60 @@ double Sync.GetOpenSlippage(int i) {
       debug("Sync.GetOpenSlippage()   open price slippage of #"+ orders.ticket[i] +" = "+ DoubleToStr(slippage, Digits-PipDigits) +" pip");
    }
    return(slippage);
+}
+
+
+/**
+ * Visualisiert die Orders entsprechend dem aktuellen OrderDisplayMode.
+ */
+void RedrawOrders() {
+   bool pendingOrder, closedPosition;
+   int  size = ArraySize(orders.ticket);
+
+   for (int i=0; i < size; i++) {
+      pendingOrder   = orders.type[i] == OP_UNDEFINED;
+      closedPosition = !pendingOrder && orders.closeTime[i]!=0;
+
+      if     (pendingOrder)                         ChartMarker.OrderSent(i);
+      else /*(openPosition || closedPosition)*/ {                                   // openPosition ist Folge einer
+         if (orders.pendingType[i] != OP_UNDEFINED) ChartMarker.OrderFilled(i);     // ...ausgeführten Pending-
+         else                                       ChartMarker.OrderSent(i);       // ...oder Market-Order
+         if (closedPosition)                        ChartMarker.PositionClosed(i);
+      }
+   }
+}
+
+
+/**
+ * Korrigiert die vom Terminal beim Abschicken einer Pending- oder Market-Order gesetzten oder nicht gesetzten Chart-Marker.
+ *
+ * @param  int i - Index des Ordertickets in den Datenarrays
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool ChartMarker.OrderSent(int i) {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return(true);
+   if (i < 0 || ArraySize(orders.ticket) < i+1)
+      return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   /*
+   #define DM_NONE      0     // - keine Anzeige -
+   #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
+   #define DM_ALL       2     // Pending, Open, ClosedByStop, ClosedByFinish
+   */
+   bool pending = orders.pendingType[i] != OP_UNDEFINED;
+
+   int      type        =    ifInt(pending, orders.pendingType [i], orders.type     [i]);
+   datetime openTime    =    ifInt(pending, orders.pendingTime [i], orders.openTime [i]);
+   double   openPrice   = ifDouble(pending, orders.pendingPrice[i], orders.openPrice[i]);
+   color    markerColor = CLR_NONE;
+
+   if (orderDisplayMode != DM_NONE)
+      markerColor = ifInt(IsLongTradeOperation(type), CLR_LONG, CLR_SHORT);
+
+   if (!ChartMarker.OrderSent_B(orders.ticket[i], Digits, markerColor, type, LotSize, Symbol(), openTime, openPrice, orders.stopLoss[i], 0, orders.comment[i]))
+      return(_false(SetLastError(stdlib_PeekLastError())));
+   return(true);
 }
 
 
