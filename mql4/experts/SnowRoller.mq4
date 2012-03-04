@@ -1,9 +1,9 @@
 /**
  * SnowRoller - Pyramiding Grid EA
  *
- * @see 7bit Strategy:   http://www.forexfactory.com/showthread.php?t=226059&page=999
- *      7bit Journal:    http://www.forexfactory.com/showthread.php?t=239717&page=999
- *      7bit Code base:  http://sites.google.com/site/prof7bit/snowball
+ * @see 7bit Code base:  http://sites.google.com/site/prof7bit/snowball
+ *      7bit Strategy:   http://www.forexfactory.com/showthread.php?t=226059
+ *      7bit Journal:    http://www.forexfactory.com/showthread.php?t=239717
  *
  * @see Different pyramiding schemes:  http://www.actionforex.com/articles-library/money-management-articles/pyramiding:-a-risky-strategy-200603035356/
  * @see Schwager about pyramiding:     http://www.forexjournal.com/fx-education/money-management/450-pyramiding-and-the-management-of-profitable-trades.html
@@ -11,6 +11,7 @@
  *
  *  TODO:
  *  -----
+ *  - REASON_PARAMETERS verarbeiten
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
  *  - UpdateStatus() muß Slippage berücksichtigen
  *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
@@ -26,19 +27,20 @@
 #include <win32api.mqh>
 
 
-#define STATUS_WAITING        0           // mögliche Sequenzstatus-Werte
+int Strategy.Id = 103;                       // eindeutige ID der Strategie (Bereich 101-1023)
+
+
+#define STATUS_WAITING        0              // mögliche Sequenzstatus-Werte
 #define STATUS_PROGRESSING    1
 #define STATUS_FINISHED       2
-#define STATUS_DISABLED       3
+#define STATUS_DISABLED       3              // TODO: STATUS_FINISHING und STATUS_MONITORING implementieren
+
 
 // OrderDisplay-Modes
-#define DM_NONE               0           // keine
-#define DM_PYRAMID            1           // Pending, Open,               ClosedByFinish
-#define DM_TRADES             2           // Pending, Open, ClosedByStop, ClosedByFinish
-#define DM_ALL                3           // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
-
-
-int Strategy.Id = 103;                    // eindeutige ID der Strategie (Bereich 101-1023)
+#define DM_NONE               0              // - keine Anzeige -
+#define DM_PYRAMID            1              // Pending, Open,               ClosedByFinish
+#define DM_TRADES             2              // Pending, Open, ClosedByStop, ClosedByFinish
+#define DM_ALL                3              // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
 
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
@@ -48,27 +50,28 @@ extern double LotSize                         = 0.1;
 extern string StartCondition                  = "";
 extern string OrderDisplayMode                = "Pyramid";
 extern string OrderDisplayMode.Help           = "None | Pyramid | Trades | All";
-extern color  Color.Breakeven                 = Magenta;
+extern color  Color.Breakeven                 = Blue;       // Blue|Magenta
 extern string _______________________________ = "======== Sequence to Manage =========";
 extern string Sequence.ID                     = "";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int      intern.GridSize;                                   // Input-Parameter sind nicht statisch. Werden sie aus einer Preset-Datei geladen,
-double   intern.LotSize;                                    // werden sie bei REASON_CHARTCHANGE mit den obigen Default-Werten überschrieben.
-string   intern.StartCondition;                             // Um dies zu verhindern, werden sie in deinit() in intern.* zwischengespeichert
-string   intern.OrderDisplayMode;                           // und in init() wieder daraus restauriert.
-color    intern.Color.Breakeven;
-string   intern.Sequence.ID;
+int      last.GridSize;                                     // Input-Parameter sind nicht statisch. Werden sie extern geladen, werden sie bei REASON_CHARTCHANGE
+double   last.LotSize;                                      // mit den Default-Parametern überschrieben. Um dies rückgängig machenn zu können und um sie bei
+string   last.StartCondition;                               // REASON_PARAMETERS mit geänderten Parametern, abgleichen zu können, werden sie in deinit() in last.*
+string   last.OrderDisplayMode;                             // zwischengespeichert.
+color    last.Color.Breakeven;
+string   last.Sequence.ID;
 
 int      status = STATUS_WAITING;
-bool     test   = false;                                    // ob die Sequenz im Tester erzeugt wurde (für Visualisierung von Tests in Live-Charts)
 
 int      sequenceId;
 string   sequenceSymbol;                                    // für Restart
 datetime sequenceStartup;                                   // für Restart
 datetime sequenceShutdown;                                  // für Restart
+bool     testSequence = false;                              // ob die Sequenz im Tester erzeugt wurde; nicht, ob ein Test läuft
+                                                            // (für Visualisierung von Tests in Live-Charts)
 
 double   Entry.limit;
 double   Entry.lastBid;
@@ -108,7 +111,7 @@ double   orders.commission  [];
 double   orders.profit      [];
 string   orders.comment     [];
 
-string   str.test                = "";                      // Speichervariablen für schnellere Abarbeitung von ShowStatus()
+string   str.testSequence        = "";                      // Speichervariablen für schnellere Abarbeitung von ShowStatus()
 string   str.LotSize             = "";
 string   str.Entry.limit         = "";
 string   str.grid.base           = "";
@@ -143,8 +146,8 @@ int init() {
    Zuerst wird die aktuelle Sequenz-ID bestimmt, dann deren Konfiguration geladen und validiert. Zum Schluß werden die Daten der ggf. laufenden Sequenz restauriert.
    Es gibt 4 unterschiedliche init()-Szenarien:
 
-   (1.1) Recompilation:                    keine internen Daten vorhanden, evt. externe Referenz vorhanden (im Chart)
-   (1.2) Neustart des EA, evt. im Tester:  keine internen Daten vorhanden, evt. externe Referenz vorhanden (im Chart)
+   (1.1) Recompilation:                    keine internen Daten vorhanden, evt. externe Referenz im Chart vorhanden
+   (1.2) Neustart des EA, evt. im Tester:  keine internen Daten vorhanden, evt. externe Referenz im Chart vorhanden
    (1.3) Parameteränderung:                alle internen Daten vorhanden, externe Referenz unnötig
    (1.4) Timeframe-Wechsel:                alle internen Daten vorhanden, externe Referenz unnötig
    */
@@ -179,8 +182,8 @@ int init() {
                   SynchronizeStatus();
          }
          else if (ValidateConfiguration()) {                         // Zum Schluß neue Sequenz anlegen.
-            sequenceId = CreateSequenceId(); SS.SequenceId();
-            test       = IsTesting();        SS.Test();
+            sequenceId   = CreateSequenceId(); SS.SequenceId();
+            testSequence = IsTesting();        SS.TestSequence();
             if (StartCondition != "")                                // Ohne StartCondition erfolgt sofortiger Einstieg, in diesem Fall wird der
                SaveStatus();                                         // Status erst nach Sicherheitsabfrage in StartSequence() gespeichert.
          }
@@ -190,19 +193,33 @@ int init() {
 
    // (1.3) Parameteränderung ---------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_PARAMETERS) {             // alle internen Daten sind vorhanden
-      // TODO: die manuelle Sequence.ID kann geändert worden sein
-      if (ValidateConfiguration())
-         SaveStatus();
+      if (ValidateConfiguration(REASON_PARAMETERS)) {
+         /*
+         if (ConfigurationChanged()) {
+            // GridSize         = last.GridSize;
+            // LotSize          = last.LotSize;
+            // StartCondition   = last.StartCondition;
+            // Sequence.ID      = last.Sequence.ID;                  // TODO: Sequence.ID kann geändert worden sein
+            SaveStatus();
+         }
+         */
+         if (OrderDisplayMode != last.OrderDisplayMode) {
+            debug("init()   REASON_PARAMETERS:   last.OrderDisplayMode=\""+ last.OrderDisplayMode +"\"   OrderDisplayMode=\""+ OrderDisplayMode +"\"");
+         }
+         if (Color.Breakeven  != last.Color.Breakeven) {
+            RecolorBreakeven();
+         }
+      }
    }
 
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_CHARTCHANGE) {
-      GridSize         = intern.GridSize;                            // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
-      LotSize          = intern.LotSize;                             // Inputvariablen restauriert.
-      StartCondition   = intern.StartCondition;
-      OrderDisplayMode = intern.OrderDisplayMode;
-      Color.Breakeven  = intern.Color.Breakeven;
-      Sequence.ID      = intern.Sequence.ID;
+      GridSize         = last.GridSize;                              // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
+      LotSize          = last.LotSize;                               // Input-Parameter restauriert.
+      StartCondition   = last.StartCondition;
+      OrderDisplayMode = last.OrderDisplayMode;
+      Color.Breakeven  = last.Color.Breakeven;
+      Sequence.ID      = last.Sequence.ID;
    }
 
    // ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -239,14 +256,15 @@ int deinit() {
    if (IsError(onDeinit()))
       return(last_error);
 
-   if (UninitializeReason() == REASON_CHARTCHANGE) {
-      // Input-Parameter sind nicht statisch: für's nächste init() in intern.* zwischenspeichern
-      intern.GridSize         = GridSize;
-      intern.LotSize          = LotSize;
-      intern.StartCondition   = StartCondition;
-      intern.OrderDisplayMode = OrderDisplayMode;
-      intern.Color.Breakeven  = Color.Breakeven;
-      intern.Sequence.ID      = Sequence.ID;
+   if (UninitializeReason()==REASON_CHARTCHANGE || UninitializeReason()==REASON_PARAMETERS) {
+      // REASON_CHARTCHANGE: Input-Parameter sind nicht statisch und werden für's nächste init() zwischengespeichert
+      // REASON_PARAMETERS:  Input-Parameter werden für Vergleich mit neuen Parametern zwischengespeichert
+      last.GridSize         = GridSize;
+      last.LotSize          = LotSize;
+      last.StartCondition   = StartCondition;
+      last.OrderDisplayMode = OrderDisplayMode;
+      last.Color.Breakeven  = Color.Breakeven;
+      last.Sequence.ID      = Sequence.ID;
       return(catch("deinit(1)"));
    }
 
@@ -269,8 +287,6 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int onTick() {
-   debug("onTick()   Tick = "+ Tick);
-
    if (status==STATUS_FINISHED || status==STATUS_DISABLED)
       return(last_error);
 
@@ -868,12 +884,12 @@ int ShowStatus(bool init=false) {
    }
 
    switch (status) {
-      case STATUS_WAITING:     msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " waiting");
+      case STATUS_WAITING:     msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
                                   msg = StringConcatenate(msg, " for crossing of ", str.Entry.limit);                                                                                                   break;
-      case STATUS_PROGRESSING: msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " progressing at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")"); break;
-      case STATUS_FINISHED:    msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " finished at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")");    break;
-      case STATUS_DISABLED:    msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " disabled", str.error);                                                                               break;
+      case STATUS_PROGRESSING: msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " progressing at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")"); break;
+      case STATUS_FINISHED:    msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " finished at level ", grid.level, "  (", str.grid.maxLevelLong, "/", str.grid.maxLevelShort, ")");    break;
+      case STATUS_DISABLED:    msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " disabled", str.error);                                                                               break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
@@ -919,11 +935,11 @@ void SS.SequenceId() {
 
 
 /**
- * ShowStatus(): Aktualisiert die String-Repräsentation von test.
+ * ShowStatus(): Aktualisiert die String-Repräsentation von testSequence.
  */
-void SS.Test() {
-   if (test) str.test = "test ";
-   else      str.test = "";
+void SS.TestSequence() {
+   if (testSequence) str.testSequence = "test ";
+   else              str.testSequence = "";
 }
 
 
@@ -1085,7 +1101,7 @@ bool Grid.UpdateBreakeven(datetime time=0) {
  *
  * @param  datetime time - Zeitpunkt der zu zeichnenden Werte (default: aktueller Zeitpunkt)
  */
-void Grid.DrawBreakeven(datetime time=0) {
+void Grid.DrawBreakeven(datetime time=NULL) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
    if (EQ(grid.breakevenLong, 0))                                                // ohne initialisiertes Breakeven sofortige Rückkehr
@@ -1094,13 +1110,13 @@ void Grid.DrawBreakeven(datetime time=0) {
    static double   last.grid.breakevenLong, last.grid.breakevenShort;            // Daten der zuletzt gezeichneten Indikatorwerte
    static datetime last.startTimeLong, last.startTimeShort, last.drawingTime;
 
-   if (time == 0)
+   if (time == NULL)
       time = TimeCurrent();
    datetime now = time;
 
    // Trendlinien zeichnen
    if (last.drawingTime != 0) {                                                  // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
-      string labelL = StringConcatenate("SR.", sequenceId, ".L ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(last.startTimeLong, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
+      string labelL = StringConcatenate("SR.", sequenceId, ".beL ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(last.startTimeLong, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
       if (ObjectCreate(labelL, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenLong, now, grid.breakevenLong)) {
          ObjectSet(labelL, OBJPROP_RAY  , false          );
          ObjectSet(labelL, OBJPROP_COLOR, Color.Breakeven);
@@ -1112,7 +1128,7 @@ void Grid.DrawBreakeven(datetime time=0) {
          ObjectSet(labelL, OBJPROP_TIME2, now);                                  // vorhandene Trendlinien werden möglichst verlängert (verhindert Erzeugung unzähliger gleicher Objekte)
       }
 
-      string labelS = StringConcatenate("SR.", sequenceId, ".S ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(last.startTimeShort, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
+      string labelS = StringConcatenate("SR.", sequenceId, ".beS ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(last.startTimeShort, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
       if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, now, grid.breakevenShort)) {
          ObjectSet(labelS, OBJPROP_RAY  , false          );
          ObjectSet(labelS, OBJPROP_COLOR, Color.Breakeven);
@@ -1132,6 +1148,24 @@ void Grid.DrawBreakeven(datetime time=0) {
    last.grid.breakevenLong  = grid.breakevenLong;
    last.grid.breakevenShort = grid.breakevenShort;
    last.drawingTime         = now;
+}
+
+
+/**
+ * Färbt den Breakeven-Indikator neu ein.
+ */
+void RecolorBreakeven() {
+   if (ObjectsTotal(OBJ_TREND) > 0) {
+      string label, labelBe=StringConcatenate("SR.", sequenceId, ".be");
+
+      for (int i=ObjectsTotal()-1; i>=0; i--) {
+         label = ObjectName(i);
+         if (ObjectType(label)==OBJ_TREND) /*&&*/ if (StringStartsWith(label, labelBe)) {
+            ObjectSet(label, OBJPROP_COLOR, Color.Breakeven);
+         }
+      }
+   }
+   catch("RecolorBreakeven()");
 }
 
 
@@ -1271,14 +1305,14 @@ bool RestoreInputSequenceId() {
       string strValue = StringToUpper(StringTrim(Sequence.ID));
 
       if (StringLeft(strValue, 1) == "T") {
-         test     = true; SS.Test();
-         strValue = StringRight(strValue, -1);
+         testSequence = true; SS.TestSequence();
+         strValue     = StringRight(strValue, -1);
       }
       if (StringIsInteger(strValue)) {
          int iValue = StrToInteger(strValue);
          if (1000 <= iValue) /*&&*/ if (iValue <= 16383) {
             sequenceId  = iValue; SS.SequenceId();
-            Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
+            Sequence.ID = ifString(IsTestSequence(), "T", "") + sequenceId;
             return(true);
          }
       }
@@ -1394,57 +1428,70 @@ int CreateSequenceId() {
 /**
  * Validiert die aktuelle Konfiguration.
  *
+ * @param int reason - bei REASON_PARAMETERS darf eine laufende Sequenz nicht mit den angegebenen Parametern kollidieren
+ *                     (die vorherigen Parameter liegen zu Vergleichszwecken in last.*)
+ *
  * @return bool - ob die Konfiguration gültig ist
  */
-bool ValidateConfiguration() {
+bool ValidateConfiguration(int reason=NULL) {
    // GridSize
-   if (GridSize < 1)                        return(_false(catch("ValidateConfiguration(1)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
+   if (reason==REASON_PARAMETERS) /*&&*/ if (GridSize!=last.GridSize)
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(1)  Cannot change parameter GridSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
+   if (GridSize < 1)                        return(_false(catch("ValidateConfiguration(2)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // LotSize
-   if (LE(LotSize, 0))                      return(_false(catch("ValidateConfiguration(2)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
-
+   if (reason==REASON_PARAMETERS) /*&&*/ if (NE(LotSize, last.LotSize))
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(3)  Cannot change parameter LotSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
+   if (LE(LotSize, 0))                      return(_false(catch("ValidateConfiguration(4)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT);
    double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT);
    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
    int error = GetLastError();
-   if (IsError(error))                      return(_false(catch("ValidateConfiguration(3)   symbol=\""+ Symbol() +"\"", error)));
-   if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(4)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(5)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(6)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (IsError(error))                      return(_false(catch("ValidateConfiguration(5)   symbol=\""+ Symbol() +"\"", error)));
+   if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(6)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(7)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(8)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
    SS.LotSize();
 
    // StartCondition
    StartCondition = StringReplace(StartCondition, " ", "");
+   if (reason==REASON_PARAMETERS) /*&&*/ if (StartCondition!=last.StartCondition)
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(9)  Cannot change parameter StartCondition of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    if (StringLen(StartCondition) == 0) {
       Entry.limit = 0;
    }
    else if (StringIsNumeric(StartCondition)) {
       Entry.limit = StrToDouble(StartCondition); SS.Entry.Limit();
-      if (LT(Entry.limit, 0))               return(_false(catch("ValidateConfiguration(7)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (LT(Entry.limit, 0))               return(_false(catch("ValidateConfiguration(10)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
       if (EQ(Entry.limit, 0))
          StartCondition = "";
    }
-   else                                     return(_false(catch("ValidateConfiguration(8)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+   else                                     return(_false(catch("ValidateConfiguration(11)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
 
    // OrderDisplayMode
-   OrderDisplayMode = StringTrim(OrderDisplayMode);
-   if (StringLen(OrderDisplayMode) == 0)
-      OrderDisplayMode = "Pyramid";
-   string char = StringToUpper(StringLeft(OrderDisplayMode, 1));
-   if      (char == "N") orderDisplayMode = DM_NONE;
-   else if (char == "P") orderDisplayMode = DM_PYRAMID;
-   else if (char == "T") orderDisplayMode = DM_TRADES;
-   else if (char == "A") orderDisplayMode = DM_ALL;
-   else                                     return(_false(catch("ValidateConfiguration(9)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    string modes[] = {"None", "Pyramid", "Trades", "All"};
+   switch (StringGetChar(StringToUpper(StringTrim(OrderDisplayMode) +"P"), 0)) {
+      case 'N': orderDisplayMode = DM_NONE;    break;
+      case 'P': orderDisplayMode = DM_PYRAMID; break;                // default für leeren Input-Parameter
+      case 'T': orderDisplayMode = DM_TRADES;  break;
+      case 'A': orderDisplayMode = DM_ALL;     break;
+      default:                              return(_false(catch("ValidateConfiguration(12)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+   }
    OrderDisplayMode = modes[orderDisplayMode];
 
+   // Color.Breakeven: kann nicht falsch eingegeben werden, Validierung nicht nötig
+
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
+   if (reason==REASON_PARAMETERS)
+      if (Sequence.ID!=last.Sequence.ID)    return(_false(catch("ValidateConfiguration(13)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
 
-   // TODO: Nach Parameteränderung die neue Konfiguration mit einer evt. bereits laufenden Sequenz abgleichen
-   //       oder Parameter werden geändert, ohne vorher im Input-Dialog die Konfigurationsdatei der Sequenz zu laden.
 
-   return(IsNoError(catch("ValidateConfiguration(10)")));
+   // TODO: Parameter mit externer Konfiguration werden geändert, ohne vorher die Konfigurationsdatei zu laden.
+
+   return(IsNoError(catch("ValidateConfiguration(14)")));
 }
 
 
@@ -1512,10 +1559,10 @@ bool SaveStatus() {
 
    // (1.1) Input-Parameter zusammenstellen
    string lines[];  ArrayResize(lines, 0);
-   ArrayPushString(lines, /*string*/ "Sequence.ID="   + ifString(IsTest(), "T", "") + sequenceId    );
-   ArrayPushString(lines, /*int   */ "GridSize="      +                               GridSize      );
-   ArrayPushString(lines, /*double*/ "LotSize="       +                   NumberToStr(LotSize, ".+"));
-   ArrayPushString(lines, /*string*/ "StartCondition="+                               StartCondition);
+   ArrayPushString(lines, /*string*/ "Sequence.ID="   + ifString(IsTestSequence(), "T", "") + sequenceId    );
+   ArrayPushString(lines, /*int   */ "GridSize="      +                                       GridSize      );
+   ArrayPushString(lines, /*double*/ "LotSize="       +                           NumberToStr(LotSize, ".+"));
+   ArrayPushString(lines, /*string*/ "StartCondition="+                                       StartCondition);
 
    // (1.2) Laufzeit-Variablen zusammenstellen
    int size = ArraySize(orders.ticket);
@@ -1629,11 +1676,11 @@ bool RestoreStatus() {
 
    // (1) bei nicht existierender lokaler Konfiguration die Datei neu vom Server laden
    string filesDir = TerminalPath() + ifString(IsTesting(), "\\tester", "\\experts") +"\\files\\";
-   string fileName = "presets\\"+ ifString(IsTest(), "tester\\", "") +"SR."+ sequenceId +".set";   // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
-                                                                                                   // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+   string fileName = "presets\\"+ ifString(IsTestSequence(), "tester\\", "") +"SR."+ sequenceId +".set"; // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
+                                                                                                         // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
    if (!IsFile(filesDir + fileName)) {
-      if (IsTesting() || IsTest())
-         return(_false(catch("RestoreStatus(2)   status file for sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+      if (IsTesting() || IsTestSequence())
+         return(_false(catch("RestoreStatus(2)   status file for sequence "+ ifString(IsTestSequence(), "T", "") + sequenceId +" not found", ERR_FILE_NOT_FOUND)));
 
       // TODO: Existenz von wget.exe prüfen
 
@@ -1660,7 +1707,7 @@ bool RestoreStatus() {
       return(_false(SetLastError(stdlib_PeekLastError())));
    if (size == 0) {
       FileDelete(fileName);
-      return(_false(catch("RestoreStatus(3)   status for sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_RUNTIME_ERROR)));
+      return(_false(catch("RestoreStatus(3)   status for sequence "+ ifString(IsTestSequence(), "T", "") + sequenceId +" not found", ERR_RUNTIME_ERROR)));
    }
 
 
@@ -1679,11 +1726,11 @@ bool RestoreStatus() {
       if (key == "Sequence.ID") {
          value = StringToUpper(value);
          if (StringLeft(value, 1) == "T") {
-            test  = true; SS.Test();
+            testSequence = true; SS.TestSequence();
             value = StringRight(value, -1);
          }
          if (value != StringConcatenate("", sequenceId)) return(_false(catch("RestoreStatus(5)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-         Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
+         Sequence.ID = ifString(IsTestSequence(), "T", "") + sequenceId;
          keys[I_SEQUENCE_ID] = 1;
       }
       else if (key == "GridSize") {
@@ -2023,7 +2070,7 @@ bool SynchronizeStatus() {
       }
 
       // (2.1) Order visualisieren
-      // #define DM_NONE      0  // keine
+      // #define DM_NONE      0  // - keine Anzeige -
       // #define DM_PYRAMID   1  // Pending, Open,               ClosedByFinish
       // #define DM_TRADES    2  // Pending, Open, ClosedByStop, ClosedByFinish
       // #define DM_ALL       3  // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
@@ -2178,7 +2225,7 @@ bool ChartMarker.OrderFilled(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
    /*
-   #define DM_NONE      0     // keine
+   #define DM_NONE      0     // - keine Anzeige -
    #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
    #define DM_TRADES    2     // Pending, Open, ClosedByStop, ClosedByFinish
    #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
@@ -2207,7 +2254,7 @@ bool ChartMarker.PositionClosed(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
    /*
-   #define DM_NONE      0     // keine
+   #define DM_NONE      0     // - keine Anzeige -
    #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
    #define DM_TRADES    2     // Pending, Open, ClosedByStop, ClosedByFinish
    #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish, Deleted
@@ -2294,7 +2341,7 @@ int ResizeArrays(int size, bool reset=false) {
 
    // Dummy-Calls
    DistanceToProfit(NULL);
-   IsTest();
+   IsTestSequence();
    SequenceStatusToStr(NULL);
 }
 
@@ -2304,8 +2351,8 @@ int ResizeArrays(int size, bool reset=false) {
  *
  * @return bool
  */
-bool IsTest() {
-   return(IsTesting() || test);
+bool IsTestSequence() {
+   return(IsTesting() || testSequence);
 }
 
 
