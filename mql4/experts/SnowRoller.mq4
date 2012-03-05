@@ -7,15 +7,16 @@
  *
  * @see Different pyramiding schemes:  http://www.actionforex.com/articles-library/money-management-articles/pyramiding:-a-risky-strategy-200603035356/
  * @see Schwager about pyramiding:     http://www.forexjournal.com/fx-education/money-management/450-pyramiding-and-the-management-of-profitable-trades.html
+
  *
  *
  *  TODO:
  *  -----
  *  - onBarOpen(PERIOD_M1) implementieren
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
+ *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
  *  - UpdateStatus() muß Slippage berücksichtigen
  *  - StartTime und StartCondition "level-X @ price" implementieren
- *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
  *  - Client-Side-Limits implementieren
  *  - Upload des Sequenz-Status implementieren
  *  - Heartbeat implementieren
@@ -34,13 +35,14 @@ int Strategy.Id = 103;                       // eindeutige ID der Strategie (Ber
 #define STATUS_WAITING        0              // mögliche Sequenzstatus-Werte
 #define STATUS_PROGRESSING    1
 #define STATUS_FINISHED       2
-#define STATUS_DISABLED       3              // TODO: STATUS_FINISHING und STATUS_MONITORING implementieren
+#define STATUS_DISABLED       3
 
 
 // OrderDisplay-Modes
 #define DM_NONE               0              // - keine Anzeige -
-#define DM_PYRAMID            1              // Pending, Open,               ClosedByFinish
-#define DM_ALL                2              // Pending, Open, ClosedByStop, ClosedByFinish
+#define DM_STOPS              1              // Pending,       ClosedByStop
+#define DM_PYRAMID            2              // Pending, Open,               ClosedByFinish
+#define DM_ALL                3              // Pending, Open, ClosedByStop, ClosedByFinish
 
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
@@ -49,7 +51,7 @@ extern int    GridSize                        = 20;
 extern double LotSize                         = 0.1;
 extern string StartCondition                  = "";
 extern string OrderDisplayMode                = "Pyramid";
-extern string OrderDisplayMode.Help           = "None | Pyramid | All";
+extern string OrderDisplayMode.Help           = "None | Stops | Pyramid | All";
 extern color  Color.Breakeven                 = Blue;
 extern string _______________________________ = "======== Sequence to Manage =========";
 extern string Sequence.ID                     = "";
@@ -263,14 +265,12 @@ int deinit() {
       return(catch("deinit(1)"));
    }
 
-   bool isConfigFile = IsFile(TerminalPath() + ifString(IsTesting(), "\\tester", "\\experts") +"\\files\\presets\\SR."+ sequenceId +".set");
-
-   if (isConfigFile) {                                            // Ohne Config-Datei wurde Sequenz manuell abgebrochen und nicht gestartet.
-      if (UpdateStatus())                                         // Eine abgebrochene Sequenz braucht weder gespeichert noch restauriert zu werden.
+   if (status != STATUS_DISABLED) {
+      if (UpdateStatus())
          SaveStatus();
 
       if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE)
-         StoreChartSequenceId();                                  // TODO: Test-ID speichern
+         StoreChartSequenceId();
    }
    return(catch("deinit(2)"));
 }
@@ -325,6 +325,8 @@ int onTick() {
  */
 bool UpdateStatus() {
    if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+   if (IsTestSequence()) /*&&*/ if (!IsTesting())
       return(false);
 
    grid.floatingPL = 0;
@@ -400,22 +402,122 @@ bool UpdateStatus() {
    grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL; SS.Grid.TotalPL();
 
    if (grid.totalPL > grid.maxProfitLoss) {
-      grid.maxProfitLoss      = grid.totalPL; SS.Grid.MaxProfitLoss();
-      grid.maxProfitLoss.time = TimeCurrent();
+      grid.maxProfitLoss      = grid.totalPL;
+      grid.maxProfitLoss.time = TimeCurrent(); SS.Grid.MaxProfitLoss();
    }
    else if (grid.totalPL < grid.maxDrawdown) {
-      grid.maxDrawdown      = grid.totalPL; SS.Grid.MaxDrawdown();
-      grid.maxDrawdown.time = TimeCurrent();
+      grid.maxDrawdown      = grid.totalPL;
+      grid.maxDrawdown.time = TimeCurrent(); SS.Grid.MaxDrawdown();
    }
 
-
-   if (!beUpdated) /*&&*/ if (grid.breakevenLong > 0) {
-      HandleEvent(EVENT_BAR_OPEN);                                   // BarOpen-Event verarbeiten, wenn Breakeven initialisiert ist und nicht bereits aktualisiert wurde
-    //HandleEvent(EVENT_BAR_OPEN, F_PERIOD_M1);
+   if (!IsTesting() || IsVisualMode()) {
+      if (!beUpdated) /*&&*/ if (grid.breakevenLong > 0)
+         HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);               // BarOpen-Event triggern, wenn Breakeven definiert und nicht bereits aktualisiert ist
    }
+
+   /*
+   if (HandleEvent(EVENT_BAR_OPEN) != 0) {
+      debug("UpdateStatus()   EVENT_BAR_OPEN");
+   }
+   */
 
    return(IsNoError(catch("UpdateStatus(2)")));
+   int ints[]; _EventListener.BarOpen(ints);
 }
+
+
+
+/**
+ * Prüft, ob der aktuelle Tick im angegebenen Zeitrahmen ein BarOpen-Event darstellt.
+ *
+ * @param  int results[] - Array, das Flags der Timeframes aufnimmt, in denen das Event aufgetreten ist (mehrere sind möglich)
+ * @param  int flags     - ein oder mehrere zu prüfende Timeframes (default: aktuelle Chartperiode)
+ *
+ * @return bool - ob mindestens ein BarOpen-Event erkannt wurde
+ */
+bool _EventListener.BarOpen(int& results[], int flags=NULL) {
+   if (ArraySize(results) != 1)
+      ArrayResize(results, 1);
+   results[0] = 0;
+
+   int currentPeriodFlag = PeriodFlag(Period());
+   if (flags == NULL)
+      flags = currentPeriodFlag;
+
+   debug("EventListener.BarOpen("+ PeriodFlagToStr(flags) +")");
+
+   static int lastTick;
+
+   // Die aktuelle Periode kann einfach und schnell geprüft werden.
+   if (flags & currentPeriodFlag != 0) {
+      static int  lastOpenTime;
+      static bool lastResult;
+
+      if (lastOpenTime != 0) {
+         if (Tick == lastTick) {
+            if (lastResult)                                          // wiederholter Aufruf während desselben Ticks
+               results[0] |= currentPeriodFlag;
+         }
+         else if (Time[0] != lastOpenTime) {                         // neuer Tick
+            results[0] |= currentPeriodFlag;
+            lastResult = true;
+         }
+         else {
+            lastResult = false;
+         }
+      }
+      lastOpenTime = Time[0];
+      lastTick     = Tick;
+   }
+
+   // Prüfungen für andere als die aktuelle Chartperiode
+   else {
+      static int lastMinute = 0;
+
+      datetime tick = MarketInfo(Symbol(), MODE_TIME);      // nur Sekundenauflösung
+      int minute;
+
+      // PERIODFLAG_M1
+      if (flags & F_PERIOD_M1 != 0) {
+         if (lastTick == 0) {
+            lastTick   = tick;
+            lastMinute = TimeMinute(tick);
+            //debug("EventListener.BarOpen(M1)   initialisiert   lastTick: '", TimeToStr(lastTick, TIME_DATE|TIME_MINUTES|TIME_SECONDS), "' (", lastMinute, ")");
+         }
+         else if (lastTick != tick) {
+            minute = TimeMinute(tick);
+            if (lastMinute < minute)
+               results[0] |= F_PERIOD_M1;
+            //debug("EventListener.BarOpen(M1)   prüfe   alt: '", TimeToStr(lastTick, TIME_DATE|TIME_MINUTES|TIME_SECONDS), "' (", lastMinute, ")   neu: '", TimeToStr(tick, TIME_DATE|TIME_MINUTES|TIME_SECONDS), "' (", minute, ")");
+            lastTick   = tick;
+            lastMinute = minute;
+         }
+         //else debug("EventListener.BarOpen(M1)   zwei Ticks in derselben Sekunde");
+      }
+   }
+
+   // TODO: verbleibende Timeframe-Flags verarbeiten
+   if (false) {
+      if (flags & F_PERIOD_M5  != 0) results[0] |= F_PERIOD_M5 ;
+      if (flags & F_PERIOD_M15 != 0) results[0] |= F_PERIOD_M15;
+      if (flags & F_PERIOD_M30 != 0) results[0] |= F_PERIOD_M30;
+      if (flags & F_PERIOD_H1  != 0) results[0] |= F_PERIOD_H1 ;
+      if (flags & F_PERIOD_H4  != 0) results[0] |= F_PERIOD_H4 ;
+      if (flags & F_PERIOD_D1  != 0) results[0] |= F_PERIOD_D1 ;
+      if (flags & F_PERIOD_W1  != 0) results[0] |= F_PERIOD_W1 ;
+      if (flags & F_PERIOD_MN1 != 0) results[0] |= F_PERIOD_MN1;
+   }
+
+   int error = GetLastError();
+   if (IsError(error))
+      return(_false(catch("EventListener.BarOpen()", error)));
+   return(results[0] != 0);
+}
+
+
+
+
+
 
 
 /**
@@ -790,7 +892,12 @@ int PendingStopOrder(int type, int level) {
    int    magicNumber = CreateMagicNumber(level);
    string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
    color  markerColor = ifInt(level > 0, CLR_LONG, CLR_SHORT);
-
+   /*
+   #define DM_NONE      0     // - keine Anzeige -
+   #define DM_STOPS     1     // Pending,       ClosedByStop
+   #define DM_PYRAMID   2     // Pending, Open,               ClosedByFinish
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish
+   */
    if (orderDisplayMode == DM_NONE)
       markerColor = CLR_NONE;
 
@@ -1301,7 +1408,7 @@ bool RestoreInputSequenceId() {
          testSequence = true; SS.TestSequence();
          strValue     = StringRight(strValue, -1);
       }
-      if (StringIsInteger(strValue)) {
+      if (StringIsDigit(strValue)) {
          int iValue = StrToInteger(strValue);
          if (1000 <= iValue) /*&&*/ if (iValue <= 16383) {
             sequenceId  = iValue; SS.SequenceId();
@@ -1323,10 +1430,11 @@ bool RestoreInputSequenceId() {
 int StoreChartSequenceId() {
    string label = __SCRIPT__ +".sequenceId";
 
-   if (ObjectFind(label) != -1)
+   if (ObjectFind(label) == 0)
       ObjectDelete(label);
-   ObjectCreate(label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet(label, OBJPROP_XDISTANCE, -sequenceId);                 // negativer Wert (im nicht sichtbaren Bereich)
+   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+   ObjectSet    (label, OBJPROP_XDISTANCE, -1000);                   // Label außerhalb des sichtbaren Bereichs legen
+   ObjectSetText(label, ifString(IsTestSequence(), "T", "") + sequenceId, 1);
 
    return(catch("StoreChartSequenceId()"));
 }
@@ -1340,12 +1448,11 @@ int StoreChartSequenceId() {
 bool RestoreChartSequenceId() {
    string label = __SCRIPT__ +".sequenceId";
 
-   if (ObjectFind(label)!=-1) /*&&*/ if (ObjectType(label)==OBJ_LABEL) {
-      sequenceId = MathAbs(ObjectGet(label, OBJPROP_XDISTANCE)) +0.1;   // (int) double
-      SS.SequenceId();
-      return(_true(catch("RestoreChartSequenceId(1)")));
+   if (ObjectFind(label)==0) /*&&*/ if (ObjectType(label)==OBJ_LABEL) {
+      Sequence.ID = ObjectDescription(label);                        // Input-Parameter setzen und RestoreInputSequenceId() wiederverwenden
+      return(RestoreInputSequenceId());
    }
-   return(_false(catch("RestoreChartSequenceId(2)")));
+   return(_false(catch("RestoreChartSequenceId()")));
 }
 
 
@@ -1357,7 +1464,7 @@ bool RestoreChartSequenceId() {
 int ClearChartSequenceId() {
    string label = __SCRIPT__ +".sequenceId";
 
-   if (ObjectFind(label) != -1)
+   if (ObjectFind(label) == 0)
       ObjectDelete(label);
 
    return(catch("ClearChartSequenceId()"));
@@ -1465,9 +1572,10 @@ bool ValidateConfiguration(int reason=NULL) {
    else                                     return(_false(catch("ValidateConfiguration(11)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
 
    // OrderDisplayMode
-   string modes[] = {"None", "Pyramid", "All"};
+   string modes[] = {"None", "Stops", "Pyramid", "All"};
    switch (StringGetChar(StringToUpper(StringTrim(OrderDisplayMode) +"P"), 0)) {
       case 'N': orderDisplayMode = DM_NONE;    break;
+      case 'S': orderDisplayMode = DM_STOPS;   break;
       case 'P': orderDisplayMode = DM_PYRAMID; break;                // default für leeren Input-Parameter
       case 'A': orderDisplayMode = DM_ALL;     break;
       default:                              return(_false(catch("ValidateConfiguration(12)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
@@ -1495,6 +1603,8 @@ bool ValidateConfiguration(int reason=NULL) {
  */
 bool SaveStatus() {
    if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+   if (IsTestSequence()) /*&&*/ if (!IsTesting())
       return(false);
    if (sequenceId == 0)
       return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
@@ -1586,8 +1696,10 @@ bool SaveStatus() {
 
 
    // (2) Daten in lokaler Datei speichern/überschreiben
-   string filename = "presets\\SR."+ sequenceId +".set";             // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch ist
-                                                                     // das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+   string filename;
+   if (!IsTestSequence() || IsTesting()) filename = "presets\\SR."+         sequenceId +".set"; // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
+   else                                  filename = "presets\\tester\\SR."+ sequenceId +".set"; //  ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+
    int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);
    if (hFile < 0)
       return(_false(catch("SaveStatus(2)->FileOpen(\""+ filename +"\")")));
@@ -1614,38 +1726,37 @@ bool SaveStatus() {
 /**
  * Lädt die angegebene Statusdatei auf den Server.
  *
- * @param  string company     - Account-Company
- * @param  int    account     - Account-Number
- * @param  string symbol      - Symbol der Sequenz
- * @param  string presetsFile - Dateiname, relativ zu "{terminal-directory}\experts"
+ * @param  string company  - Account-Company
+ * @param  int    account  - Account-Number
+ * @param  string symbol   - Symbol der Sequenz
+ * @param  string filename - Dateiname, relativ zu "{terminal-directory}\experts"
  *
  * @return int - Fehlerstatus
  */
-int UploadStatus(string company, int account, string symbol, string presetsFile) {
+int UploadStatus(string company, int account, string symbol, string filename) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(last_error);
-
-   if (IsTesting())                                                     // skipping in Tester
+   if (IsTestSequence())                                             // skipping for Tests
       return(NO_ERROR);
 
    // TODO: Existenz von wget.exe prüfen
 
-   string parts[]; int size = Explode(presetsFile, "\\", parts, NULL);
-   string file = parts[size-1];                                         // einfacher Dateiname ohne Verzeichnisse
+   string parts[]; Explode(filename, "\\", parts, NULL);
+   string baseName = ArrayPopString(parts);                          // einfacher Dateiname ohne Verzeichnisse
 
    // Befehlszeile für Shellaufruf zusammensetzen
-   string presetsPath  = TerminalPath() +"\\experts\\" + presetsFile;   // Dateinamen mit vollständigen Pfaden
-   string responsePath = presetsPath +".response";
-   string logPath      = presetsPath +".log";
-   string url          = "http://sub.domain.tld/uploadSRStatus.php?company="+ UrlEncode(company) +"&account="+ account +"&symbol="+ UrlEncode(symbol) +"&name="+ UrlEncode(file);
-   string cmdLine      = "wget.exe -b \""+ url +"\" --post-file=\""+ presetsPath +"\" --header=\"Content-Type: text/plain\" -O \""+ responsePath +"\" -a \""+ logPath +"\"";
+          filename     = TerminalPath() +"\\experts\\"+ filename;    // Dateinamen mit vollständigen Pfaden
+   string responseFile = filename +".response";
+   string logFile      = filename +".log";
+   string url          = "http://sub.domain.tld/uploadSRStatus.php?company="+ UrlEncode(company) +"&account="+ account +"&symbol="+ UrlEncode(symbol) +"&name="+ UrlEncode(baseName);
+   string cmdLine      = "wget.exe -b \""+ url +"\" --post-file=\""+ filename +"\" --header=\"Content-Type: text/plain\" -O \""+ responseFile +"\" -a \""+ logFile +"\"";
 
    // Existenz der Datei prüfen
-   if (!IsFile(presetsPath))
-      return(catch("UploadStatus(1)   file not found: \""+ presetsPath +"\"", ERR_FILE_NOT_FOUND));
+   if (!IsFile(filename))
+      return(catch("UploadStatus(1)   file not found \""+ filename +"\"", ERR_FILE_NOT_FOUND));
 
    // Datei hochladen, WinExec() kehrt ohne zu warten zurück, wget -b beschleunigt zusätzlich
-   int error = WinExec(cmdLine, SW_HIDE);                               // SW_SHOWNORMAL|SW_HIDE
+   int error = WinExec(cmdLine, SW_HIDE);                            // SW_SHOWNORMAL|SW_HIDE
    if (error < 32)
       return(catch("UploadStatus(2) ->kernel32::WinExec(cmdLine=\""+ cmdLine +"\"), error="+ error +" ("+ ShellExecuteErrorToStr(error) +")", ERR_WIN32_ERROR));
 
@@ -1662,17 +1773,16 @@ int UploadStatus(string company, int account, string symbol, string presetsFile)
 bool RestoreStatus() {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
-
    if (sequenceId == 0)
       return(_false(catch("RestoreStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
-   // (1) bei nicht existierender lokaler Konfiguration die Datei neu vom Server laden
-   string filesDir = TerminalPath() + ifString(IsTesting(), "\\tester", "\\experts") +"\\files\\";
-   string fileName = "presets\\"+ ifString(IsTestSequence(), "tester\\", "") +"SR."+ sequenceId +".set"; // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
-                                                                                                         // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+   // (1) bei nicht existierender lokaler Konfiguration die Datei vom Server laden
+   string filesDir = TerminalPath() + "\\experts\\files\\";                                              // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
+   string fileName = "presets\\"+ ifString(IsTestSequence(), "tester\\", "") +"SR."+ sequenceId +".set"; // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+
    if (!IsFile(filesDir + fileName)) {
-      if (IsTesting() || IsTestSequence())
-         return(_false(catch("RestoreStatus(2)   status file for sequence "+ ifString(IsTestSequence(), "T", "") + sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+      if (IsTestSequence())
+         return(_false(catch("RestoreStatus(2)   status file \""+ filesDir + fileName +"\" for test sequence T"+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
 
       // TODO: Existenz von wget.exe prüfen
 
@@ -1682,13 +1792,13 @@ bool RestoreStatus() {
       string logFile    = filesDir +"\\"+ fileName +".log";
       string cmd        = "wget.exe \""+ url +"\" -O \""+ targetFile +"\" -o \""+ logFile +"\"";
 
-      debug("RestoreStatus()   downloading status file for sequence "+ sequenceId);
+      debug("RestoreStatus()   downloading status file for sequence "+ ifString(IsTestSequence(), "T", "") + sequenceId);
 
       int error = WinExecAndWait(cmd, SW_HIDE);                      // SW_SHOWNORMAL|SW_HIDE
       if (IsError(error))
          return(_false(SetLastError(error)));
 
-      debug("RestoreStatus()   status file for sequence "+ sequenceId +" successfully downloaded");
+      debug("RestoreStatus()   status file for sequence "+ ifString(IsTestSequence(), "T", "") + sequenceId +" successfully downloaded");
       FileDelete(fileName +".log");
    }
 
@@ -2211,8 +2321,9 @@ bool ChartMarker.OrderSent(int i) {
       return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
-   #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
-   #define DM_ALL       2     // Pending, Open, ClosedByStop, ClosedByFinish
+   #define DM_STOPS     1     // Pending,       ClosedByStop
+   #define DM_PYRAMID   2     // Pending, Open,               ClosedByFinish
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish
    */
    bool pending = orders.pendingType[i] != OP_UNDEFINED;
 
@@ -2221,8 +2332,10 @@ bool ChartMarker.OrderSent(int i) {
    double   openPrice   = ifDouble(pending, orders.pendingPrice[i], orders.openPrice[i]);
    color    markerColor = CLR_NONE;
 
-   if (orderDisplayMode != DM_NONE)
-      markerColor = ifInt(IsLongTradeOperation(type), CLR_LONG, CLR_SHORT);
+   if (orderDisplayMode > DM_NONE) {
+      if (pending || orderDisplayMode > DM_STOPS)
+         markerColor = ifInt(IsLongTradeOperation(type), CLR_LONG, CLR_SHORT);
+   }
 
    if (!ChartMarker.OrderSent_B(orders.ticket[i], Digits, markerColor, type, LotSize, Symbol(), openTime, openPrice, orders.stopLoss[i], 0, orders.comment[i]))
       return(_false(SetLastError(stdlib_PeekLastError())));
@@ -2244,12 +2357,13 @@ bool ChartMarker.OrderFilled(int i) {
       return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
-   #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
-   #define DM_ALL       2     // Pending, Open, ClosedByStop, ClosedByFinish
+   #define DM_STOPS     1     // Pending,       ClosedByStop
+   #define DM_PYRAMID   2     // Pending, Open,               ClosedByFinish
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish
    */
    color markerColor = CLR_NONE;
 
-   if (orderDisplayMode > DM_NONE)
+   if (orderDisplayMode > DM_STOPS)
       markerColor = ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT);
 
    if (!ChartMarker.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, markerColor, LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.comment[i]))
@@ -2272,8 +2386,9 @@ bool ChartMarker.PositionClosed(int i) {
       return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
-   #define DM_PYRAMID   1     // Pending, Open,               ClosedByFinish
-   #define DM_ALL       2     // Pending, Open, ClosedByStop, ClosedByFinish
+   #define DM_STOPS     1     // Pending,       ClosedByStop
+   #define DM_PYRAMID   2     // Pending, Open,               ClosedByFinish
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish
    */
    color markerColor = CLR_NONE;
 
@@ -2284,13 +2399,24 @@ bool ChartMarker.PositionClosed(int i) {
       else if (orders.type[i] == OP_SELL)             closedByStop = GE(orders.closePrice[i], orders.stopLoss[i]);
       else                                            closedByStop = false;
 
-      if (!closedByStop || orderDisplayMode==DM_ALL)
-         markerColor = CLR_CLOSE;
+      if ( closedByStop && orderDisplayMode!=DM_PYRAMID) markerColor = CLR_CLOSE;
+      if (!closedByStop && orderDisplayMode > DM_STOPS ) markerColor = CLR_CLOSE;
    }
 
    if (!ChartMarker.PositionClosed_B(orders.ticket[i], Digits, markerColor, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]))
       return(_false(SetLastError(stdlib_PeekLastError())));
    return(true);
+}
+
+
+/**
+ * Ob die Sequenz im Tester erzeugt wurde (für Visualisierung von Tests in Live-Charts). Der Aufruf dieser Funktion in Live-Charts mit einer im Tester
+ * erzeugten Sequenz (z.B. mit VisualMode=Off) gibt ebenfalls TRUE zurück.
+ *
+ * @return bool
+ */
+bool IsTestSequence() {
+   return(IsTesting() || testSequence);
 }
 
 
@@ -2356,19 +2482,8 @@ int ResizeArrays(int size, bool reset=false) {
 
    // Dummy-Calls
    DistanceToProfit(NULL);
-   IsTestSequence();
    OrderDisplayModeToStr(NULL);
    SequenceStatusToStr(NULL);
-}
-
-
-/**
- * Ob die Sequenz im Tester erzeugt wurde (für Visualisierung von Tests in Live-Charts).
- *
- * @return bool
- */
-bool IsTestSequence() {
-   return(IsTesting() || testSequence);
 }
 
 
@@ -2382,6 +2497,7 @@ bool IsTestSequence() {
 string OrderDisplayModeToStr(int mode) {
    switch (mode) {
       case DM_NONE   : return("DM_NONE"   );
+      case DM_STOPS  : return("DM_STOPS"  );
       case DM_PYRAMID: return("DM_PYRAMID");
       case DM_ALL    : return("DM_ALL"    );
    }
