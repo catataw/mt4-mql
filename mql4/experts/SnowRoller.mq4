@@ -7,18 +7,19 @@
  *
  * @see Different pyramiding schemes:  http://www.actionforex.com/articles-library/money-management-articles/pyramiding:-a-risky-strategy-200603035356/
  * @see Schwager about pyramiding:     http://www.forexjournal.com/fx-education/money-management/450-pyramiding-and-the-management-of-profitable-trades.html
-
  *
  *
  *  TODO:
  *  -----
+ *  - Exit-Rule implementieren: onBreakeven, on Profit, onLimit               *
+ *  - Weekend-Lösung entwickeln: Pause/Resume                                 *
  *  - onBarOpen(PERIOD_M1) implementieren
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
- *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
  *  - UpdateStatus() muß Slippage berücksichtigen
+ *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
  *  - StartTime und StartCondition "level-X @ price" implementieren
- *  - Client-Side-Limits implementieren
  *  - Upload des Sequenz-Status implementieren
+ *  - Client-Side-Limits implementieren
  *  - Heartbeat implementieren
  *  - im Tester Laufzeit optimieren (I/O-Operationen, Logging, sonstiges)
  *  - Anzeige der Gridbasis implementieren
