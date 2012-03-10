@@ -5,10 +5,6 @@
  *      7bit Strategy:   http://www.forexfactory.com/showthread.php?t=226059
  *      7bit Journal:    http://www.forexfactory.com/showthread.php?t=239717
  *
- * @see Different pyramiding schemes:  http://www.actionforex.com/articles-library/money-management-articles/pyramiding:-a-risky-strategy-200603035356/
- * @see Schwager about pyramiding:     http://www.forexjournal.com/fx-education/money-management/450-pyramiding-and-the-management-of-profitable-trades.html
- *
- *
  *  TODO:
  *  -----
  *  - Unidirektionales Grid implementieren                                    *
@@ -399,118 +395,30 @@ bool UpdateStatus() {
       grid.maxDrawdown.time = TimeCurrent(); SS.Grid.MaxDrawdown();
    }
 
-   if (!IsTesting() || IsVisualMode()) {
-      if (!beUpdated) /*&&*/ if (grid.breakevenLong > 0)
-         HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);               // BarOpen-Event triggern, wenn Breakeven definiert und nicht bereits aktualisiert ist
+   if (grid.breakevenLong > 0) /*&&*/ if (!beUpdated) {              // BarOpen-Event triggern, wenn Breakeven definiert und nicht bereits aktualisiert ist
+      if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
+      else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);
    }
+
+
 
    /*
    if (HandleEvent(EVENT_BAR_OPEN) != 0) {
       debug("UpdateStatus()   EVENT_BAR_OPEN");
    }
    */
-
    return(IsNoError(catch("UpdateStatus(2)")));
-   int ints[]; _EventListener.BarOpen(ints);
-}
-
-
-/**
- * Prüft, ob der aktuelle Tick im angegebenen Zeitrahmen ein BarOpen-Event darstellt.
- *
- * @param  int results[] - Array, das Flags der Timeframes aufnimmt, in denen das Event aufgetreten ist (mehrere sind möglich)
- * @param  int flags     - ein oder mehrere zu prüfende Timeframes (default: aktuelle Chartperiode)
- *
- * @return bool - ob mindestens ein BarOpen-Event erkannt wurde
- */
-bool _EventListener.BarOpen(int& results[], int flags=NULL) {
-   if (ArraySize(results) != 1)
-      ArrayResize(results, 1);
-   results[0] = 0;
-
-   int currentPeriodFlag = PeriodFlag(Period());
-   if (flags == NULL)
-      flags = currentPeriodFlag;
-
-   debug("EventListener.BarOpen("+ PeriodFlagToStr(flags) +")");
-
-   static int lastTick;
-
-   // Die aktuelle Periode kann einfach und schnell geprüft werden.
-   if (flags & currentPeriodFlag != 0) {
-      static int  lastOpenTime;
-      static bool lastResult;
-
-      if (lastOpenTime != 0) {
-         if (Tick == lastTick) {
-            if (lastResult)                                          // wiederholter Aufruf während desselben Ticks
-               results[0] |= currentPeriodFlag;
-         }
-         else if (Time[0] != lastOpenTime) {                         // neuer Tick
-            results[0] |= currentPeriodFlag;
-            lastResult = true;
-         }
-         else {
-            lastResult = false;
-         }
-      }
-      lastOpenTime = Time[0];
-      lastTick     = Tick;
-   }
-
-   // Prüfungen für andere als die aktuelle Chartperiode
-   else {
-      static int lastMinute = 0;
-
-      datetime tick = MarketInfo(Symbol(), MODE_TIME);      // nur Sekundenauflösung
-      int minute;
-
-      // PERIODFLAG_M1
-      if (flags & F_PERIOD_M1 != 0) {
-         if (lastTick == 0) {
-            lastTick   = tick;
-            lastMinute = TimeMinute(tick);
-            //debug("EventListener.BarOpen(M1)   initialisiert   lastTick: '", TimeToStr(lastTick, TIME_DATE|TIME_MINUTES|TIME_SECONDS), "' (", lastMinute, ")");
-         }
-         else if (lastTick != tick) {
-            minute = TimeMinute(tick);
-            if (lastMinute < minute)
-               results[0] |= F_PERIOD_M1;
-            //debug("EventListener.BarOpen(M1)   prüfe   alt: '", TimeToStr(lastTick, TIME_DATE|TIME_MINUTES|TIME_SECONDS), "' (", lastMinute, ")   neu: '", TimeToStr(tick, TIME_DATE|TIME_MINUTES|TIME_SECONDS), "' (", minute, ")");
-            lastTick   = tick;
-            lastMinute = minute;
-         }
-         //else debug("EventListener.BarOpen(M1)   zwei Ticks in derselben Sekunde");
-      }
-   }
-
-   // TODO: verbleibende Timeframe-Flags verarbeiten
-   if (false) {
-      if (flags & F_PERIOD_M5  != 0) results[0] |= F_PERIOD_M5 ;
-      if (flags & F_PERIOD_M15 != 0) results[0] |= F_PERIOD_M15;
-      if (flags & F_PERIOD_M30 != 0) results[0] |= F_PERIOD_M30;
-      if (flags & F_PERIOD_H1  != 0) results[0] |= F_PERIOD_H1 ;
-      if (flags & F_PERIOD_H4  != 0) results[0] |= F_PERIOD_H4 ;
-      if (flags & F_PERIOD_D1  != 0) results[0] |= F_PERIOD_D1 ;
-      if (flags & F_PERIOD_W1  != 0) results[0] |= F_PERIOD_W1 ;
-      if (flags & F_PERIOD_MN1 != 0) results[0] |= F_PERIOD_MN1;
-   }
-
-   int error = GetLastError();
-   if (IsError(error))
-      return(_false(catch("EventListener.BarOpen()", error)));
-   return(results[0] != 0);
 }
 
 
 /**
  * Handler für BarOpen-Events.
  *
- * @param int data[] - eventspezifische Informationen
+ * @param int timeframes[] - IDs der Timeframes, in denen das BarOpen-Event aufgetreten ist
  *
  * @return int - Fehlerstatus
  */
-int onBarOpen(int data[]) {
+int onBarOpen(int timeframes[]) {
    Grid.DrawBreakeven();
    return(catch("onBarOpen()"));
 }
