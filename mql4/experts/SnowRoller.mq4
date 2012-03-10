@@ -11,19 +11,20 @@
  *
  *  TODO:
  *  -----
+ *  - Unidirektionales Grid implementieren                                    *
+ *  - Pause/Resume implementieren                                             *
  *  - Exit-Rule implementieren: onBreakeven, on Profit, onLimit               *
- *  - Weekend-Lösung entwickeln: Pause/Resume                                 *
  *  - onBarOpen(PERIOD_M1) implementieren
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
  *  - UpdateStatus() muß Slippage berücksichtigen
- *  - Umschaltung der Trade-Displaymodes per Hotkey implementieren
+ *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - StartTime und StartCondition "level-X @ price" implementieren
  *  - Upload des Sequenz-Status implementieren
  *  - Client-Side-Limits implementieren
  *  - Heartbeat implementieren
  *  - im Tester Laufzeit optimieren (I/O-Operationen, Logging, sonstiges)
- *  - Anzeige der Gridbasis implementieren
- *  - Anzeige des Breakeven-Indikator beim Beenden reparieren
+ *  - Gridbasis anzeigen
+ *  - Breakeven-Indikator bei STATUS_FINISHING und STATUS_FINISHED reparieren
  */
 #include <stdlib.mqh>
 #include <win32api.mqh>
@@ -51,7 +52,7 @@ extern int    GridSize                        = 20;
 extern double LotSize                         = 0.1;
 extern string StartCondition                  = "";
 extern string OrderDisplayMode                = "Pyramid";
-extern string OrderDisplayMode.Help           = "None | Stops | Pyramid | All";
+extern string OrderDisplayMode.Help           = "None | Stops | Pyramid* | All";
 extern color  Color.Breakeven                 = Blue;
 extern string _______________________________ = "======== Sequence to Manage =========";
 extern string Sequence.ID                     = "";
@@ -2284,7 +2285,7 @@ double Sync.GetOpenSlippage(int i) {
 
 
 /**
- * Visualisiert die Orders entsprechend dem aktuellen OrderDisplayMode.
+ * Visualisiert die Orders entsprechend dem aktuellen OrderDisplay-Mode.
  */
 void RedrawOrders() {
    bool pendingOrder, closedPosition;
