@@ -7,22 +7,22 @@
  *
  *  TODO:
  *  -----
- *  - UpdateStatus() muß Slippage berücksichtigen
- *  - Breakeven-Indikator bei STATUS_FINISHING und STATUS_FINISHED reparieren
- *  - onBarOpen(PERIOD_M1) implementieren
  *  - Breakeven-Bug EUR/USD SR.11857 2012-03-06 19:17 und 20:30 beheben
+ *  - Breakeven-Indikator bei STATUS_FINISHING und STATUS_FINISHED reparieren
+ *  - UpdateStatus() muß Slippage berücksichtigen
+ *  - onBarOpen(PERIOD_M1) implementieren
  *
- *  - Unidirektionales Grid implementieren                                    *
+ *  - einfaches und beidseitig unidirektionales Grid implementieren           *
  *  - Pause/Resume implementieren                                             *
  *  - Exit-Rule implementieren: onBreakeven, onProfit, onLimit                *
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - StartTime und StartCondition "level-X @ price" implementieren
  *  - Upload des Sequenz-Status implementieren
+ *  - Laufzeit im Tester optimieren (I/O-Operationen, Logging, etc.)
+ *  - Gridbasis anzeigen
  *  - Client-Side-Limits implementieren
  *  - Heartbeat implementieren
- *  - im Tester Laufzeit optimieren (I/O-Operationen, Logging, sonstiges)
- *  - Gridbasis anzeigen
  */
 #include <stdlib.mqh>
 #include <win32api.mqh>
