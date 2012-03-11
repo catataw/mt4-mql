@@ -7,15 +7,15 @@
  *
  *  TODO:
  *  -----
- *  - Breakeven-Bug EUR/USD SR.11857 2012-03-06 19:17 und 20:30 beheben
- *  - Breakeven-Indikator bei STATUS_FINISHING und STATUS_FINISHED reparieren
  *  - UpdateStatus() muß Slippage berücksichtigen
  *  - onBarOpen(PERIOD_M1) implementieren
+ *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
+ *  - Breakeven-Indikator bei STATUS_FINISHING und STATUS_FINISHED reparieren
  *
+ *  - Bug: nach ungültiger Parameter-Änderung und STATUS_DISABLED wird GridSize=20 in die Statusdatei geschrieben
  *  - einfaches und beidseitig unidirektionales Grid implementieren           *
  *  - Pause/Resume implementieren                                             *
  *  - Exit-Rule implementieren: onBreakeven, onProfit, onLimit                *
- *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - StartTime und StartCondition "level-X @ price" implementieren
  *  - Upload des Sequenz-Status implementieren
@@ -82,15 +82,15 @@ int      grid.maxLevelLong;                                 // maximal erreichte
 int      grid.maxLevelShort;                                // maximal erreichter Short-Level
 
 int      grid.stops;                                        // Anzahl der bisher getriggerten Stops
-double   grid.stopsPL;                                      // P/L der getriggerten Stops
-double   grid.finishedPL;                                   // P/L sonstiger geschlossener Positionen (Sequenzende)
+double   grid.stopsPL;                                      // P/L der getriggerten Stops (0 oder negativ)
+double   grid.finishedPL;                                   // P/L sonstiger geschlossener Positionen (realizedPL = stopsPL + finishedPL)
 double   grid.floatingPL;                                   // P/L offener Positionen
-double   grid.totalPL;                                      // Gesamt-P/L der Sequenz (stopsPL + finishedPL + floatingPL)
-double   grid.valueAtRisk;                                  // aktuelles maximales Risiko
+double   grid.totalPL;                                      // Gesamt-P/L der Sequenz:  realizedPL + floatingPL
+double   grid.valueAtRisk;                                  // aktuelles Maximalrisiko: realizedPL + openStops (0 oder positiv)
 
-double   grid.maxProfitLoss;                                // maximal erreichter Gesamtprofit
+double   grid.maxProfitLoss;                                // maximal erreichter Gesamtprofit (0 oder positiv)
 datetime grid.maxProfitLoss.time;                           // Zeitpunkt von grid.maxProfitLoss
-double   grid.maxDrawdown;                                  // maximal erreichter Drawdown
+double   grid.maxDrawdown;                                  // maximal erreichter Drawdown (0 oder negativ)
 datetime grid.maxDrawdown.time;                             // Zeitpunkt von grid.maxDrawdown
 double   grid.breakevenLong;
 double   grid.breakevenShort;
@@ -295,7 +295,7 @@ int onTick() {
    // (2) ...oder läuft: Status prüfen und Orders aktualisieren
    else if (UpdateStatus()) {
       if      (IsProfitTargetReached())       FinishSequence();
-      else if (last.grid.level != grid.level) UpdatePendingOrders();
+      else if (grid.level != last.grid.level) UpdatePendingOrders();
    }
    last.grid.level = grid.level;
    firstTick       = false;
@@ -348,7 +348,7 @@ bool UpdateStatus() {
                grid.level        += MathSign(orders.level[i]);
                grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                        // (int) double
                grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();    // (int) double
-               grid.valueAtRisk   = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
+               grid.valueAtRisk   = MathAbs(grid.level) * GridSize * PipValue(LotSize) - grid.stopsPL - grid.finishedPL; SS.Grid.ValueAtRisk();
                Grid.UpdateBreakeven(); beUpdated = true;
             }
          }
@@ -376,9 +376,9 @@ bool UpdateStatus() {
                   grid.level      -= MathSign(orders.level[i]);
                   grid.stops++;
                   grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
-                  grid.valueAtRisk = grid.stopsPL - MathAbs(grid.level) * GridSize * PipValue(LotSize); SS.Grid.ValueAtRisk();
+                  grid.valueAtRisk = MathAbs(grid.level) * GridSize * PipValue(LotSize) - grid.stopsPL - grid.finishedPL; SS.Grid.ValueAtRisk();
                }
-               else {                                                // bei Sequenzende geschlossen (ggf. durch Tester)
+               else {                                                // bei Sequenzende geschlossen
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
                Grid.UpdateBreakeven(); beUpdated = true;
@@ -1032,7 +1032,7 @@ void SS.Grid.ValueAtRisk() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.grid.valueAtRisk = NumberToStr(grid.valueAtRisk, "+.2");
+   str.grid.valueAtRisk = NumberToStr(-grid.valueAtRisk, "+.2");     // Wert ist positv, Anzeige ist negativ
 }
 
 
@@ -1082,15 +1082,15 @@ bool Grid.UpdateBreakeven(datetime time=0) {
       return(true);
 
    // wenn floatingPL = -realizedPL, dann totalPL = 0.00      => Breakeven-Punkt auf aktueller Seite
-   double distance1 = ProfitToDistance(MathAbs(grid.stopsPL + grid.finishedPL), grid.level);
+   double distance1 = ProfitToDistance(-grid.stopsPL-grid.finishedPL, grid.level);
 
    if (grid.level == 0) {                                            // realizedPL und valueAtRisk sind identisch, Abstand der Breakeven-Punkte ist gleich
       grid.breakevenLong  = grid.base + distance1*Pips;
       grid.breakevenShort = grid.base - distance1*Pips;
    }
    else {
-      // wenn floatingPL = -valueAtRisk, dann totalPL = 0.00  => Breakeven-Punkt auf gegenüberliegender Seite
-      double distance2 = ProfitToDistance(MathAbs(grid.valueAtRisk), 0);
+      // wenn floatingPL = valueAtRisk, dann totalPL = 0.00  => Breakeven-Punkt auf gegenüberliegender Seite
+      double distance2 = ProfitToDistance(grid.valueAtRisk, 0);
 
       if (grid.level > 0) {
          grid.breakevenLong  = grid.base + distance1*Pips;
@@ -1186,15 +1186,19 @@ void RecolorBreakeven() {
  * Berechnet den notwendigen Abstand von der Gridbasis, um den angegebenen Gewinn zu erzielen.
  *
  * @param  double profit - zu erzielender Gewinn
- * @param  int    level  - aktueller Gridlevel (Stops zwischen dem Level und dem resultierendenn Abstand werden berücksichtigt
+ * @param  int    level  - aktueller Gridlevel (Stops zwischen diesem Level und dem resultierenden Abstand werden berücksichtigt)
  *
  * @return double - Abstand in Pips oder 0, wenn ein Fehler auftrat
  */
 double ProfitToDistance(double profit, int level) {
    if (EQ(profit, 0))
       return(GridSize);
+
+   profit = MathAbs(profit);
+
    if (level < 0)
       level *= -1;
+   level--;                                                                      // Formeln beziehen sich auf Zählung von der Gridbasis
    /*
    Formeln gelten für Sequenzstart an der Gridbasis:
    -------------------------------------------------
@@ -1227,10 +1231,10 @@ double ProfitToDistance(double profit, int level) {
    int    n    = MathSqrt(2*profit/(gs*pipV) + 0.25) - 0.5 +0.000000001;         // (int) double
 
    while (n < level-1) {                                                         // Sind wir im Plus und oberhalb von Breakeven liegen Stops, muß
-      profit += gs * pipV;                                                       // ihr Triggern auf dem "Weg zu Breakeven" mit einkalkuliert werden.
+      profit += gs * pipV;                                                       // auf dem "Weg zu Breakeven" deren Triggern einkalkuliert werden.
       level--;
       n = MathSqrt(2*profit/(gs*pipV) + 0.25) - 0.5 +0.000000001;                // (int) double
-      //debug("ProfitToDistance()   new n="+ n);
+      //debug("ProfitToDistance()    new n="+ n);
    }
 
    /*
@@ -1250,7 +1254,7 @@ double ProfitToDistance(double profit, int level) {
    // Gesamtdistanz berechnen
    double distance  = n * gs + linPips + gs;                                     // 1 x GridSize hinzu addieren, da der Sequenzstart erst bei Grid.Base + GridSize erfolgt
 
-   //debug("ProfitToDistance()   profit="+ DoubleToStr(profit, 2) +"  n="+ n +"  lin="+ DoubleToStr(linProfit, 2) +"  linPips="+ NumberToStr(linPips, ".+") +"  distance="+ NumberToStr(distance, ".+"));
+   //debug("ProfitToDistance()    profit="+ DoubleToStr(profit, 2) +"  n="+ n +"  exp="+ DoubleToStr(n * (n+1)/2 * gs * pipV, 2) +"  lin="+ DoubleToStr(linProfit, 2) +"  linPips="+ NumberToStr(linPips, ".+") +"  distance="+ NumberToStr(distance, ".+"));
    return(distance);
 }
 
@@ -1544,7 +1548,7 @@ bool SaveStatus() {
    double   grid.finishedPL;           // nein: kann aus Orderdaten restauriert werden
    double   grid.floatingPL;           // nein: kann aus offenen Positionen restauriert werden
    double   grid.totalPL;              // nein: kann aus stopsPL, finishedPL und floatingPL restauriert werden
-   double   grid.valueAtRisk;          // nein: kann aus stopsPL und grid.level restauriert werden
+   double   grid.valueAtRisk;          // nein: kann aus Orderdaten restauriert werden
    double   grid.maxProfitLoss;        // ja
    datetime grid.maxProfitLoss.time;   // ja
    double   grid.maxDrawdown;          // ja
@@ -1970,7 +1974,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
 
 
 /**
- * Gleicht den gespeicherten Laufzeitstatus mit den Online-Daten der laufenden Sequenz ab.
+ * Gleicht den in der Instanz gespeicherten Laufzeitstatus mit den Online-Daten der laufenden Sequenz ab.
  *
  * @return bool - Erfolgsstatus
  */
@@ -2025,26 +2029,26 @@ bool SynchronizeStatus() {
    }
 
 
-   // (2) übrige Laufzeitvariablen restaurieren
-   /*int   */ status              = STATUS_WAITING;   // ok
-   /*int   */ grid.level          = 0;                // ok
-   /*int   */ grid.maxLevelLong   = 0;                // ok
-   /*int   */ grid.maxLevelShort  = 0;                // ok
-   /*int   */ grid.stops          = 0;                // ok
-   /*double*/ grid.stopsPL        = 0;                // ok
-   /*double*/ grid.finishedPL     = 0;                // ok
-   /*double*/ grid.floatingPL     = 0;                // ok
-   /*double*/ grid.totalPL        = 0;                // ok
-   /*double*/ grid.valueAtRisk    = 0;                // ok
-   /*double*/ grid.breakevenLong  = 0;                // ok
-   /*double*/ grid.breakevenShort = 0;                // ok
+   // (2) Laufzeitvariablen restaurieren
+   /*int   */ status              = STATUS_WAITING;
+   /*int   */ grid.level          = 0;
+   /*int   */ grid.maxLevelLong   = 0;
+   /*int   */ grid.maxLevelShort  = 0;
+   /*int   */ grid.stops          = 0;
+   /*double*/ grid.stopsPL        = 0;
+   /*double*/ grid.finishedPL     = 0;
+   /*double*/ grid.floatingPL     = 0;
+   /*double*/ grid.totalPL        = 0;
+   /*double*/ grid.valueAtRisk    = 0;
+   /*double*/ grid.breakevenLong  = 0;
+   /*double*/ grid.breakevenShort = 0;
 
    #define EVENT_OPEN         1                       // Event-Types: {PositionOpen | PositionCloseByStop | PositionCloseByFinish}
    #define EVENT_CLOSESTOP    2
    #define EVENT_CLOSEFINISH  3
 
    bool   pendingOrder, openPosition, closedPosition, openPositions, finishedPositions;
-   double profitLoss, valueAtRisk, pipValue=PipValue(LotSize);
+   double profitLoss, openStopValue, pipValue=PipValue(LotSize);
    int    levels[];    ArrayResize(levels, 0);
    double events[][6]; ArrayResize(events, 0);
 
@@ -2055,14 +2059,14 @@ bool SynchronizeStatus() {
       openPosition   = !pendingOrder && orders.closeTime[i]==0;
       closedPosition = !pendingOrder && !openPosition;
 
-      if (closedPosition) {                                          // geschlossenes Ticket
+      if (closedPosition) {                                                   // geschlossenes Ticket
          if (openPositions && !orders.closedByStop[i]) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
       }
 
       if (!pendingOrder) {
-         profitLoss  = orders.swap[i] + orders.commission[i] + orders.profit[i];
-         valueAtRisk = (GridSize-Sync.GetOpenSlippage(i)) * pipValue;
-         Sync.PushBreakevenEvent(events, orders.openTime[i], EVENT_OPEN, orders.level[i], NULL, NULL, -valueAtRisk); // Breakeven-History (valueAtRisk um Slippage justiert)
+         profitLoss    = orders.swap[i] + orders.commission[i] + orders.profit[i];
+         openStopValue = (GridSize + Sync.GetOpenSlippage(i)) * pipValue;     // um Open-Slippage justiert
+         Sync.PushBreakevenEvent(events, orders.openTime[i], EVENT_OPEN, orders.level[i], NULL, NULL, openStopValue);
 
          if (openPosition) {
             openPositions    = true;
@@ -2070,12 +2074,12 @@ bool SynchronizeStatus() {
             if (IntInArray(orders.level[i], levels))   return(_false(catch("SynchronizeStatus(3)   duplicate order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
             ArrayPushInt(levels, orders.level[i]);
          }
-         else if (orders.closedByStop[i]) {                          // Breakeven-History (valueAtRisk entsprechend korrigiert)
-            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSESTOP, orders.level[i], profitLoss, NULL, profitLoss+valueAtRisk);
+         else if (orders.closedByStop[i]) {                                   // openStopValue wieder reduzieren
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSESTOP, orders.level[i], profitLoss, NULL, -openStopValue);
          }
          else /*(closedByFinish)*/ {
-            finishedPositions = true;                                // Breakeven-History
-            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSEFINISH, orders.level[i], NULL, profitLoss, NULL);
+            finishedPositions = true;                                         // openStopValue wieder reduzieren
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSEFINISH, orders.level[i], NULL, profitLoss, -openStopValue);
          }
       }
       if (IsLastError())
@@ -2105,9 +2109,11 @@ bool SynchronizeStatus() {
       ArraySort(events);
 
    int time, lastTime, minute, lastMinute, type, level;
+   openStopValue = 0;
 
    for (i=0; i < size; i++) {
       time = events[i][0] +0.1;                                      // (int) double
+
       // zwischen den BE-Events liegende BarOpen(M1)-Events simulieren
       if (lastTime > 0) {
          minute = time/60; lastMinute = lastTime/60;
@@ -2120,7 +2126,8 @@ bool SynchronizeStatus() {
       level             = events[i][2] + MathSign(events[i][2])*0.1; // (int) double
       grid.stopsPL     += events[i][3];
       grid.finishedPL  += events[i][4];
-      grid.valueAtRisk += events[i][5];
+         openStopValue += events[i][5];
+      grid.valueAtRisk  = openStopValue - grid.stopsPL - grid.finishedPL;
 
       if      (type == EVENT_OPEN)      { grid.level = level; }
       else if (type == EVENT_CLOSESTOP) { grid.level = level-MathSign(level); grid.stops++; }
@@ -2143,17 +2150,17 @@ bool SynchronizeStatus() {
 /**
  * Fügt den Breakeven-relevanten Events ein weiteres hinzu.
  *
- * @param  double   events[]    - Array mit bereits gespeicherten Events
- * @param  datetime time        - Zeitpunkt des neuen Events
- * @param  int      type        - Event-Typ: EVENT_OPEN | EVENT_CLOSESTOP | EVENT_CLOSEFINISH
- * @param  int      level       - Gridlevel des neuen Events
- * @param  double   stopsPL     - Änderung des Profit/Loss durch ausgestoppte Positionen
- * @param  double   finishedPL  - Änderung des Profit/Loss durch sonstige geschlossene Positionen
- * @param  double   valueAtRisk - VAR-Änderung des neuen Events
+ * @param  double   events[]      - Array mit bereits gespeicherten Events
+ * @param  datetime time          - Zeitpunkt des neuen Events
+ * @param  int      type          - Event-Typ: EVENT_OPEN | EVENT_CLOSESTOP | EVENT_CLOSEFINISH
+ * @param  int      level         - Gridlevel des neuen Events
+ * @param  double   stopsPL       - Änderung des Profit/Loss durch ausgestoppte Positionen
+ * @param  double   finishedPL    - Änderung des Profit/Loss durch sonstige geschlossene Positionen
+ * @param  double   openStopValue - Änderung des OpenStop-Values durch das neue Event
  *
  * @return bool - Erfolgsstatus
  */
-bool Sync.PushBreakevenEvent(double& events[][], datetime time, int type, int level, double stopsPL, double finishedPL, double valueAtRisk) {
+bool Sync.PushBreakevenEvent(double& events[][], datetime time, int type, int level, double stopsPL, double finishedPL, double openStopValue) {
    int size = ArrayRange(events, 0);
    ArrayResize(events, size+1);
 
@@ -2162,7 +2169,7 @@ bool Sync.PushBreakevenEvent(double& events[][], datetime time, int type, int le
    events[size][2] = level;
    events[size][3] = stopsPL;
    events[size][4] = finishedPL;
-   events[size][5] = valueAtRisk;
+   events[size][5] = openStopValue;
 
    grid.maxLevelLong  = MathMax(grid.maxLevelLong,  level) +0.1;     // (int) double
    grid.maxLevelShort = MathMin(grid.maxLevelShort, level) -0.1;     // (int) double
@@ -2172,11 +2179,11 @@ bool Sync.PushBreakevenEvent(double& events[][], datetime time, int type, int le
 
 
 /**
- * Ermittelt die OpenPrice-Slippage der Position.
+ * Ermittelt die OpenPrice-Slippage einer Position.
  *
  * @param  int i - Index der Position in den Datenarrays
  *
- * @return double - Slippage
+ * @return double - positive (zu ungunsten) oder negative (zugunsten) Slippage in Pip
  */
 double Sync.GetOpenSlippage(int i) {
    if (orders.type[i] == OP_UNDEFINED)                               // Pending-Order
@@ -2185,8 +2192,8 @@ double Sync.GetOpenSlippage(int i) {
    double slippage, expectedPrice=NormalizeDouble(grid.base + orders.level[i] * GridSize * Pips, Digits);
 
    if (NE(orders.openPrice[i], expectedPrice)) {
-      if (orders.type[i] == OP_BUY) slippage = expectedPrice - orders.openPrice[i];    // Slippage zugunsten ist positiv, zu ungunsten negativ
-      else                          slippage = orders.openPrice[i] - expectedPrice;
+      if (orders.type[i] == OP_BUY) slippage = orders.openPrice[i] - expectedPrice;    // Slippage zu ungunsten ist positiv, zugunsten negativ
+      else                          slippage = expectedPrice - orders.openPrice[i];
       slippage = NormalizeDouble(slippage/Pips, Digits-PipDigits);                     // in Pip
       debug("Sync.GetOpenSlippage()   open price slippage of #"+ orders.ticket[i] +" = "+ DoubleToStr(slippage, Digits-PipDigits) +" pip");
    }
@@ -2383,6 +2390,7 @@ int ResizeArrays(int size, bool reset=false) {
    return(catch("ResizeArrays()"));
 
    // Dummy-Calls
+   BreakevenEventToStr(NULL);
    DistanceToProfit(NULL);
    OrderDisplayModeToStr(NULL);
    SequenceStatusToStr(NULL);
@@ -2422,4 +2430,21 @@ string SequenceStatusToStr(int status) {
       case STATUS_DISABLED   : return("STATUS_DISABLED"   );
    }
    return(_empty(catch("SequenceStatusToStr()  invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
+}
+
+
+/**
+ * Gibt die lesbare Konstante eines Breakeven-Events zurück.
+ *
+ * @param  int type - Event-Type
+ *
+ * @return string
+ */
+string BreakevenEventToStr(int type) {
+   switch (type) {
+      case EVENT_OPEN       : return("EVENT_OPEN"       );
+      case EVENT_CLOSESTOP  : return("EVENT_CLOSESTOP"  );
+      case EVENT_CLOSEFINISH: return("EVENT_CLOSEFINISH");
+   }
+   return(_empty(catch("BreakevenEventToStr()  illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
