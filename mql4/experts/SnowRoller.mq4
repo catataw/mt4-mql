@@ -7,12 +7,13 @@
  *
  *  TODO:
  *  -----
+ *  - Bug: Orderanzeige funktioniert nur für den von der aktuellen History abgedeckten Zeitraum
+ *
  *  - UpdateStatus() muß Slippage berücksichtigen
  *  - onBarOpen(PERIOD_M1) implementieren
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
  *  - Breakeven-Indikator bei STATUS_FINISHING und STATUS_FINISHED reparieren
  *
- *  - Bug: nach ungültiger Parameter-Änderung und STATUS_DISABLED wird GridSize=20 in die Statusdatei geschrieben
  *  - einfaches und beidseitig unidirektionales Grid implementieren           *
  *  - Pause/Resume implementieren                                             *
  *  - Exit-Rule implementieren: onBreakeven, onProfit, onLimit                *
@@ -23,6 +24,8 @@
  *  - Gridbasis anzeigen
  *  - Client-Side-Limits implementieren
  *  - Heartbeat implementieren
+ *
+ *  - Bug: nach ungültiger Parameter-Änderung und STATUS_DISABLED wird GridSize=20 in die Statusdatei geschrieben (nicht reproduzierbar)
  */
 #include <stdlib.mqh>
 #include <win32api.mqh>
@@ -286,16 +289,21 @@ int onTick() {
 
    static int last.grid.level;
 
-
-   // (1) Sequenz wartet entweder auf Startsignal...
-   if (status == STATUS_WAITING) {
-      if (IsStartSignal())                    StartSequence();
+   // TEMPORÄR
+   if (!IsTesting() && StringICompare(GetComputerName(), "sirius")) {
+      // do nothing
    }
+   else {
+      // (1) Sequenz wartet entweder auf Startsignal...
+      if (status == STATUS_WAITING) {
+         if (IsStartSignal())                    StartSequence();
+      }
 
-   // (2) ...oder läuft: Status prüfen und Orders aktualisieren
-   else if (UpdateStatus()) {
-      if      (IsProfitTargetReached())       FinishSequence();
-      else if (grid.level != last.grid.level) UpdatePendingOrders();
+      // (2) ...oder läuft: Status prüfen und Orders aktualisieren
+      else if (UpdateStatus()) {
+         if      (IsProfitTargetReached())       FinishSequence();
+         else if (grid.level != last.grid.level) UpdatePendingOrders();
+      }
    }
    last.grid.level = grid.level;
    firstTick       = false;
@@ -1525,6 +1533,7 @@ bool SaveStatus() {
       return(false);
    if (sequenceId == 0)
       return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+
    /*
    Der komplette Laufzeitstatus wird abgespeichert, nicht nur die Input-Parameter.
    -------------------------------------------------------------------------------
@@ -1922,7 +1931,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
       // closedByStop
       string strClosedByStop = StringTrim(values[10]);
       if (!StringIsDigit(strClosedByStop))                                  return(_false(catch("RestoreStatus.Runtime(42)   illegal closedByStop value \""+ strClosedByStop +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      bool closedByStop = _bool(strClosedByStop);
+      bool closedByStop = _bool(StrToInteger(strClosedByStop));
 
       // stopLoss
       string strStopLoss = StringTrim(values[11]);
@@ -1968,6 +1977,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value) {
       orders.swap        [i] = swap;
       orders.commission  [i] = commission;
       orders.profit      [i] = profit;
+
+      //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime='"+ TimeToStr(pendingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  type="+ OperationTypeToStr(type) +"  openTime='"+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  closeTime='"+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  closedByStop="+ BoolToStr(closedByStop) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
    }
    return(IsNoError(catch("RestoreStatus.Runtime(50)")));
 }
@@ -2060,7 +2071,7 @@ bool SynchronizeStatus() {
       closedPosition = !pendingOrder && !openPosition;
 
       if (closedPosition) {                                                   // geschlossenes Ticket
-         if (openPositions && !orders.closedByStop[i]) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both open and finished positions found", ERR_RUNTIME_ERROR)));
+         if (openPositions && !orders.closedByStop[i]) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both open (#?) and finished (#"+ orders.ticket[i] +") positions found", ERR_RUNTIME_ERROR)));
       }
 
       if (!pendingOrder) {
