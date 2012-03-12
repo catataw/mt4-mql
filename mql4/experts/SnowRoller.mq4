@@ -17,7 +17,7 @@
  *  - Exit-Rule implementieren: onBreakeven, onProfit, onLimit                *
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - StartTime und StartCondition "level-X @ price" implementieren
- *  - Upload des Sequenz-Status implementieren
+ *  - Status-Upload implementieren
  *  - Laufzeit im Tester optimieren (I/O-Operationen, Logging, etc.)
  *  - Gridbasis anzeigen
  *  - Client-Side-Limits implementieren
