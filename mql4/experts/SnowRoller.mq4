@@ -7,8 +7,6 @@
  *
  *  TODO:
  *  -----
- *  - Bug: Orderanzeige funktioniert nur für den von der aktuellen History abgedeckten Zeitraum
- *
  *  - UpdateStatus() muß Slippage berücksichtigen
  *  - onBarOpen(PERIOD_M1) implementieren
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
