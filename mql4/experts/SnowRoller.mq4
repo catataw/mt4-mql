@@ -1,19 +1,26 @@
 /**
- * SnowRoller - Pyramiding Grid EA
+ * SnowRoller - Pyramiding Anti-Martingale Grid
  *
- * @see 7bit Code base:  http://sites.google.com/site/prof7bit/snowball
- *      7bit Strategy:   http://www.forexfactory.com/showthread.php?t=226059
- *      7bit Journal:    http://www.forexfactory.com/showthread.php?t=239717
+ *
+ * Trade-Modes:
+ * ------------
+ * - Bidirectional: ein bi-direktionales Grid mit fester Gridbase in Long- und Short-Richtung (klassisches Szenario, schlechteste Performance)
+ * - Long         : ein uni-direktionales Grid mit Trailing-Gridbase in Long-Richtung (gute Performance)
+ * - Short        : ein uni-direktionales Grid mit Trailing-Gridbase in Short-Richtung (gute Performance)
+ * - Long + Short : zwei sich gegenseitig überlagernde uni-direktionale Grids mit Trailing-Gridbase, eins in Long-, das andere in Short-
+ *                  Richtung (beste Performance)
+ *
+ * @see http://sites.google.com/site/prof7bit/snowball
+ *
  *
  *  TODO:
  *  -----
- *  - UpdateStatus() muß Slippage berücksichtigen
- *  - onBarOpen(PERIOD_M1) implementieren
- *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
- *
  *  - ein- und beidseitig unidirektionales Grid implementieren                *
  *  - Pause/Resume implementieren                                             *
- *  - Exit-Rule implementieren: onBreakeven, onProfit, onLimit                *
+ *  - Exit-Rule implementieren: onBreakeven, onProfit(value|pip), onLimit     *
+ *
+ *  - onBarOpen(PERIOD_M1) implementieren
+ *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
  *
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - Breakeven-Indikator bei STATUS_FINISHING und STATUS_FINISHED reparieren
@@ -30,7 +37,7 @@
 int Strategy.Id = 103;                       // eindeutige ID der Strategie (Bereich 101-1023)
 
 
-// mögliche Sequenzstatus-Werte
+// Sequenzstatus-Werte
 #define STATUS_WAITING        0              // default
 #define STATUS_PROGRESSING    1
 #define STATUS_FINISHED       2
@@ -46,6 +53,8 @@ int Strategy.Id = 103;                       // eindeutige ID der Strategie (Ber
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
 
+extern               string GridDirection                   = "Bidirectional";
+extern               string GridDirection.Help              = "Bidirectional* | Long | Short | L+S (2 grids)";
 extern               int    GridSize                        = 20;
 extern               double LotSize                         = 0.1;
 extern               string StartCondition                  = "";
@@ -65,10 +74,10 @@ string   last.OrderDisplayMode;                             // zwischengespeiche
 color    last.Color.Breakeven;
 string   last.Sequence.ID;
 
-int      status = STATUS_WAITING;
+int      status       = STATUS_WAITING;
+bool     testSequence = false;                              // ob die Sequenz ein Backtest ist (*nicht*, ob der Test im Moment läuft)
 
 int      sequenceId;
-bool     testSequence = false;                              // ob die Sequenz im Tester erzeugt wurde (*nicht*, ob ein Test läuft)
 
 string   sequenceSymbol;                                    // für Restart
 datetime sequenceStartTime;                                 // für Restart
@@ -87,7 +96,8 @@ double   grid.stopsPL;                                      // P/L der getrigger
 double   grid.finishedPL;                                   // P/L sonstiger geschlossener Positionen (realizedPL = stopsPL + finishedPL)
 double   grid.floatingPL;                                   // P/L offener Positionen
 double   grid.totalPL;                                      // Gesamt-P/L der Sequenz:  realizedPL + floatingPL
-double   grid.valueAtRisk;                                  // aktuelles Maximalrisiko: realizedPL + openStops (0 oder positiv)
+double   grid.openStopValue;                                // Stoploss-Betrag aller offenen Positionen (0 oder positiv)
+double   grid.valueAtRisk;                                  // aktuelles Maximalrisiko: -realizedPL + openStopValue (0 oder positiv)
 
 double   grid.maxProfitLoss;                                // maximal erreichter Gesamtprofit (0 oder positiv)
 datetime grid.maxProfitLoss.time;                           // Zeitpunkt von grid.maxProfitLoss
@@ -109,6 +119,7 @@ datetime orders.closeTime    [];
 double   orders.closePrice   [];
 double   orders.closeSlippage[];
 double   orders.stopLoss     [];
+double   orders.stopValue    [];
 bool     orders.closedByStop [];
 double   orders.swap         [];
 double   orders.commission   [];
@@ -352,18 +363,17 @@ bool UpdateStatus() {
                orders.openTime    [i] = OrderOpenTime();
                orders.openPrice   [i] = OrderOpenPrice();
                orders.openSlippage[i] = GetOpenPriceSlippage(i);
+               orders.stopValue   [i] = (GridSize + orders.openSlippage[i]) * PipValue(LotSize);         // um Slippage justiert
                orders.swap        [i] = OrderSwap();
                orders.commission  [i] = OrderCommission();
                orders.profit      [i] = OrderProfit();
                ChartMarker.OrderFilled(i);
 
-               grid.level        += MathSign(orders.level[i]);
-               grid.maxLevelLong  = MathMax(grid.level, grid.maxLevelLong ) +0.1;                        // (int) double
-               grid.maxLevelShort = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();    // (int) double
-
-               // ********************************
-               grid.valueAtRisk   = MathAbs(grid.level) * GridSize * PipValue(LotSize) - grid.stopsPL - grid.finishedPL; SS.Grid.ValueAtRisk();
-
+               grid.level         += MathSign(orders.level[i]);
+               grid.maxLevelLong   = MathMax(grid.level, grid.maxLevelLong ) +0.1;                       // (int) double
+               grid.maxLevelShort  = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();   // (int) double
+               grid.openStopValue += orders.stopValue[i];
+               grid.valueAtRisk    = grid.openStopValue - grid.stopsPL - grid.finishedPL; SS.Grid.ValueAtRisk();
                Grid.UpdateBreakeven(); beUpdated = true;
             }
          }
@@ -389,18 +399,15 @@ bool UpdateStatus() {
                ChartMarker.PositionClosed(i);
 
                if (orders.closedByStop[i]) {
-                  grid.level      -= MathSign(orders.level[i]);
+                  grid.level   -= MathSign(orders.level[i]);
                   grid.stops++;
-                  grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
-
-                  // ********************************
-                  grid.valueAtRisk = MathAbs(grid.level) * GridSize * PipValue(LotSize) - grid.stopsPL - grid.finishedPL; SS.Grid.ValueAtRisk();
+                  grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
                }
                else {                                                // bei Sequenzende geschlossen
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
-
-                  // ********************************
                }
+               grid.openStopValue -= orders.stopValue[i];
+               grid.valueAtRisk    = grid.openStopValue - grid.stopsPL - grid.finishedPL; SS.Grid.ValueAtRisk();
                Grid.UpdateBreakeven(); beUpdated = true;
             }
          }
@@ -421,7 +428,6 @@ bool UpdateStatus() {
       if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
       else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);
    }
-
 
 
    /*
@@ -713,6 +719,7 @@ bool Grid.PushTicket(int ticket) {
    orders.closeTime    [size] = OrderCloseTime();
    orders.closePrice   [size] = OrderClosePrice();
    orders.stopLoss     [size] = OrderStopLoss();
+   orders.stopValue    [size] = ifDouble(!IsPendingTradeOperation(OrderType()), (GridSize + orders.openSlippage[size]) * PipValue(LotSize), 0); // um Slippage justiert
    orders.closedByStop [size] = IsOrderClosedByStop();
    orders.closeSlippage[size] = GetClosePriceSlippage(size);         // erst nach stopLoss und closedByStop
 
@@ -754,6 +761,7 @@ bool Grid.DropTicket(int ticket) {
       ArrayCopy(orders.closePrice,    orders.closePrice,    i, i+1);
       ArrayCopy(orders.closeSlippage, orders.closeSlippage, i, i+1);
       ArrayCopy(orders.stopLoss,      orders.stopLoss,      i, i+1);
+      ArrayCopy(orders.stopValue,     orders.stopValue,     i, i+1);
       ArrayCopy(orders.closedByStop,  orders.closedByStop,  i, i+1);
       ArrayCopy(orders.swap,          orders.swap,          i, i+1);
       ArrayCopy(orders.commission,    orders.commission,    i, i+1);
@@ -796,6 +804,10 @@ bool Grid.ReplaceTicket(int ticket) {
    orders.closeTime    [i] = OrderCloseTime();
    orders.closePrice   [i] = OrderClosePrice();
    orders.stopLoss     [i] = OrderStopLoss();
+
+   if (IsPendingTradeOperation(OrderType())) orders.stopValue[i] = 0;
+   else if (EQ(orders.stopValue[i], 0))      orders.stopValue[i] = (GridSize + orders.openSlippage[i]) * PipValue(LotSize);
+
    orders.closedByStop [i] = IsOrderClosedByStop();
    orders.closeSlippage[i] = GetClosePriceSlippage(i);                // erst nach stopLoss und closedByStop
 
@@ -1131,7 +1143,6 @@ bool Grid.UpdateBreakeven(datetime time=0) {
          grid.breakevenShort = grid.base - distance1*Pips;
       }
    }
-
    Grid.DrawBreakeven(time);
    SS.Grid.Breakeven();
 
@@ -1458,7 +1469,6 @@ bool RestoreTransientStatus() {
             last_error = iValue;
       }
    }
-
    return(IsNoError(catch("RestoreTransientStatus(3)")));
 }
 
@@ -1619,13 +1629,13 @@ bool SaveStatus() {
       return(false);
    if (sequenceId == 0)
       return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
-
    /*
    Der komplette Laufzeitstatus wird abgespeichert, nicht nur die Input-Parameter.
    -------------------------------------------------------------------------------
    Speichernotwendigkeit der einzelnen Variablen:
 
    int      status;                    // nein: kann aus Orderdaten und offenen Positionen restauriert werden
+   bool     testSequence;              // nein: wird aus Statusdatei ermittelt
 
    string   sequenceSymbol;            // ja: History ist beim Restart u.U. nicht mehr erreichbar
    datetime sequenceStartTime;         // ja
@@ -1638,12 +1648,15 @@ bool SaveStatus() {
    int      grid.level;                // nein: kann aus Orderdaten restauriert werden
    int      grid.maxLevelLong;         // nein: kann aus Orderdaten restauriert werden
    int      grid.maxLevelShort;        // nein: kann aus Orderdaten restauriert werden
+
    int      grid.stops;                // nein: kann aus Orderdaten restauriert werden
    double   grid.stopsPL;              // nein: kann aus Orderdaten restauriert werden
    double   grid.finishedPL;           // nein: kann aus Orderdaten restauriert werden
    double   grid.floatingPL;           // nein: kann aus offenen Positionen restauriert werden
    double   grid.totalPL;              // nein: kann aus stopsPL, finishedPL und floatingPL restauriert werden
+   double   grid.openStopValue;        // nein: kann aus Orderdaten restauriert werden
    double   grid.valueAtRisk;          // nein: kann aus Orderdaten restauriert werden
+
    double   grid.maxProfitLoss;        // ja
    datetime grid.maxProfitLoss.time;   // ja
    double   grid.maxDrawdown;          // ja
@@ -1664,6 +1677,7 @@ bool SaveStatus() {
    double   orders.closePrice   [];    // ja
    double   orders.closeSlippage[];    // ja
    double   orders.stopLoss     [];    // ja
+   double   orders.stopValue    [];    // ja
    bool     orders.closedByStop [];    // ja
    double   orders.swap         [];    // ja
    double   orders.commission   [];    // ja
@@ -1709,11 +1723,12 @@ bool SaveStatus() {
       double   closePrice     = orders.closePrice     [i];
       double   closeSlippage  = orders.closeSlippage  [i];
       double   stopLoss       = orders.stopLoss       [i];
+      double   stopValue      = orders.stopValue      [i];
       bool     closedByStop   = orders.closedByStop   [i];
       double   swap           = orders.swap           [i];
       double   commission     = orders.commission     [i];
       double   profit         = orders.profit         [i];
-      ArrayPushString(lines, StringConcatenate("rt.order.", i, "=", level, ",", ticket, ",", pendingType, ",", pendingTime, ",", NumberToStr(pendingPrice, ".+"), ",", type, ",", openTime, ",", NumberToStr(openPrice, ".+"), ",", NumberToStr(openSlippage, ".+"), ",", closeTime, ",", NumberToStr(closePrice, ".+"), ",", NumberToStr(closeSlippage, ".+"), ",", NumberToStr(stopLoss, ".+"), ",", closedByStop, ",", NumberToStr(swap, ".+"), ",", NumberToStr(commission, ".+"), ",", NumberToStr(profit, ".+")));
+      ArrayPushString(lines, StringConcatenate("rt.order.", i, "=", level, ",", ticket, ",", pendingType, ",", pendingTime, ",", NumberToStr(pendingPrice, ".+"), ",", type, ",", openTime, ",", NumberToStr(openPrice, ".+"), ",", NumberToStr(openSlippage, ".+"), ",", closeTime, ",", NumberToStr(closePrice, ".+"), ",", NumberToStr(closeSlippage, ".+"), ",", NumberToStr(stopLoss, ".+"), ",", NumberToStr(stopValue, ".+"), ",", closedByStop, ",", NumberToStr(swap, ".+"), ",", NumberToStr(commission, ".+"), ",", NumberToStr(profit, ".+")));
    }
 
 
@@ -1912,7 +1927,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, i
    datetime [rt.]grid.maxProfitLoss.time=1328701713
    double   [rt.]grid.maxDrawdown=-127.80
    datetime [rt.]grid.maxDrawdown.time=1328691713
-   string   [rt.]order.0=1,62544847,4,1330932525,1.32067,0,1330936196,1.32067,1330938698,1.31897,1,1.31897,0,0,-17
+   string   [rt.]order.0=1,62544847,4,1330932525,1.32067,0,1330936196,1.32067,0,1330938698,1.31897,0,1.31897,17,1,0,0,-17
       int      level         = values[ 0];
       int      ticket        = values[ 1];
       int      pendingType   = values[ 2];
@@ -1926,10 +1941,11 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, i
       double   closePrice    = values[10];
       double   closeSlippage = values[11];
       double   stopLoss      = values[12];
-      bool     closedByStop  = values[13];
-      double   swap          = values[14];
-      double   commission    = values[15];
-      double   profit        = values[16];
+      double   stopValue     = values[13];
+      bool     closedByStop  = values[14];
+      double   swap          = values[15];
+      double   commission    = values[16];
+      double   profit        = values[17];
    */
    if (key == "sequenceSymbol") {
       if (value != Symbol())                                                return(_false(catch("RestoreStatus.Runtime(1)   sequence symbol mis-match \""+ sequenceSymbol +"\"/\""+ sequenceSymbol +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -1979,7 +1995,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, i
 
       // Orderdaten
       string values[];
-      if (Explode(value, ",", values, NULL) != 17)                          return(_false(catch("RestoreStatus.Runtime(14)   illegal number of order details ("+ ArraySize(values) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (Explode(value, ",", values, NULL) != 18)                          return(_false(catch("RestoreStatus.Runtime(14)   illegal number of order details ("+ ArraySize(values) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // level
       string strLevel = StringTrim(values[0]);
@@ -2076,28 +2092,36 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, i
       double stopLoss = StrToDouble(strStopLoss);
       if (LT(stopLoss, 0))                                                  return(_false(catch("RestoreStatus.Runtime(51)   illegal order stoploss "+ NumberToStr(stopLoss, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
+      // stopValue
+      string strStopValue = StringTrim(values[13]);
+      if (!StringIsNumeric(strStopValue))                                   return(_false(catch("RestoreStatus.Runtime(52)   illegal order stop value \""+ strStopValue +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      double stopValue = StrToDouble(strStopValue);
+      if (LT(stopValue, 0))                                                 return(_false(catch("RestoreStatus.Runtime(53)   illegal order stop value "+ NumberToStr(stopValue, ".2+") +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (type==OP_UNDEFINED && NE(stopValue, 0))                           return(_false(catch("RestoreStatus.Runtime(54)   pending order/stop value mis-match "+ OperationTypeToStr(pendingType) +"/"+ NumberToStr(stopValue, ".2+") +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (type!=OP_UNDEFINED && EQ(stopValue, 0))                           return(_false(catch("RestoreStatus.Runtime(55)   order type/stop value mis-match "+ OperationTypeToStr(type) +"/"+ NumberToStr(stopValue, ".2+") +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+
       // closedByStop
-      string strClosedByStop = StringTrim(values[13]);
-      if (!StringIsDigit(strClosedByStop))                                  return(_false(catch("RestoreStatus.Runtime(52)   illegal closedByStop value \""+ strClosedByStop +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      string strClosedByStop = StringTrim(values[14]);
+      if (!StringIsDigit(strClosedByStop))                                  return(_false(catch("RestoreStatus.Runtime(56)   illegal closedByStop value \""+ strClosedByStop +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       bool closedByStop = _bool(StrToInteger(strClosedByStop));
 
       // swap
-      string strSwap = StringTrim(values[14]);
-      if (!StringIsNumeric(strSwap))                                        return(_false(catch("RestoreStatus.Runtime(53)   illegal order swap \""+ strSwap +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      string strSwap = StringTrim(values[15]);
+      if (!StringIsNumeric(strSwap))                                        return(_false(catch("RestoreStatus.Runtime(57)   illegal order swap \""+ strSwap +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double swap = StrToDouble(strSwap);
-      if (type==OP_UNDEFINED && NE(swap, 0))                                return(_false(catch("RestoreStatus.Runtime(54)   pending order/swap mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(swap, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (type==OP_UNDEFINED && NE(swap, 0))                                return(_false(catch("RestoreStatus.Runtime(58)   pending order/swap mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(swap, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // commission
-      string strCommission = StringTrim(values[15]);
-      if (!StringIsNumeric(strCommission))                                  return(_false(catch("RestoreStatus.Runtime(55)   illegal order commission \""+ strCommission +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      string strCommission = StringTrim(values[16]);
+      if (!StringIsNumeric(strCommission))                                  return(_false(catch("RestoreStatus.Runtime(59)   illegal order commission \""+ strCommission +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double commission = StrToDouble(strCommission);
-      if (type==OP_UNDEFINED && NE(commission, 0))                          return(_false(catch("RestoreStatus.Runtime(56)   pending order/commission mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(commission, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (type==OP_UNDEFINED && NE(commission, 0))                          return(_false(catch("RestoreStatus.Runtime(60)   pending order/commission mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(commission, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // profit
-      string strProfit = StringTrim(values[16]);
-      if (!StringIsNumeric(strProfit))                                      return(_false(catch("RestoreStatus.Runtime(57)   illegal order profit \""+ strProfit +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      string strProfit = StringTrim(values[17]);
+      if (!StringIsNumeric(strProfit))                                      return(_false(catch("RestoreStatus.Runtime(61)   illegal order profit \""+ strProfit +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double profit = StrToDouble(strProfit);
-      if (type==OP_UNDEFINED && NE(profit, 0))                              return(_false(catch("RestoreStatus.Runtime(58)   pending order/profit mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(profit, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (type==OP_UNDEFINED && NE(profit, 0))                              return(_false(catch("RestoreStatus.Runtime(62)   pending order/profit mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(profit, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // ggf. Datenarrays vergrößern
       if (ArraySize(orders.ticket) < i+1)
@@ -2117,14 +2141,15 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, i
       orders.closePrice   [i] = closePrice;
       orders.closeSlippage[i] = closeSlippage;
       orders.stopLoss     [i] = stopLoss;
+      orders.stopValue    [i] = stopValue;
       orders.closedByStop [i] = closedByStop;
       orders.swap         [i] = swap;
       orders.commission   [i] = commission;
       orders.profit       [i] = profit;
 
-      //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime='"+ TimeToStr(pendingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  type="+ OperationTypeToStr(type) +"  openTime='"+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  openSlippage="+ DoubleToStr(openSlippage, Digits-PipDigits) +"  closeTime='"+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  closeSlippage="+ DoubleToStr(closeSlippage, Digits-PipDigits) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  closedByStop="+ BoolToStr(closedByStop) +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
+      //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime='"+ TimeToStr(pendingTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  type="+ OperationTypeToStr(type) +"  openTime='"+ TimeToStr(openTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  openSlippage="+ DoubleToStr(openSlippage, Digits-PipDigits) +"  closeTime='"+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  closeSlippage="+ DoubleToStr(closeSlippage, Digits-PipDigits) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  stopValue="+ NumberToStr(stopValue, ".2+") +"  closedByStop="+ BoolToStr(closedByStop) +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
    }
-   return(IsNoError(catch("RestoreStatus.Runtime(59)")));
+   return(IsNoError(catch("RestoreStatus.Runtime(63)")));
 }
 
 
@@ -2194,16 +2219,17 @@ bool SynchronizeStatus() {
    /*double*/ grid.finishedPL     = 0;
    /*double*/ grid.floatingPL     = 0;
    /*double*/ grid.totalPL        = 0;
+   /*double*/ grid.openStopValue  = 0;
    /*double*/ grid.valueAtRisk    = 0;
    /*double*/ grid.breakevenLong  = 0;
    /*double*/ grid.breakevenShort = 0;
 
-   #define EVENT_OPEN         1                       // Event-Types: {PositionOpen | PositionCloseByStop | PositionCloseByFinish}
+   #define EVENT_OPEN         1                                         // Event-Types: {PositionOpen | PositionCloseByStop | PositionCloseByFinish}
    #define EVENT_CLOSESTOP    2
    #define EVENT_CLOSEFINISH  3
 
    bool   pendingOrder, openPosition, closedPosition, openPositions, finishedPositions;
-   double profitLoss, openStopValue, pipValue=PipValue(LotSize);
+   double profitLoss, pipValue=PipValue(LotSize);
    int    levels[];    ArrayResize(levels, 0);
    double events[][6]; ArrayResize(events, 0);
 
@@ -2214,14 +2240,13 @@ bool SynchronizeStatus() {
       openPosition   = !pendingOrder && orders.closeTime[i]==0;
       closedPosition = !pendingOrder && !openPosition;
 
-      if (closedPosition) {                                                   // geschlossenes Ticket
+      if (closedPosition) {                                             // geschlossenes Ticket
          if (openPositions && !orders.closedByStop[i]) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both open (#?) and finished (#"+ orders.ticket[i] +") positions found", ERR_RUNTIME_ERROR)));
       }
 
       if (!pendingOrder) {
-         profitLoss    = orders.swap[i] + orders.commission[i] + orders.profit[i];
-         openStopValue = (GridSize + orders.openSlippage[i]) * pipValue;      // um Open-Slippage justiert
-         Sync.PushBreakevenEvent(events, orders.openTime[i], EVENT_OPEN, orders.level[i], NULL, NULL, openStopValue);
+         profitLoss = orders.swap[i] + orders.commission[i] + orders.profit[i];
+         Sync.PushBreakevenEvent(events, orders.openTime[i], EVENT_OPEN, orders.level[i], NULL, NULL, orders.stopValue[i]);
 
          if (openPosition) {
             openPositions    = true;
@@ -2229,12 +2254,12 @@ bool SynchronizeStatus() {
             if (IntInArray(orders.level[i], levels))   return(_false(catch("SynchronizeStatus(3)   duplicate order level "+ orders.level[i] +" of open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
             ArrayPushInt(levels, orders.level[i]);
          }
-         else if (orders.closedByStop[i]) {                                   // openStopValue wieder reduzieren
-            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSESTOP, orders.level[i], profitLoss, NULL, -openStopValue);
+         else if (orders.closedByStop[i]) {
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSESTOP, orders.level[i], profitLoss, NULL, -orders.stopValue[i]);
          }
          else /*(closedByFinish)*/ {
-            finishedPositions = true;                                         // openStopValue wieder reduzieren
-            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSEFINISH, orders.level[i], NULL, profitLoss, -openStopValue);
+            finishedPositions = true;
+            Sync.PushBreakevenEvent(events, orders.closeTime[i], EVENT_CLOSEFINISH, orders.level[i], NULL, profitLoss, -orders.stopValue[i]);
          }
       }
       if (IsLastError())
@@ -2263,31 +2288,30 @@ bool SynchronizeStatus() {
    RedrawOrders();
 
 
-   // (5) Breakeven-Indikator zeichnen
+   // (5) Breakeven-Verlauf restaurieren und Indikator neuzeichnen
    size = ArrayRange(events, 0);
    if (size > 0)
-      ArraySort(events);                                             // Breakeven-Änderungen zeitlich sortieren
+      ArraySort(events);                                                // Breakeven-Änderungen zeitlich sortieren
 
    int time, lastTime, minute, lastMinute, type, level;
-   openStopValue = 0;
 
    for (i=0; i < size; i++) {
-      time = events[i][0] +0.1;                                      // (int) double
+      time = events[i][0] +0.1;                                         // (int) double
 
       // zwischen den BE-Events liegende BarOpen(M1)-Events simulieren
       if (lastTime > 0) {
          minute = time/60; lastMinute = lastTime/60;
-         while (lastMinute < minute-1) {                             // TODO: fehlende Sessions überspringen (Wochenende)
+         while (lastMinute < minute-1) {                                // TODO: fehlende Sessions überspringen (Wochenende)
             lastMinute++;
             Grid.DrawBreakeven(lastMinute * MINUTES);
          }
       }
-      type              = events[i][1] +0.1;                         // (int) double
-      level             = events[i][2] + MathSign(events[i][2])*0.1; // (int) double
-      grid.stopsPL     += events[i][3];
-      grid.finishedPL  += events[i][4];
-         openStopValue += events[i][5];
-      grid.valueAtRisk  = openStopValue - grid.stopsPL - grid.finishedPL;
+      type                = events[i][1] +0.1;                          // (int) double
+      level               = events[i][2] + MathSign(events[i][2])*0.1;  // (int) double
+      grid.stopsPL       += events[i][3];
+      grid.finishedPL    += events[i][4];
+      grid.openStopValue += events[i][5];
+      grid.valueAtRisk    = grid.openStopValue - grid.stopsPL - grid.finishedPL;
 
       if      (type == EVENT_OPEN)      { grid.level = level; }
       else if (type == EVENT_CLOSESTOP) { grid.level = level-MathSign(level); grid.stops++; }
@@ -2568,6 +2592,7 @@ int ResizeArrays(int size, bool reset=false) {
       ArrayResize(orders.closePrice,    size);
       ArrayResize(orders.closeSlippage, size);
       ArrayResize(orders.stopLoss,      size);
+      ArrayResize(orders.stopValue,     size);
       ArrayResize(orders.closedByStop,  size);
       ArrayResize(orders.swap,          size);
       ArrayResize(orders.commission,    size);
@@ -2589,6 +2614,7 @@ int ResizeArrays(int size, bool reset=false) {
          ArrayInitialize(orders.closePrice,              0);
          ArrayInitialize(orders.closeSlippage,           0);
          ArrayInitialize(orders.stopLoss,                0);
+         ArrayInitialize(orders.stopValue,               0);
          ArrayInitialize(orders.closedByStop,        false);
          ArrayInitialize(orders.swap,                    0);
          ArrayInitialize(orders.commission,              0);
