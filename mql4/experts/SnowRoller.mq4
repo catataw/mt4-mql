@@ -18,11 +18,10 @@
  *  - ein- und beidseitig unidirektionales Grid implementieren                *
  *  - Pause/Resume implementieren                                             *
  *  - Exit-Rule implementieren: onBreakeven, onProfit(value|pip), onLimit     *
- *
- *  - onBarOpen(PERIOD_M1) implementieren
  *  - STATUS_FINISHING, STATUS_FINISHED und STATUS_MONITORING implementieren
  *
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
+ *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - Breakeven-Indikator bei STATUS_FINISHING und STATUS_FINISHED reparieren
  *  - StartTime und StartCondition "level-X @ price" implementieren
  *  - Status-Upload implementieren
@@ -35,6 +34,13 @@
 
 
 int Strategy.Id = 103;                       // eindeutige ID der Strategie (Bereich 101-1023)
+
+
+// Grid-Directions
+#define D_BIDIR               0              // default
+#define D_LONG                1
+#define D_SHORT               2
+#define D_LONG_SHORT          3
 
 
 // Sequenzstatus-Werte
@@ -67,10 +73,11 @@ extern /*transient*/ string Sequence.ID                     = "";
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int      last.GridSize;                                     // Input-Parameter sind nicht statisch. Werden sie extern geladen, werden sie bei REASON_CHARTCHANGE
-double   last.LotSize;                                      // mit den Default-Parametern überschrieben. Um dies rückgängig machen zu können und um sie bei
-string   last.StartCondition;                               // REASON_PARAMETERS mit geänderten Parametern abgleichen zu können, werden sie in deinit() in last.*
-string   last.OrderDisplayMode;                             // zwischengespeichert.
+string   last.GridDirection;                                // Input-Parameter sind nicht statisch. Werden sie extern geladen, werden sie bei REASON_CHARTCHANGE
+int      last.GridSize;                                     // mit den Default-Parametern überschrieben. Um dies rückgängig machen zu können und um sie bei
+double   last.LotSize;                                      // REASON_PARAMETERS mit geänderten Parametern abgleichen zu können, werden sie in deinit() in last.*
+string   last.StartCondition;                               // zwischengespeichert.
+string   last.OrderDisplayMode;
 color    last.Color.Breakeven;
 string   last.Sequence.ID;
 
@@ -86,6 +93,7 @@ datetime sequenceShutdown;                                  // für Restart
 double   Entry.limit;
 double   Entry.lastBid;
 
+int      grid.direction = D_BIDIR;
 double   grid.base;
 int      grid.level;                                        // aktueller Grid-Level
 int      grid.maxLevelLong;                                 // maximal erreichter Long-Level
@@ -211,10 +219,11 @@ int init() {
       if (ValidateConfiguration(REASON_PARAMETERS)) {
          /*
          if (ConfigurationChanged()) {
-            // GridSize         = last.GridSize;
-            // LotSize          = last.LotSize;
-            // StartCondition   = last.StartCondition;
-            // Sequence.ID      = last.Sequence.ID;                  // TODO: Sequence.ID kann geändert worden sein
+            // GridDirection  = last.GridDirection;
+            // GridSize       = last.GridSize;
+            // LotSize        = last.LotSize;
+            // StartCondition = last.StartCondition;
+            // Sequence.ID    = last.Sequence.ID;                    // TODO: Sequence.ID kann geändert worden sein
             SaveStatus();
          }
          */
@@ -225,8 +234,9 @@ int init() {
 
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_CHARTCHANGE) {
-      GridSize         = last.GridSize;                              // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
-      LotSize          = last.LotSize;                               // Input-Parameter restauriert.
+      GridDirection    = last.GridDirection;                         // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
+      GridSize         = last.GridSize;                              // Input-Parameter restauriert.
+      LotSize          = last.LotSize;
       StartCondition   = last.StartCondition;
       OrderDisplayMode = last.OrderDisplayMode;
       Color.Breakeven  = last.Color.Breakeven;
@@ -270,6 +280,7 @@ int deinit() {
    if (UninitializeReason()==REASON_CHARTCHANGE || UninitializeReason()==REASON_PARAMETERS) {
       // REASON_CHARTCHANGE: Input-Parameter sind nicht statisch und werden für's nächste init() zwischengespeichert
       // REASON_PARAMETERS:  Input-Parameter werden für Vergleich mit neuen Parametern zwischengespeichert
+      last.GridDirection    = GridDirection;
       last.GridSize         = GridSize;
       last.LotSize          = LotSize;
       last.StartCondition   = StartCondition;
@@ -1553,42 +1564,60 @@ int CreateSequenceId() {
  * @return bool - ob die Konfiguration gültig ist
  */
 bool ValidateConfiguration(int reason=NULL) {
+   // GridDirection
+   string directions[] = {"Bidirectional", "Long", "Short", "L+S"};
+   string strValue     = StringToLower(StringTrim(StringReplace(StringReplace(StringReplace(GridDirection, "+", ""), "&", ""), " ", "")) +"b");
+   switch (StringGetChar(strValue, 0)) {
+      case 'l': if (StringStartsWith(strValue, "longshort") || StringStartsWith(strValue, "ls")) {
+                   grid.direction = D_LONG_SHORT; break;
+                }
+                grid.direction    = D_LONG;       break;
+      case 's': grid.direction    = D_SHORT;      break;
+      case 'b': grid.direction    = D_BIDIR;      break;             // default für leeren Input-Parameter
+
+      default:                              return(_false(catch("ValidateConfiguration(1)  Invalid input parameter GridDirection = \""+ GridDirection +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+   }
+   GridDirection = directions[grid.direction];
+   if (reason==REASON_PARAMETERS) /*&&*/ if (GridDirection!=last.GridDirection)
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(2)  Cannot change parameter GridDirection of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
+
    // GridSize
    if (reason==REASON_PARAMETERS) /*&&*/ if (GridSize!=last.GridSize)
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(1)  Cannot change parameter GridSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(3)  Cannot change parameter GridSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   if (GridSize < 1)                        return(_false(catch("ValidateConfiguration(2)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
+   if (GridSize < 1)                        return(_false(catch("ValidateConfiguration(4)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // LotSize
    if (reason==REASON_PARAMETERS) /*&&*/ if (NE(LotSize, last.LotSize))
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(3)  Cannot change parameter LotSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(5)  Cannot change parameter LotSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   if (LE(LotSize, 0))                      return(_false(catch("ValidateConfiguration(4)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
+   if (LE(LotSize, 0))                      return(_false(catch("ValidateConfiguration(6)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT);
    double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT);
    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
    int error = GetLastError();
-   if (IsError(error))                      return(_false(catch("ValidateConfiguration(5)   symbol=\""+ Symbol() +"\"", error)));
-   if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(6)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(7)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(8)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (IsError(error))                      return(_false(catch("ValidateConfiguration(7)   symbol=\""+ Symbol() +"\"", error)));
+   if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(8)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(9)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(10)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
    SS.LotSize();
 
    // StartCondition
    StartCondition = StringReplace(StartCondition, " ", "");
    if (reason==REASON_PARAMETERS) /*&&*/ if (StartCondition!=last.StartCondition)
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(9)  Cannot change parameter StartCondition of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(11)  Cannot change parameter StartCondition of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    if (StringLen(StartCondition) == 0) {
       Entry.limit = 0;
    }
    else if (StringIsNumeric(StartCondition)) {
       Entry.limit = StrToDouble(StartCondition); SS.Entry.Limit();
-      if (LT(Entry.limit, 0))               return(_false(catch("ValidateConfiguration(10)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (LT(Entry.limit, 0))               return(_false(catch("ValidateConfiguration(12)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
       if (EQ(Entry.limit, 0))
          StartCondition = "";
    }
-   else                                     return(_false(catch("ValidateConfiguration(11)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+   else                                     return(_false(catch("ValidateConfiguration(13)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
 
    // OrderDisplayMode
    string modes[] = {"None", "Stops", "Pyramid", "All"};
@@ -1597,22 +1626,22 @@ bool ValidateConfiguration(int reason=NULL) {
       case 'S': orderDisplayMode = DM_STOPS;   break;
       case 'P': orderDisplayMode = DM_PYRAMID; break;                // default für leeren Input-Parameter
       case 'A': orderDisplayMode = DM_ALL;     break;
-      default:                              return(_false(catch("ValidateConfiguration(12)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      default:                              return(_false(catch("ValidateConfiguration(14)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
    OrderDisplayMode = modes[orderDisplayMode];
 
    // Color.Breakeven: kann über transienten Chartstatus falsch reinkommen
    if (Color.Breakeven < CLR_NONE || Color.Breakeven > C'255,255,255')
-                                            return(_false(catch("ValidateConfiguration(13)  Invalid input parameter Color.Breakeven = "+ Color.Breakeven, ERR_INVALID_INPUT_PARAMVALUE)));
+                                            return(_false(catch("ValidateConfiguration(15)  Invalid input parameter Color.Breakeven = "+ Color.Breakeven, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
    if (reason==REASON_PARAMETERS)
-      if (Sequence.ID!=last.Sequence.ID)    return(_false(catch("ValidateConfiguration(14)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (Sequence.ID!=last.Sequence.ID)    return(_false(catch("ValidateConfiguration(16)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
 
 
    // TODO: Parameter mit externer Konfiguration werden geändert, ohne vorher die Konfigurationsdatei zu laden.
 
-   return(IsNoError(catch("ValidateConfiguration(15)")));
+   return(IsNoError(catch("ValidateConfiguration(17)")));
 }
 
 
@@ -1694,6 +1723,7 @@ bool SaveStatus() {
    // (1.1) Input-Parameter zusammenstellen
    string lines[];  ArrayResize(lines, 0);
    ArrayPushString(lines, /*string*/ "Sequence.ID="   + ifString(IsTestSequence(), "T", "") + sequenceId    );
+   ArrayPushString(lines, /*string*/ "GridDirection=" +                                       GridDirection );
    ArrayPushString(lines, /*int   */ "GridSize="      +                                       GridSize      );
    ArrayPushString(lines, /*double*/ "LotSize="       +                           NumberToStr(LotSize, ".+"));
    ArrayPushString(lines, /*string*/ "StartCondition="+                                       StartCondition);
@@ -1710,24 +1740,24 @@ bool SaveStatus() {
       ArrayPushString(lines, /*datetime*/ "rt.grid.maxDrawdown.time="  +             grid.maxDrawdown.time    );
    }
    for (int i=0; i < size; i++) {
-      int      ticket         = orders.ticket         [i];
-      int      level          = orders.level          [i];
-      int      pendingType    = orders.pendingType    [i];
-      datetime pendingTime    = orders.pendingTime    [i];
-      double   pendingPrice   = orders.pendingPrice   [i];
-      int      type           = orders.type           [i];
-      datetime openTime       = orders.openTime       [i];
-      double   openPrice      = orders.openPrice      [i];
-      double   openSlippage   = orders.openSlippage   [i];
-      datetime closeTime      = orders.closeTime      [i];
-      double   closePrice     = orders.closePrice     [i];
-      double   closeSlippage  = orders.closeSlippage  [i];
-      double   stopLoss       = orders.stopLoss       [i];
-      double   stopValue      = orders.stopValue      [i];
-      bool     closedByStop   = orders.closedByStop   [i];
-      double   swap           = orders.swap           [i];
-      double   commission     = orders.commission     [i];
-      double   profit         = orders.profit         [i];
+      int      ticket         = orders.ticket       [i];
+      int      level          = orders.level        [i];
+      int      pendingType    = orders.pendingType  [i];
+      datetime pendingTime    = orders.pendingTime  [i];
+      double   pendingPrice   = orders.pendingPrice [i];
+      int      type           = orders.type         [i];
+      datetime openTime       = orders.openTime     [i];
+      double   openPrice      = orders.openPrice    [i];
+      double   openSlippage   = orders.openSlippage [i];
+      datetime closeTime      = orders.closeTime    [i];
+      double   closePrice     = orders.closePrice   [i];
+      double   closeSlippage  = orders.closeSlippage[i];
+      double   stopLoss       = orders.stopLoss     [i];
+      double   stopValue      = orders.stopValue    [i];
+      bool     closedByStop   = orders.closedByStop [i];
+      double   swap           = orders.swap         [i];
+      double   commission     = orders.commission   [i];
+      double   profit         = orders.profit       [i];
       ArrayPushString(lines, StringConcatenate("rt.order.", i, "=", level, ",", ticket, ",", pendingType, ",", pendingTime, ",", NumberToStr(pendingPrice, ".+"), ",", type, ",", openTime, ",", NumberToStr(openPrice, ".+"), ",", NumberToStr(openSlippage, ".+"), ",", closeTime, ",", NumberToStr(closePrice, ".+"), ",", NumberToStr(closeSlippage, ".+"), ",", NumberToStr(stopLoss, ".+"), ",", NumberToStr(stopValue, ".+"), ",", closedByStop, ",", NumberToStr(swap, ".+"), ",", NumberToStr(commission, ".+"), ",", NumberToStr(profit, ".+")));
    }
 
