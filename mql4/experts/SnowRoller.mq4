@@ -2449,6 +2449,10 @@ void RedrawStartStop() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
+   static color last.MarkerColor = DodgerBlue;
+   if (Color.Breakeven != CLR_NONE)
+      last.MarkerColor = Color.Breakeven;
+
    // Start-Marker
    if (sequenceStartTime > 0) {
       string label = StringConcatenate("SR.", sequenceId, ".start");
@@ -2458,7 +2462,7 @@ void RedrawStartStop() {
 
       ObjectSet(label, OBJPROP_ARROWCODE, SYMBOL_LEFTPRICE);
       ObjectSet(label, OBJPROP_BACK,      false           );
-      ObjectSet(label, OBJPROP_COLOR,     Color.Breakeven );
+      ObjectSet(label, OBJPROP_COLOR,     last.MarkerColor);
    }
 }
 
