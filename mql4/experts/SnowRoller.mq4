@@ -137,6 +137,7 @@ string   str.testSequence        = "";                      // Speichervariablen
 string   str.LotSize             = "";
 string   str.Entry.limit         = "";
 string   str.grid.base           = "";
+string   str.grid.direction      = "";
 string   str.grid.maxLevelLong   = "0";
 string   str.grid.maxLevelShort  = "0";
 string   str.grid.stops          = "0 stops";
@@ -963,7 +964,7 @@ int ShowStatus(bool init=false) {
 
    msg = StringConcatenate(__SCRIPT__, msg,                                                                                                                NL,
                                                                                                                                                            NL,
-                           "Grid:            ", GridSize, " pip @ ", str.grid.base,                                                                        NL,
+                           "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction,                                                       NL,
                            "LotSize:         ", str.LotSize, " lot = ", str.stopValue, "/stop",                                                            NL,
                            "Realized:       ", str.grid.stops, " = ", str.grid.stopsPL,                                                                    NL,
                            "Breakeven:   ", str.grid.breakevenLong, " / ", str.grid.breakevenShort,                                                        NL,
@@ -1038,7 +1039,18 @@ void SS.Grid.Base() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.grid.base = NumberToStr(grid.base, PriceFormat);
+   str.grid.base = StringConcatenate(" @ ", NumberToStr(grid.base, PriceFormat));
+}
+
+
+/**
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.direction.
+ */
+void SS.Grid.Direction() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return;
+
+   str.grid.direction = StringConcatenate("  (", GridDirectionDescription(grid.direction), ")");
 }
 
 
@@ -1569,7 +1581,7 @@ bool ValidateConfiguration(int reason=NULL) {
    string strValue     = StringToLower(StringTrim(StringReplace(StringReplace(StringReplace(GridDirection, "+", ""), "&", ""), " ", "")) +"b");
    switch (StringGetChar(strValue, 0)) {
       case 'l': if (StringStartsWith(strValue, "longshort") || StringStartsWith(strValue, "ls")) {
-                   grid.direction = D_LONG_SHORT; break;
+                   //grid.direction = D_LONG_SHORT; break;
                 }
                 grid.direction    = D_LONG;       break;
       case 's': grid.direction    = D_SHORT;      break;
@@ -1577,10 +1589,10 @@ bool ValidateConfiguration(int reason=NULL) {
 
       default:                              return(_false(catch("ValidateConfiguration(1)  Invalid input parameter GridDirection = \""+ GridDirection +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
-   GridDirection = directions[grid.direction];
-   if (reason==REASON_PARAMETERS) /*&&*/ if (GridDirection!=last.GridDirection)
+   if (reason==REASON_PARAMETERS) /*&&*/ if (directions[grid.direction]!=last.GridDirection)
       if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(2)  Cannot change parameter GridDirection of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
+   GridDirection = directions[grid.direction]; SS.Grid.Direction();
 
    // GridSize
    if (reason==REASON_PARAMETERS) /*&&*/ if (GridSize!=last.GridSize)
@@ -1593,8 +1605,8 @@ bool ValidateConfiguration(int reason=NULL) {
       if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(5)  Cannot change parameter LotSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    if (LE(LotSize, 0))                      return(_false(catch("ValidateConfiguration(6)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
-   double minLot  = MarketInfo(Symbol(), MODE_MINLOT);
-   double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT);
+   double minLot  = MarketInfo(Symbol(), MODE_MINLOT );
+   double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT );
    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
    int error = GetLastError();
    if (IsError(error))                      return(_false(catch("ValidateConfiguration(7)   symbol=\""+ Symbol() +"\"", error)));
@@ -1883,18 +1895,19 @@ bool RestoreStatus() {
 
 
    // (3) Zeilen in Schlüssel-Wert-Paare aufbrechen, Datentypen validieren und Daten übernehmen
-   int keys[11]; ArrayInitialize(keys, 0);
+   int keys[12]; ArrayInitialize(keys, 0);
    #define I_SEQUENCE_ID               0
-   #define I_GRIDSIZE                  1
-   #define I_LOTSIZE                   2
-   #define I_STARTCONDITION            3
-   #define I_SEQUENCE_SYMBOL           4
-   #define I_SEQUENCE_STARTTIME        5
-   #define I_GRID_BASE                 6
-   #define I_GRID_MAXPROFITLOSS        7
-   #define I_GRID_MAXPROFITLOSS_TIME   8
-   #define I_GRID_MAXDRAWDOWN          9
-   #define I_GRID_MAXDRAWDOWN_TIME    10
+   #define I_GRIDDIRECTION             1
+   #define I_GRIDSIZE                  2
+   #define I_LOTSIZE                   3
+   #define I_STARTCONDITION            4
+   #define I_SEQUENCE_SYMBOL           5
+   #define I_SEQUENCE_STARTTIME        6
+   #define I_GRID_BASE                 7
+   #define I_GRID_MAXPROFITLOSS        8
+   #define I_GRID_MAXPROFITLOSS_TIME   9
+   #define I_GRID_MAXDRAWDOWN         10
+   #define I_GRID_MAXDRAWDOWN_TIME    11
 
    string parts[];
    for (int i=0; i < size; i++) {
@@ -1911,6 +1924,11 @@ bool RestoreStatus() {
          Sequence.ID = ifString(IsTestSequence(), "T", "") + sequenceId;
          keys[I_SEQUENCE_ID] = 1;
       }
+      else if (key == "GridDirection") {
+         if (value == "")                                return(_false(catch("RestoreStatus(6)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         GridDirection = value;
+         keys[I_GRIDDIRECTION] = 1;
+      }
       else if (key == "GridSize") {
          if (!StringIsDigit(value))                      return(_false(catch("RestoreStatus(6)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          GridSize = StrToInteger(value);
@@ -1918,7 +1936,7 @@ bool RestoreStatus() {
       }
       else if (key == "LotSize") {
          if (!StringIsNumeric(value))                    return(_false(catch("RestoreStatus(7)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-         LotSize = StrToDouble(value); SS.LotSize();
+         LotSize = StrToDouble(value);
          keys[I_LOTSIZE] = 1;
       }
       else if (key == "StartCondition") {
@@ -2669,26 +2687,10 @@ int ResizeArrays(int size, bool reset=false) {
    // Dummy-Calls
    BreakevenEventToStr(NULL);
    DistanceToProfit(NULL);
+   GridDirectionDescription(NULL);
+   GridDirectionToStr(NULL);
    OrderDisplayModeToStr(NULL);
    SequenceStatusToStr(NULL);
-}
-
-
-/**
- * Gibt die lesbare Konstante eines OrderDisplay-Modes zurück.
- *
- * @param  int mode - OrderDisplay-Mode
- *
- * @return string
- */
-string OrderDisplayModeToStr(int mode) {
-   switch (mode) {
-      case DM_NONE   : return("DM_NONE"   );
-      case DM_STOPS  : return("DM_STOPS"  );
-      case DM_PYRAMID: return("DM_PYRAMID");
-      case DM_ALL    : return("DM_ALL"    );
-   }
-   return(_empty(catch("OrderDisplayModeToStr()  invalid parameter mode = "+ mode, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -2711,6 +2713,24 @@ string SequenceStatusToStr(int status) {
 
 
 /**
+ * Gibt die lesbare Konstante eines OrderDisplay-Modes zurück.
+ *
+ * @param  int mode - OrderDisplay-Mode
+ *
+ * @return string
+ */
+string OrderDisplayModeToStr(int mode) {
+   switch (mode) {
+      case DM_NONE   : return("DM_NONE"   );
+      case DM_STOPS  : return("DM_STOPS"  );
+      case DM_PYRAMID: return("DM_PYRAMID");
+      case DM_ALL    : return("DM_ALL"    );
+   }
+   return(_empty(catch("OrderDisplayModeToStr()  invalid parameter mode = "+ mode, ERR_INVALID_FUNCTION_PARAMVALUE)));
+}
+
+
+/**
  * Gibt die lesbare Konstante eines Breakeven-Events zurück.
  *
  * @param  int type - Event-Type
@@ -2724,4 +2744,40 @@ string BreakevenEventToStr(int type) {
       case EVENT_CLOSEFINISH: return("EVENT_CLOSEFINISH");
    }
    return(_empty(catch("BreakevenEventToStr()  illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
+}
+
+
+/**
+ * Gibt die lesbare Konstante eines GridDirection-Codes zurück.
+ *
+ * @param  int direction - GridDirection
+ *
+ * @return string
+ */
+string GridDirectionToStr(int direction) {
+   switch (direction) {
+      case D_BIDIR     : return("D_BIDIR"     );
+      case D_LONG      : return("D_LONG"      );
+      case D_SHORT     : return("D_SHORT"     );
+      case D_LONG_SHORT: return("D_LONG_SHORT");
+   }
+   return(_empty(catch("GridDirectionToStr()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
+}
+
+
+/**
+ * Gibt die Beschreibung eines GridDirection-Codes zurück.
+ *
+ * @param  int direction - GridDirection
+ *
+ * @return string
+ */
+string GridDirectionDescription(int direction) {
+   switch (direction) {
+      case D_BIDIR     : return("bidirectional");
+      case D_LONG      : return("long"         );
+      case D_SHORT     : return("short"        );
+      case D_LONG_SHORT: return("long & short" );
+   }
+   return(_empty(catch("GridDirectionDescription()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
