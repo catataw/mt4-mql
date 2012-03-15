@@ -74,9 +74,9 @@ extern /*transient*/ string Sequence.ID                     = "";
 
 
 string   last.GridDirection;                                // Input-Parameter sind nicht statisch. Werden sie extern geladen, werden sie bei REASON_CHARTCHANGE
-int      last.GridSize;                                     // mit den Default-Parametern überschrieben. Um dies rückgängig machen zu können und um sie bei
-double   last.LotSize;                                      // REASON_PARAMETERS mit geänderten Parametern abgleichen zu können, werden sie in deinit() in last.*
-string   last.StartCondition;                               // zwischengespeichert.
+int      last.GridSize;                                     // mit den Default-Parametern überschrieben. Um dies rückgängig machen zu können und um bei Parameter-
+double   last.LotSize;                                      // änderungen neue mit alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischen-
+string   last.StartCondition;                               // gespeichert.
 string   last.OrderDisplayMode;
 color    last.Color.Breakeven;
 string   last.Sequence.ID;
@@ -1573,7 +1573,7 @@ bool ValidateConfiguration(int reason=NULL) {
                 }
                 grid.direction    = D_LONG;       break;
       case 's': grid.direction    = D_SHORT;      break;
-      case 'b': grid.direction    = D_BIDIR;      break;             // default für leeren Input-Parameter
+      case 'b': grid.direction    = D_BIDIR;      break;                // default für leeren Input-Parameter
 
       default:                              return(_false(catch("ValidateConfiguration(1)  Invalid input parameter GridDirection = \""+ GridDirection +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
@@ -1624,19 +1624,21 @@ bool ValidateConfiguration(int reason=NULL) {
    switch (StringGetChar(StringToUpper(StringTrim(OrderDisplayMode) +"P"), 0)) {
       case 'N': orderDisplayMode = DM_NONE;    break;
       case 'S': orderDisplayMode = DM_STOPS;   break;
-      case 'P': orderDisplayMode = DM_PYRAMID; break;                // default für leeren Input-Parameter
+      case 'P': orderDisplayMode = DM_PYRAMID; break;                   // default für leeren Input-Parameter
       case 'A': orderDisplayMode = DM_ALL;     break;
       default:                              return(_false(catch("ValidateConfiguration(14)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
    OrderDisplayMode = modes[orderDisplayMode];
 
-   // Color.Breakeven: kann über transienten Chartstatus falsch reinkommen
-   if (Color.Breakeven < CLR_NONE || Color.Breakeven > C'255,255,255')
-                                            return(_false(catch("ValidateConfiguration(15)  Invalid input parameter Color.Breakeven = "+ Color.Breakeven, ERR_INVALID_INPUT_PARAMVALUE)));
+   // Color.Breakeven
+   if (Color.Breakeven == 0xFF000000)                                   // kann vom Terminal falsch gesetzt worden sein
+      Color.Breakeven = CLR_NONE;
+   if (Color.Breakeven < CLR_NONE || Color.Breakeven > C'255,255,255')  // kann über transienten Chartstatus falsch reinkommen
+                                            return(_false(catch("ValidateConfiguration(15)  Invalid input parameter Color.Breakeven = 0x"+ IntToHexStr(Color.Breakeven), ERR_INVALID_INPUT_PARAMVALUE)));
 
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
-   if (reason==REASON_PARAMETERS)
-      if (Sequence.ID!=last.Sequence.ID)    return(_false(catch("ValidateConfiguration(16)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (reason == REASON_PARAMETERS)
+      if (Sequence.ID != last.Sequence.ID)  return(_false(catch("ValidateConfiguration(16)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
 
 
    // TODO: Parameter mit externer Konfiguration werden geändert, ohne vorher die Konfigurationsdatei zu laden.
