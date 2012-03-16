@@ -4,10 +4,11 @@
  *
  * Trade-Modes:
  * ------------
- * - Bidirectional: ein bi-direktionales Grid mit fester Gridbase in Long- und Short-Richtung (klassisches Szenario, schlechteste Performance)
+ * - Bidirectional: ein bi-direktionales Grid mit fester Gridbase in Long- und Short-Richtung (schlechteste Performance)
  * - Long         : ein uni-direktionales Grid mit Trailing-Gridbase in Long-Richtung (gute Performance)
  * - Short        : ein uni-direktionales Grid mit Trailing-Gridbase in Short-Richtung (gute Performance)
- * - Long + Short : zwei sich überlagernde uni-direktionale Grids mit Trailing-Gridbase, eins in Long-, das andere in Short-Richtung (beste Performance)
+ * - Long + Short : zwei sich überlagernde uni-direktionale Grids mit Trailing-Gridbase in Long- und Short-Richtung (beste Performance)
+ *
  *
  * @see http://sites.google.com/site/prof7bit/snowball
  *
@@ -24,7 +25,7 @@
  *  - StartTime und StartCondition "level-X @ price" implementieren
  *  - Upload der Statusdatei implementieren
  *  - STATUS_FINISHING und STATUS_MONITORING implementieren
- *  - Laufzeit im Tester optimieren (I/O-Operationen, Logging, etc.)
+ *  - Laufzeit im Tester optimieren (I/O-Operations, Logging, etc.)
  *  - Client-Side-Limits implementieren
  *  - Heartbeat implementieren
  */
