@@ -2879,7 +2879,7 @@ string GridDirectionDescription(int direction) {
       case D_BIDIR     : return("bidirectional");
       case D_LONG      : return("long"         );
       case D_SHORT     : return("short"        );
-      case D_LONG_SHORT: return("long & short" );
+      case D_LONG_SHORT: return("long + short" );
    }
    return(_empty(catch("GridDirectionDescription()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
