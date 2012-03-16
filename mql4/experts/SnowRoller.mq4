@@ -916,12 +916,12 @@ bool StopSequence() {
       }
    }
 
-   // Status setzen: vorm Schlieﬂen evt. Positionen, denn Grid.UpdateBreakeven() kann sich verl‰ﬂlich nur an sequenceStopTime orientieren
-   status = STATUS_FINISHED;
-   if (sequenceStopTime == 0) {
-      sequenceStopTime  = TimeCurrent();
-      sequenceStopPrice = NormalizeDouble((Bid + Ask)/2, Digits);
-   }
+
+   // Status vorm Schlieﬂen evt. offener Positionen setzen
+   status            = STATUS_FINISHED;
+   sequenceStopTime  = TimeCurrent();
+   sequenceStopPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+
 
    bool ordersChanged;
 
