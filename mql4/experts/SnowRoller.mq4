@@ -144,8 +144,7 @@ string   str.grid.totalPL        = "0.00";
 string   str.grid.valueAtRisk    = "0.00";
 string   str.grid.maxProfitLoss  = "0.00";
 string   str.grid.maxDrawdown    = "0.00";
-string   str.grid.breakevenLong  = "-";
-string   str.grid.breakevenShort = "-";
+string   str.grid.breakeven      = "";
 
 color    CLR_LONG  = Blue;
 color    CLR_SHORT = Red;
@@ -1017,7 +1016,7 @@ int ShowStatus(bool init=false) {
                            "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction,                                                       NL,
                            "LotSize:         ", str.LotSize, " lot = ", str.stopValue, "/stop",                                                            NL,
                            "Realized:       ", str.grid.stops, " = ", str.grid.stopsPL,                                                                    NL,
-                           "Breakeven:   ", str.grid.breakevenLong, " / ", str.grid.breakevenShort,                                                        NL,
+                           "Breakeven:   ", str.grid.breakeven,                                                                                            NL,
                            "Profit/Loss:    ", str.grid.totalPL, "  (", str.grid.maxProfitLoss, "/", str.grid.maxDrawdown, "/", str.grid.valueAtRisk, ")", NL);
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
@@ -1101,11 +1100,13 @@ void SS.Grid.Direction() {
       return;
 
    str.grid.direction = StringConcatenate("  (", GridDirectionDescription(grid.direction), ")");
+
+   SS.Grid.Breakeven();                                              // je nach GridDirection ändert sich das Anzeigeformat von str.grid.breakeven;
 }
 
 
 /**
- * ShowStatus(): Aktualisiert die String-Repräsentationen von grid.maxLevelLong und grid.maxLevelShort.
+ * ShowStatus(): Aktualisiert die String-Repräsentation von grid.maxLevelLong und grid.maxLevelShort.
  */
 void SS.Grid.MaxLevel() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
@@ -1118,11 +1119,10 @@ void SS.Grid.MaxLevel() {
       if (grid.maxLevelLong > 0)
          strLong = StringConcatenate("+", strLong);
    }
-   if (grid.direction != D_LONG) {
+   if (grid.direction != D_LONG)
       strShort = grid.maxLevelShort;
-   }
 
-   str.grid.maxLevel = StringConcatenate("(", strLong, ifString(grid.direction == D_BIDIR, "/", ""), strShort, ")");
+   str.grid.maxLevel = StringConcatenate("(", strLong, ifString(grid.direction==D_BIDIR, "/", ""), strShort, ")");
 }
 
 
@@ -1189,8 +1189,15 @@ void SS.Grid.Breakeven() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.grid.breakevenLong  = DoubleToStr(grid.breakevenLong, PipDigits);
-   str.grid.breakevenShort = DoubleToStr(grid.breakevenShort, PipDigits);
+   string strLong, strShort;
+
+   if (grid.direction != D_SHORT)
+      strLong = ifString(EQ(grid.breakevenLong, 0), "-", DoubleToStr(grid.breakevenLong, PipDigits));
+
+   if (grid.direction != D_LONG)
+      strShort = ifString(EQ(grid.breakevenShort, 0), "-", DoubleToStr(grid.breakevenShort, PipDigits));
+
+   str.grid.breakeven = StringConcatenate(strLong, ifString(grid.direction==D_BIDIR, " / ", ""), strShort);
 }
 
 
@@ -1205,8 +1212,10 @@ bool Grid.UpdateBreakeven(datetime time=0) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
 
-   // wenn floatingPL = -realizedPL, dann totalPL = 0.00      => Breakeven-Punkt auf aktueller Seite
-   double distance1 = ProfitToDistance(-grid.stopsPL, grid.level);   // ohne finishedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
+   double distance1, distance2;
+
+   // wenn floatingPL = -realizedPL, dann totalPL = 0.00     => Breakeven-Punkt auf aktueller Seite
+   distance1 = ProfitToDistance(-grid.stopsPL, grid.level);          // ohne finishedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
 
    if (grid.level == 0) {                                            // realizedPL und valueAtRisk sind identisch, Abstand der Breakeven-Punkte ist gleich
       grid.breakevenLong  = grid.base + distance1*Pips;
@@ -1214,7 +1223,8 @@ bool Grid.UpdateBreakeven(datetime time=0) {
    }
    else {
       // wenn floatingPL = valueAtRisk, dann totalPL = 0.00  => Breakeven-Punkt auf gegenüberliegender Seite
-      double distance2 = ProfitToDistance(grid.valueAtRisk, 0);
+      if (grid.direction == D_BIDIR)
+         distance2 = ProfitToDistance(grid.valueAtRisk, 0);
 
       if (grid.level > 0) {
          grid.breakevenLong  = grid.base + distance1*Pips;
@@ -1251,29 +1261,35 @@ void Grid.DrawBreakeven(datetime time=NULL) {
    datetime now = time;
 
    // Trendlinien zeichnen
-   if (last.drawingTime != 0) {                                                  // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
-      string labelL = StringConcatenate("SR.", sequenceId, ".beL ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(last.startTimeLong, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
-      if (ObjectCreate(labelL, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenLong, now, grid.breakevenLong)) {
-         ObjectSet(labelL, OBJPROP_RAY  , false          );
-         ObjectSet(labelL, OBJPROP_COLOR, Color.Breakeven);
-         if (EQ(last.grid.breakevenLong, grid.breakevenLong)) last.startTimeLong = last.drawingTime;
-         else                                                 last.startTimeLong = now;
-      }
-      else {
-         GetLastError();                                                         // ERR_OBJECT_ALREADY_EXISTS
-         ObjectSet(labelL, OBJPROP_TIME2, now);                                  // vorhandene Trendlinien werden möglichst verlängert (verhindert Erzeugung unzähliger gleicher Objekte)
+   if (last.drawingTime != 0) {
+      // Long
+      if (grid.direction != D_SHORT) {                                           // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
+         string labelL = StringConcatenate("SR.", sequenceId, ".beL ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(last.startTimeLong, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
+         if (ObjectCreate(labelL, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenLong, now, grid.breakevenLong)) {
+            ObjectSet(labelL, OBJPROP_RAY  , false          );
+            ObjectSet(labelL, OBJPROP_COLOR, Color.Breakeven);
+            if (EQ(last.grid.breakevenLong, grid.breakevenLong)) last.startTimeLong = last.drawingTime;
+            else                                                 last.startTimeLong = now;
+         }
+         else {
+            GetLastError();                                                      // ERR_OBJECT_ALREADY_EXISTS
+            ObjectSet(labelL, OBJPROP_TIME2, now);                               // vorhandene Trendlinien werden möglichst verlängert (verhindert Erzeugung unzähliger gleicher Objekte)
+         }
       }
 
-      string labelS = StringConcatenate("SR.", sequenceId, ".beS ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(last.startTimeShort, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
-      if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, now, grid.breakevenShort)) {
-         ObjectSet(labelS, OBJPROP_RAY  , false          );
-         ObjectSet(labelS, OBJPROP_COLOR, Color.Breakeven);
-         if (EQ(last.grid.breakevenShort, grid.breakevenShort)) last.startTimeShort = last.drawingTime;
-         else                                                   last.startTimeShort = now;
-      }
-      else {
-         GetLastError();                                                         // ERR_OBJECT_ALREADY_EXISTS
-         ObjectSet(labelS, OBJPROP_TIME2, now);                                  // vorhandene Trendlinien werden möglichst verlängert (verhindert Erzeugung unzähliger gleicher Objekte)
+      // Short
+      if (grid.direction != D_LONG) {
+         string labelS = StringConcatenate("SR.", sequenceId, ".beS ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(last.startTimeShort, TIME_DATE|TIME_MINUTES|TIME_SECONDS), ")");
+         if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, now, grid.breakevenShort)) {
+            ObjectSet(labelS, OBJPROP_RAY  , false          );
+            ObjectSet(labelS, OBJPROP_COLOR, Color.Breakeven);
+            if (EQ(last.grid.breakevenShort, grid.breakevenShort)) last.startTimeShort = last.drawingTime;
+            else                                                   last.startTimeShort = now;
+         }
+         else {
+            GetLastError();                                                      // ERR_OBJECT_ALREADY_EXISTS
+            ObjectSet(labelS, OBJPROP_TIME2, now);                               // vorhandene Trendlinien werden möglichst verlängert (verhindert Erzeugung unzähliger gleicher Objekte)
+         }
       }
    }
    else {
