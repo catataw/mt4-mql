@@ -21,10 +21,10 @@
  *
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
- *  - StartTime und StartCondition "level-X @ price" implementieren
  *  - Upload der Statusdatei implementieren
  *  - STATUS_FINISHING und STATUS_MONITORING implementieren
  *  - Laufzeit im Tester optimieren (I/O-Operations, Logging, etc.)
+ *  - StartCondition "@time" implementieren
  *  - Client-Side-Limits implementieren
  *  - Heartbeat implementieren
  */
