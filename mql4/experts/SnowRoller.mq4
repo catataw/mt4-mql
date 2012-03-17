@@ -308,7 +308,8 @@ int onTick() {
    if (status==STATUS_FINISHED || status==STATUS_DISABLED)
       return(last_error);
 
-   static int last.grid.level;
+   static int    last.grid.level;
+   static double last.grid.base;
 
 
    // ****** TEMPORÄR ******
@@ -318,16 +319,18 @@ int onTick() {
 
    // (1) Sequenz wartet entweder auf Startsignal...
    if (status == STATUS_WAITING) {
-      if (IsStartSignal())                    StartSequence();          // ruft intern ggf. UpdateStatus() und SaveStatus() auf
+      if (IsStartSignal())                    StartSequence();
    }
 
-   // (2) ...oder läuft: Status prüfen und Orders aktualisieren
+   // (2) ...oder läuft: Daten und Orders aktualisieren
    else if (UpdateStatus()) {
-      if      (IsProfitTargetReached())       StopSequence();           // ruft intern ggf. UpdateStatus() und SaveStatus() auf
-      else if (grid.level != last.grid.level) UpdatePendingOrders();    // ruft intern ggf. UpdateStatus() und SaveStatus() auf
+      if      (IsProfitTargetReached())       StopSequence();
+      else if (grid.level != last.grid.level) UpdatePendingOrders();
+      else if (NE(grid.base, last.grid.base)) UpdatePendingOrders();
    }
 
    last.grid.level = grid.level;
+   last.grid.base  = grid.base;
    firstTick       = false;
 
 
@@ -435,6 +438,17 @@ bool UpdateStatus() {
       grid.maxDrawdown.time = TimeCurrent(); SS.Grid.MaxDrawdown();
    }
 
+   if (grid.level == 0) {
+      double price = NormalizeDouble((Bid + Ask)/2, Digits);
+
+      if (grid.direction == D_LONG) {
+         if (LT(price, grid.base)) { grid.base = price; SS.Grid.Base(); }
+      }
+      else if (grid.direction == D_SHORT) {
+         if (GT(price, grid.base)) { grid.base = price; SS.Grid.Base(); }
+      }
+   }
+
    if (grid.breakevenLong > 0) /*&&*/ if (!beUpdated) {              // BarOpen-Event triggern, wenn Breakeven definiert und nicht bereits aktualisiert ist
       if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
       else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);
@@ -483,7 +497,7 @@ bool IsOrderClosedByStop() {
 
 
 /**
- * Signalgeber für StartSequence(). Wurde kein Limit angegeben (StartCondition = 0 oder ""), gibt die Funktion ebenfalls TRUE zurück.
+ * Signalgeber für StartSequence(). Wurde kein Limit angegeben (StartCondition = 0 oder ""), gibt die Funktion immer TRUE zurück.
  *
  * @return bool - ob die konfigurierte StartCondition erfüllt ist
  */
@@ -543,10 +557,11 @@ bool StartSequence() {
    }
 
    // Status setzen und Grid-Base definieren
-   status             = STATUS_PROGRESSING;
-   sequenceStartTime  = TimeCurrent();
-   sequenceStartPrice = ifDouble(EQ(Entry.limit, 0), NormalizeDouble((Bid + Ask)/2, Digits), Entry.limit);
-   grid.base          = sequenceStartPrice; SS.Grid.Base();
+   if (sequenceStartTime == 0)
+      sequenceStartTime = TimeCurrent();
+   sequenceStartPrice   = ifDouble(EQ(Entry.limit, 0), NormalizeDouble((Bid + Ask)/2, Digits), Entry.limit);
+   grid.base            = sequenceStartPrice; SS.Grid.Base();
+   status               = STATUS_PROGRESSING;
 
    // Stop-Orders in den Markt legen
    if (!UpdatePendingOrders())
@@ -569,7 +584,7 @@ bool UpdatePendingOrders() {
    bool nextOrderExists, ordersChanged;
    int  nextLevel = grid.level + MathSign(grid.level);
 
-   if (grid.level > 0) {
+   if (grid.level > 0) {                                                         // hier niemals Änderung von grid.base
       // unnötige Pending-Orders löschen
       for (int i=ArraySize(orders.ticket)-1; i >= 0; i--) {
          if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]==0) {  // if (isPending && !isClosed)
@@ -590,7 +605,7 @@ bool UpdatePendingOrders() {
       }
    }
 
-   else if (grid.level < 0) {
+   else if (grid.level < 0) {                                                    // hier niemals Änderung von grid.base
       // unnötige Pending-Orders löschen
       for (i=ArraySize(orders.ticket)-1; i >= 0; i--) {
          if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]==0) {  // if (isPending && !isClosed)
@@ -611,17 +626,23 @@ bool UpdatePendingOrders() {
       }
    }
 
-   else /*(grid.level == 0)*/ {
+   else /*(grid.level == 0)*/ {                                                  // nur hier kann sich grid.base geändert haben
       bool buyOrderExists, sellOrderExists;
 
       // unnötige Pending-Orders löschen
       for (i=ArraySize(orders.ticket)-1; i >= 0; i--) {
          if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]==0) {  // if (isPending && !isClosed)
             if (grid.direction!=D_SHORT) /*&&*/ if (orders.level[i]==1) {
+               if (NE(orders.pendingPrice[i], grid.base + GridSize*Pips))
+                  if (!Grid.ModifyPendingOrder(i))
+                     return(false);
                buyOrderExists = true;
                continue;
             }
             if (grid.direction!=D_LONG) /*&&*/ if (orders.level[i]==-1) {
+               if (NE(orders.pendingPrice[i], grid.base - GridSize*Pips))
+                  if (!Grid.ModifyPendingOrder(i))
+                     return(false);
                sellOrderExists = true;
                continue;
             }
@@ -673,6 +694,142 @@ bool Grid.AddOrder(int type, int level) {
       return(false);
 
    return(IsNoError(catch("Grid.AddOrder()")));
+}
+
+
+/**
+ * Justiert den Stop-Preis der angegebenen Order beim Broker und aktualisiert die Datenarrays des Grids.
+ *
+ * @param  int i - Index der Order in den Datenarrays
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool Grid.ModifyPendingOrder(int i) {
+   if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("Grid.ModifyPendingOrder(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (orders.type[i] != OP_UNDEFINED)          return(_false(catch("Grid.ModifyPendingOrder(2)   cannot modify stop price of position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+   if (orders.closeTime[i] != 0)                return(_false(catch("Grid.ModifyPendingOrder(3)   cannot modify cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+
+   double stopPrice   = grid.base +          orders.level[i]  * GridSize * Pips;
+   double stopLoss    = stopPrice - MathSign(orders.level[i]) * GridSize * Pips;
+   color  markerColor = ifInt(orders.level[i] > 0, CLR_LONG, CLR_SHORT);
+
+   if (EQ(stopPrice, orders.pendingPrice[i])) /*&&*/ if (EQ(stopLoss, orders.stopLoss[i]))
+      return(true);
+
+   //debug("Grid.ModifyPendingOrder()   #"+ orders.ticket[i] +"   "+ NumberToStr(orders.pendingPrice[i], PriceFormat) +" => "+ NumberToStr(stopPrice, PriceFormat));
+
+   if (!OrderModifyEx(orders.ticket[i], stopPrice, stopLoss, NULL, NULL, markerColor)) {
+      return(false);
+      return(_false(SetLastError(stdlib_PeekLastError())));
+   }
+
+   orders.pendingPrice[i] = stopPrice;
+   orders.stopLoss    [i] = stopLoss;
+
+   return(IsNoError(catch("Grid.ModifyPendingOrder(4)")));
+}
+
+
+/**
+ * Drop-in-Ersatz für und erweiterte Version von OrderModify(). Fängt temporäre Tradeserver-Fehler ab und behandelt sie entsprechend.
+ *
+ * @param  int      ticket      - zu änderndes Ticket
+ * @param  double   openPrice   - OpenPrice (nur bei Pending-Orders)
+ * @param  double   stopLoss    - StopLoss-Level
+ * @param  double   takeProfit  - TakeProfit-Level
+ * @param  datetime expires     - Gültigkeit (nur bei Pending-Orders)
+ * @param  color    markerColor - Farbe des Chart-Markers (default: kein Marker)
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool OrderModifyEx(int ticket, double openPrice, double stopLoss, double takeProfit, datetime expires, color markerColor=CLR_NONE) {
+   // -- Beginn Parametervalidierung --
+   // ticket
+   if (!OrderSelectByTicket(ticket, "OrderModifyEx(1)", O_PUSH)) return(false);
+   if (!IsTradeOperation(OrderType()))                           return(_false(catch("OrderModifyEx(2)   #"+ ticket +" is not an order ticket", ERR_INVALID_TICKET, O_POP)));
+   if (OrderCloseTime() != 0)                                    return(_false(catch("OrderModifyEx(3)   ticket #"+ ticket +" is already closed", ERR_INVALID_TICKET, O_POP)));
+   int    digits      = MarketInfo(OrderSymbol(), MODE_DIGITS);
+   int    pipDigits   = digits & (~1);
+   string priceFormat = StringConcatenate(".", pipDigits, ifString(digits==pipDigits, "", "'"));
+   int error = GetLastError();
+   if (IsError(error))                                           return(_false(catch("OrderModifyEx(4)   symbol=\""+ OrderSymbol() +"\"", error, O_POP)));
+   // openPrice
+   openPrice = NormalizeDouble(openPrice, digits);
+   if (LE(openPrice, 0))                                         return(_false(catch("OrderModifyEx(5)   illegal parameter openPrice = "+ NumberToStr(openPrice, priceFormat), ERR_INVALID_FUNCTION_PARAMVALUE, O_POP)));
+   if (NE(openPrice, OrderOpenPrice())) {
+      if (!IsPendingTradeOperation(OrderType()))                 return(_false(catch("OrderModifyEx(6)   cannot modify open price of already open position #"+ ticket, ERR_INVALID_FUNCTION_PARAMVALUE, O_POP)));
+      // TODO: Bid/Ask <=> openPrice prüfen
+      // TODO: StopDistance(openPrice) prüfen
+   }
+   // stopLoss
+   stopLoss = NormalizeDouble(stopLoss, digits);
+   if (LT(stopLoss, 0))                                          return(_false(catch("OrderModifyEx(7)   illegal parameter stopLoss = "+ NumberToStr(stopLoss, priceFormat), ERR_INVALID_FUNCTION_PARAMVALUE, O_POP)));
+   if (NE(stopLoss, OrderStopLoss())) {
+      // TODO: Bid/Ask <=> stopLoss prüfen
+      // TODO: StopDistance(stopLoss) prüfen
+   }
+   // takeProfit
+   takeProfit = NormalizeDouble(takeProfit, digits);
+   if (LT(takeProfit, 0))                                        return(_false(catch("OrderModifyEx(8)   illegal parameter takeProfit = "+ NumberToStr(takeProfit, priceFormat), ERR_INVALID_FUNCTION_PARAMVALUE, O_POP)));
+   if (NE(takeProfit, OrderTakeProfit())) {
+      // TODO: Bid/Ask <=> takeProfit prüfen
+      // TODO: StopDistance(takeProfit) prüfen
+   }
+   // expires
+   if (expires!=0) /*&&*/ if (expires <= TimeCurrent())          return(_false(catch("OrderModifyEx(9)   illegal parameter expires = "+ ifString(expires < 0, expires, TimeToStr(expires, TIME_DATE|TIME_MINUTES|TIME_SECONDS)), ERR_INVALID_FUNCTION_PARAMVALUE, O_POP)));
+   if (expires != OrderExpiration())
+      if (!IsPendingTradeOperation(OrderType()))                 return(_false(catch("OrderModifyEx(10)   cannot modify expiration of already open position #"+ ticket, ERR_INVALID_FUNCTION_PARAMVALUE, O_POP)));
+   // markerColor
+   if (markerColor < CLR_NONE || markerColor > C'255,255,255')   return(_false(catch("OrderModifyEx(11)   illegal parameter markerColor = 0x"+ IntToHexStr(markerColor), ERR_INVALID_FUNCTION_PARAMVALUE, O_POP)));
+   // -- Ende Parametervalidierung --
+
+   int time1, time2;
+
+   // Endlosschleife, bis Order geändert wurde oder ein permanenter Fehler auftritt
+   while (!IsStopped()) {
+      error = NO_ERROR;
+
+      if (IsTradeContextBusy()) {
+         log("OrderModifyEx()   trade context busy, retrying...");
+         Sleep(300);                                                    // 0.3 Sekunden warten
+      }
+      else {
+         if (time1 == 0)
+            time1 = GetTickCount();                                     // Zeit der ersten Ausführung
+
+         bool success = OrderModify(ticket, openPrice, stopLoss, takeProfit, expires, markerColor);
+         time2 = GetTickCount();
+
+         if (success) {
+            WaitForTicket(ticket, false);                               // TODO: WaitForChanges() einbauen
+            //log("OrderModifyEx()   "+ OrderModifyEx.LogMessage(ticket, digits, time2-time1));
+
+            if (!IsTesting())
+               PlaySound("RFQ.wav");
+
+            if (!ChartMarker.OrderSent_A(ticket, digits, markerColor))
+               return(_false(OrderPop("OrderModifyEx(12)")));
+
+            return(IsNoError(catch("OrderModifyEx(13)", NULL, O_POP))); // regular exit
+         }
+         error = GetLastError();
+         if (IsNoError(error))
+            error = ERR_RUNTIME_ERROR;
+         if (!IsTemporaryTradeError(error))                             // TODO: ERR_MARKET_CLOSED abfangen und besser behandeln
+            break;
+
+         string message = StringConcatenate(Symbol(), ",", PeriodDescription(NULL), "  ", __SCRIPT__, "::OrderModifyEx()   temporary trade error ", ErrorToStr(error), " after ", DoubleToStr((time2-time1)/1000.0, 3), " s, retrying...");
+         Alert(message);                                                // nach Fertigstellung durch log() ersetzen
+         if (IsTesting()) {
+            ForceSound("alert.wav");
+            ForceMessageBox(message, __SCRIPT__, MB_ICONERROR|MB_OK);
+         }
+      }
+   }
+
+   return(_false(catch("OrderModifyEx(14)   permanent trade error after "+ DoubleToStr((time2-time1)/1000.0, 3) +" s", error, O_POP)));
 }
 
 
@@ -1747,6 +1904,13 @@ bool SaveStatus() {
       return(false);
    if (sequenceId == 0)
       return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+
+
+   // Spätestens beim ersten SaveStatus() wird sequenceStartTime gesetzt.
+   if (sequenceStartTime == 0)
+      sequenceStartTime = TimeCurrent();
+
+
    /*
    Der komplette Laufzeitstatus wird abgespeichert, nicht nur die Input-Parameter.
    -------------------------------------------------------------------------------
