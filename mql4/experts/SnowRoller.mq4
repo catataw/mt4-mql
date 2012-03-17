@@ -21,7 +21,6 @@
  *
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
- *  - Breakeven-Indikator bei STATUS_FINISHED reparieren
  *  - StartTime und StartCondition "level-X @ price" implementieren
  *  - Upload der Statusdatei implementieren
  *  - STATUS_FINISHING und STATUS_MONITORING implementieren
@@ -287,7 +286,8 @@ int deinit() {
    }
 
    if (IsTesting()) {
-      StopSequence();                           // ruft bei Änderungen intern UpdateStatus() und SaveStatus() auf
+      if (StopSequence())                                               // ruft intern ggf. UpdateStatus() und SaveStatus() auf
+         ShowStatus();
    }
    else if (UpdateStatus()) {
       SaveStatus();
@@ -319,13 +319,13 @@ int onTick() {
 
    // (1) Sequenz wartet entweder auf Startsignal...
    if (status == STATUS_WAITING) {
-      if (IsStartSignal())                    StartSequence();
+      if (IsStartSignal())                    StartSequence();          // ruft intern ggf. UpdateStatus() und SaveStatus() auf
    }
 
    // (2) ...oder läuft: Status prüfen und Orders aktualisieren
    else if (UpdateStatus()) {
-      if      (IsProfitTargetReached())       StopSequence();
-      else if (grid.level != last.grid.level) UpdatePendingOrders();
+      if      (IsProfitTargetReached())       StopSequence();           // ruft intern ggf. UpdateStatus() und SaveStatus() auf
+      else if (grid.level != last.grid.level) UpdatePendingOrders();    // ruft intern ggf. UpdateStatus() und SaveStatus() auf
    }
 
    last.grid.level = grid.level;
@@ -343,7 +343,7 @@ int onTick() {
 
 
 /**
- * Prüft und synchronisiert die im EA gespeicherten Orders mit den aktuellen Laufzeitdaten.
+ * Prüft und synchronisiert die im EA gespeicherten mit den aktuellen Laufzeitdaten.
  *
  * @return bool - Erfolgsstatus
  */
@@ -381,8 +381,8 @@ bool UpdateStatus() {
                grid.level         += MathSign(orders.level[i]);
                grid.maxLevelLong   = MathMax(grid.level, grid.maxLevelLong ) +0.1;                       // (int) double
                grid.maxLevelShort  = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();   // (int) double
-               grid.openStopValue += orders.stopValue[i];
-               grid.valueAtRisk    = grid.openStopValue - grid.stopsPL - grid.finishedPL; SS.Grid.ValueAtRisk();
+               grid.openStopValue += orders.stopValue[i];                                                // realizedPL = stopsPL + finishedPL
+               grid.valueAtRisk    = grid.openStopValue - grid.stopsPL; SS.Grid.ValueAtRisk();           // ohne finishedPL => ist während Laufzeit 0
                Grid.UpdateBreakeven(); beUpdated = true;
             }
          }
@@ -409,16 +409,17 @@ bool UpdateStatus() {
                orders.closeSlippage[i] = GetClosePriceSlippage(i);
                ChartMarker.PositionClosed(i);
 
-               if (orders.closedByStop[i]) {
-                  grid.level   -= MathSign(orders.level[i]);
-                  grid.stops++;
-                  grid.stopsPL += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
-               }
-               else {                                                // bei Sequenzende geschlossen
-                  grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
-               }
                grid.openStopValue -= orders.stopValue[i];
-               grid.valueAtRisk    = grid.openStopValue - grid.stopsPL - grid.finishedPL; SS.Grid.ValueAtRisk();
+
+               if (orders.closedByStop[i]) {
+                  grid.level      -= MathSign(orders.level[i]);
+                  grid.stops++;
+                  grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
+                  grid.valueAtRisk = grid.openStopValue - grid.stopsPL; SS.Grid.ValueAtRisk();  // ohne finishedPL => ist während Laufzeit 0 und wird ab Sequenzstop nicht mehr berücksichtigt
+               }
+               else {
+                  grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];  // bei Sequenzstop geschlossen, valueAtRisk wird nicht mehr verändert
+               }
                Grid.UpdateBreakeven(); beUpdated = true;
             }
          }
@@ -542,7 +543,9 @@ bool StartSequence() {
       }
    }
 
-   // Grid-Base definieren
+   // Status setzen und Grid-Base definieren
+   status             = STATUS_PROGRESSING;
+   sequenceStartTime  = TimeCurrent();
    sequenceStartPrice = ifDouble(EQ(Entry.limit, 0), NormalizeDouble((Bid + Ask)/2, Digits), Entry.limit);
    grid.base          = sequenceStartPrice; SS.Grid.Base();
 
@@ -550,9 +553,7 @@ bool StartSequence() {
    if (!UpdatePendingOrders())
       return(false);
 
-   // Status ändern
-   status = STATUS_PROGRESSING;
-
+   RedrawStartStop();
    return(IsNoError(catch("StartSequence(2)")));
 }
 
@@ -884,13 +885,13 @@ bool IsProfitTargetReached() {
 /**
  * Schließt alle PendingOrders und offenen Positionen der Sequenz.
  *
- * @return bool - Erfolgsstatus
+ * @return bool - Erfolgsstatus: ob die Sequenz erfolgreich gestoppt wurde (FALSE, wenn sie bereits gestoppt war)
  */
 bool StopSequence() {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
    if (status==STATUS_FINISHED)
-      return(true);
+      return(false);
 
    if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort eine Tradeoperation triggert
       if (!IsTesting()) {                                            // jedoch nicht im Tester
@@ -918,9 +919,14 @@ bool StopSequence() {
 
 
    // Status vorm Schließen evt. offener Positionen setzen
-   status            = STATUS_FINISHED;
-   sequenceStopTime  = TimeCurrent();
-   sequenceStopPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+   status           = STATUS_FINISHED;
+   sequenceStopTime = TimeCurrent();
+
+   double price = (Bid + Ask)/2;
+   if      (LT(grid.base, price)) sequenceStopPrice = Bid;
+   else if (GT(grid.base, price)) sequenceStopPrice = Ask;
+   else                           sequenceStopPrice = grid.base;
+   sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);
 
 
    bool ordersChanged;
@@ -941,10 +947,8 @@ bool StopSequence() {
 
    // Daten aktualisieren und speichern
    if (ordersChanged) {
-      if (!UpdateStatus())
-         return(false);
-      if (!SaveStatus())
-         return(false);
+      if (!UpdateStatus()) return(false);
+      if (!SaveStatus()  ) return(false);
    }
 
    RedrawStartStop();
@@ -1202,7 +1206,7 @@ bool Grid.UpdateBreakeven(datetime time=0) {
       return(true);
 
    // wenn floatingPL = -realizedPL, dann totalPL = 0.00      => Breakeven-Punkt auf aktueller Seite
-   double distance1 = ProfitToDistance(-grid.stopsPL, grid.level);   // realizedPL ohne finishedPL => muß während Laufzeit immer 0 sein
+   double distance1 = ProfitToDistance(-grid.stopsPL, grid.level);   // ohne finishedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
 
    if (grid.level == 0) {                                            // realizedPL und valueAtRisk sind identisch, Abstand der Breakeven-Punkte ist gleich
       grid.breakevenLong  = grid.base + distance1*Pips;
@@ -1782,13 +1786,6 @@ bool SaveStatus() {
    double   orders.commission   [];    // ja
    double   orders.profit       [];    // ja
    */
-
-   // Erst beim ersten SaveStatus() wird sequenceStartTime gesetzt (falls noch nicht geschehen).
-   if (sequenceStartTime == 0) {
-      sequenceStartTime = TimeCurrent();
-      RedrawStartStop();
-   }
-
 
    // (1.1) Input-Parameter zusammenstellen
    string lines[];  ArrayResize(lines, 0);
@@ -2452,7 +2449,7 @@ bool SynchronizeStatus() {
       grid.openStopValue += events[i][5];
 
       if (type != EVENT_CLOSEFINISH)                                    // realizedPL = stopsPL + finishedPL
-         grid.valueAtRisk = -grid.stopsPL + grid.openStopValue;         // realizedPL hier immer ohne finishedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
+         grid.valueAtRisk = grid.openStopValue - grid.stopsPL;          // ohne finishedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
 
       if      (type == EVENT_OPEN)      { grid.level = level; }
       else if (type == EVENT_CLOSESTOP) { grid.level = level-MathSign(level); grid.stops++; }
