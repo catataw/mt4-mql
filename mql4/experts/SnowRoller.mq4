@@ -4,10 +4,10 @@
  *
  * Trade-Modes:
  * ------------
- * - Bidirectional: ein bi-direktionales Grid mit fester Gridbase in Long- und Short-Richtung (schlechteste Performance)
- * - Long         : ein uni-direktionales Grid mit Trailing-Gridbase in Long-Richtung (gute Performance)
- * - Short        : ein uni-direktionales Grid mit Trailing-Gridbase in Short-Richtung (gute Performance)
- * - Long + Short : zwei sich überlagernde uni-direktionale Grids mit Trailing-Gridbase in Long- und Short-Richtung (beste Performance)
+ * - Bidirectional: ein bi-direktionales Grid mit fester Gridbasis in Long- und Short-Richtung (schlechteste Performance)
+ * - Long         : ein uni-direktionales Grid mit Trailing-Gridbasis in Long-Richtung (gute Performance)
+ * - Short        : ein uni-direktionales Grid mit Trailing-Gridbasis in Short-Richtung (gute Performance)
+ * - Long + Short : zwei sich überlagernde uni-direktionale Grids mit Trailing-Gridbasis in Long- und Short-Richtung (beste Performance)
  *
  *
  * @see http://sites.google.com/site/prof7bit/snowball
@@ -95,10 +95,13 @@ double   entry.limit;
 double   entry.lastBid;
 
 int      grid.direction = D_BIDIR;
-double   grid.base;                                      // aktuelle Grid-Base
 int      grid.level;                                     // aktueller Grid-Level
 int      grid.maxLevelLong;                              // maximal erreichter Long-Level
 int      grid.maxLevelShort;                             // maximal erreichter Short-Level
+
+double   grid.base;                                      // aktuelle Gridbasis
+datetime grid.base.time [];                              // Zeitpunkt einer Änderung der Gridbasis
+double   grid.base.value[];                              // Gridbasis zum Zeitpunkt
 
 int      grid.stops;                                     // Anzahl der bisher getriggerten Stops
 double   grid.stopsPL;                                   // P/L der getriggerten Stops (0 oder negativ)
@@ -457,21 +460,25 @@ bool UpdateStatus() {
    }
 
 
-   // (3) GridBase prüfen und ggf. trailen
+   // (3) Gridbasis prüfen und ggf. trailen
    if (grid.level == 0) {
       double price = NormalizeDouble((Bid + Ask)/2, Digits);
       if (grid.direction == D_LONG) {
          if (LT(price, grid.base)) {
             grid.base = price; SS.Grid.Base();
-            if (grid.maxLevelLong != 0)
-               breakevenUpdated = Grid.UpdateBreakeven();            // ab dem ersten ausgeführten Trade Breakeven neuberechnen
+            if (grid.maxLevelLong != 0) {
+               Grid.BaseChange(TimeCurrent(), grid.base);            // ab dem ersten ausgeführten Trade Änderung tracken...
+               breakevenUpdated = Grid.UpdateBreakeven();            // ...und Breakeven neuberechnen
+            }
          }
       }
       else if (grid.direction == D_SHORT) {
          if (GT(price, grid.base)) {
             grid.base = price; SS.Grid.Base();
-            if (grid.maxLevelShort != 0)
-               breakevenUpdated = Grid.UpdateBreakeven();            // ab dem ersten ausgeführten Trade Breakeven neuberechnen
+            if (grid.maxLevelShort != 0) {
+               Grid.BaseChange(TimeCurrent(), grid.base);            // ab dem ersten ausgeführten Trade Änderung tracken...
+               breakevenUpdated = Grid.UpdateBreakeven();            // ...und Breakeven neuberechnen
+            }
          }
       }
    }
@@ -479,7 +486,7 @@ bool UpdateStatus() {
 
    // (4) 1 mal je Minute Breakeven neuzeichnen, damit Indikator bei Timeframewechsel immer aktuell ist
    if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
-   else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);             // TODO: EventListener muß Event auch ohne Aufruf bei jedem Tick erkennen
+   else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);             // TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
 
    return(IsNoError(catch("UpdateStatus(2)")));
 }
@@ -581,7 +588,7 @@ bool StartSequence() {
       }
    }
 
-   // Status setzen und Grid-Base definieren
+   // Status setzen und Gridbasis definieren
    if (sequenceStartTime == 0)
       sequenceStartTime = TimeCurrent();
    sequenceStartPrice   = ifDouble(EQ(entry.limit, 0), NormalizeDouble((Bid + Ask)/2, Digits), entry.limit);
@@ -694,6 +701,37 @@ bool UpdatePendingOrders() {
          return(false);
 
    return(IsNoError(catch("UpdatePendingOrders()")));
+}
+
+
+/**
+ * Speichert eine Änderung der Gridbasis.
+ *
+ * @param  datetime time  - Zeitpunkt der Änderung
+ * @param  double   value - neue Gridbasis
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool Grid.BaseChange(datetime time, double value) {
+   int size = ArraySize(grid.base.time);
+
+   if (size == 0) {
+      ArrayPushInt   (grid.base.time,  time );
+      ArrayPushDouble(grid.base.value, value);
+   }
+   else {
+      int minutes=time/MINUTE, lastMinutes=grid.base.time[size-1]/MINUTE;
+      if (minutes == lastMinutes) {
+         grid.base.time [size-1] = time;                             // Änderungen der aktuellen Minute mit neuen Werten überschreiben
+         grid.base.value[size-1] = value;
+      }
+      else {
+         ArrayPushInt   (grid.base.time,  time );
+         ArrayPushDouble(grid.base.value, value);
+      }
+   }
+
+   return(IsNoError(catch("Grid.BaseChange()")));
 }
 
 
@@ -1413,7 +1451,7 @@ void RecolorBreakeven() {
 
 
 /**
- * Berechnet den notwendigen Abstand von der Gridbasis, um den angegebenen Gewinn zu erzielen.
+ * Berechnet den notwendigen Abstand von der aktuellen Gridbasis, um den angegebenen Gewinn zu erzielen.
  *
  * @param  double profit - zu erzielender Gewinn
  * @param  int    level  - aktueller Gridlevel (Stops zwischen diesem Level und dem resultierenden Abstand werden berücksichtigt)
