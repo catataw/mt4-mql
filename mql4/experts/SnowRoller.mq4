@@ -17,10 +17,12 @@
  *  -----
  *  - ein- und beidseitig unidirektionales Grid implementieren             *
  *  - Pause/Resume implementieren                                          *
+ *  - PendingOrders nicht per Tick trailen                                 *
  *  - Exit-Rule implementieren: onBreakeven, onProfit(value|pip), onLimit  *
  *
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
+ *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
  *  - Upload der Statusdatei implementieren
  *  - STATUS_FINISHING und STATUS_MONITORING implementieren
  *  - Laufzeit im Tester optimieren (I/O-Operations, Logging, etc.)
@@ -159,7 +161,8 @@ color    CLR_SHORT = Red;
 color    CLR_CLOSE = Orange;
 
 int      orderDisplayMode;
-bool     firstTick = true;
+bool     firstTick        = true;
+bool     breakevenUpdated = false;                       // ob Breakeven während des aktuellen Ticks bereits neuberechnet wurde (verhindert Mehrfachberechnungen)
 
 
 /**
@@ -319,6 +322,8 @@ int onTick() {
    static int    last.grid.level;
    static double last.grid.base;
 
+   breakevenUpdated = false;
+
 
    // ****** TEMPORÄR ******
    //if (sequenceId==11857 && StringICompare(GetComputerName(), "sirius")) {
@@ -365,7 +370,7 @@ bool UpdateStatus() {
 
    grid.floatingPL = 0;
 
-   bool wasPending, isClosed, beUpdated;
+   bool wasPending, isClosed;
    int  orders = ArraySize(orders.ticket);
 
 
@@ -395,7 +400,7 @@ bool UpdateStatus() {
                grid.maxLevelShort  = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();   // (int) double
                grid.openStopValue += orders.stopValue[i];                                                // realizedPL = stopsPL + finishedPL
                grid.valueAtRisk    = grid.openStopValue - grid.stopsPL; SS.Grid.ValueAtRisk();           // ohne finishedPL => ist während Laufzeit 0
-               Grid.UpdateBreakeven(); beUpdated = true;
+               breakevenUpdated    = Grid.UpdateBreakeven();
             }
          }
          else {
@@ -432,7 +437,7 @@ bool UpdateStatus() {
                else {
                   grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];  // bei Sequenzstop geschlossen, valueAtRisk wird nicht mehr verändert
                }
-               Grid.UpdateBreakeven(); beUpdated = true;
+               breakevenUpdated = Grid.UpdateBreakeven();
             }
          }
       }
@@ -458,23 +463,23 @@ bool UpdateStatus() {
       if (grid.direction == D_LONG) {
          if (LT(price, grid.base)) {
             grid.base = price; SS.Grid.Base();
-            Grid.UpdateBreakeven(); beUpdated = true;
+            if (grid.maxLevelLong != 0)
+               breakevenUpdated = Grid.UpdateBreakeven();            // ab dem ersten ausgeführten Trade Breakeven neuberechnen
          }
       }
       else if (grid.direction == D_SHORT) {
          if (GT(price, grid.base)) {
             grid.base = price; SS.Grid.Base();
-            Grid.UpdateBreakeven(); beUpdated = true;
+            if (grid.maxLevelShort != 0)
+               breakevenUpdated = Grid.UpdateBreakeven();            // ab dem ersten ausgeführten Trade Breakeven neuberechnen
          }
       }
    }
 
 
-   // (4) 1 mal je Minute Breakeven zeichnen, damit Indikator bei Timeframewechsel immer aktuell ist
-   if (grid.breakevenLong > 0) /*&&*/ if (!beUpdated) {              // BarOpen-Event abfangen, wenn Breakeven definiert und nicht bereits aktualisiert wurde
-      if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
-      else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);
-   }
+   // (4) 1 mal je Minute Breakeven neuzeichnen, damit Indikator bei Timeframewechsel immer aktuell ist
+   if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
+   else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);             // TODO: EventListener muß Event auch ohne Aufruf bei jedem Tick erkennen
 
    return(IsNoError(catch("UpdateStatus(2)")));
 }
@@ -488,7 +493,11 @@ bool UpdateStatus() {
  * @return int - Fehlerstatus
  */
 int onBarOpen(int timeframes[]) {
-   Grid.DrawBreakeven();
+   // Breakeven neuzeichnen, damit Indikator bei Timeframewechsel immer aktuell ist
+   if (!breakevenUpdated) {
+      if (grid.maxLevelLong-grid.maxLevelShort > 0)                  // jedoch nicht vor dem ersten ausgeführten Trade
+         Grid.DrawBreakeven();
+   }
    return(catch("onBarOpen()"));
 }
 
