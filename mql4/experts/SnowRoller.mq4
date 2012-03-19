@@ -368,6 +368,8 @@ bool UpdateStatus() {
    bool wasPending, isClosed, beUpdated;
    int  orders = ArraySize(orders.ticket);
 
+
+   // (1) Tickets prüfen
    for (int i=0; i < orders; i++) {
       if (orders.closeTime[i] == 0) {                                // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
          if (!OrderSelectByTicket(orders.ticket[i], "UpdateStatus(1)"))
@@ -435,6 +437,9 @@ bool UpdateStatus() {
          }
       }
    }
+
+
+   // (2) P/L-Kennziffern  aktualisieren
    grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL; SS.Grid.TotalPL();
 
    if (grid.totalPL > grid.maxProfitLoss) {
@@ -446,17 +451,26 @@ bool UpdateStatus() {
       grid.maxDrawdownTime = TimeCurrent(); SS.Grid.MaxDrawdown();
    }
 
+
+   // (3) GridBase prüfen und ggf. trailen
    if (grid.level == 0) {
       double price = NormalizeDouble((Bid + Ask)/2, Digits);
-
       if (grid.direction == D_LONG) {
-         if (LT(price, grid.base)) { grid.base = price; SS.Grid.Base(); }
+         if (LT(price, grid.base)) {
+            grid.base = price; SS.Grid.Base();
+            Grid.UpdateBreakeven(); beUpdated = true;
+         }
       }
       else if (grid.direction == D_SHORT) {
-         if (GT(price, grid.base)) { grid.base = price; SS.Grid.Base(); }
+         if (GT(price, grid.base)) {
+            grid.base = price; SS.Grid.Base();
+            Grid.UpdateBreakeven(); beUpdated = true;
+         }
       }
    }
 
+
+   // (4) 1 mal je Minute Breakeven zeichnen, damit Indikator bei Timeframewechsel immer aktuell ist
    if (grid.breakevenLong > 0) /*&&*/ if (!beUpdated) {              // BarOpen-Event abfangen, wenn Breakeven definiert und nicht bereits aktualisiert wurde
       if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
       else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);
