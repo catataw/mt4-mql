@@ -12,10 +12,10 @@
  *
  *  TODO:
  *  -----
- *  - beidseitig unidirektionales Grid implementieren                      *
  *  - Pause/Resume implementieren                                          *
  *  - PendingOrders nicht per Tick trailen                                 *
  *  - Exit-Rule implementieren: onBreakeven, onProfit(value|pip), onLimit  *
+ *  - beidseitig unidirektionales Grid implementieren                      *
  *
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
