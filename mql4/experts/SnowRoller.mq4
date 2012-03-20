@@ -4,13 +4,10 @@
  *
  * Trade-Modes:
  * ------------
- * - Bidirectional: ein bi-direktionales Grid mit fester Gridbasis in Long- und Short-Richtung (schlechteste Performance)
- * - Long         : ein uni-direktionales Grid mit Trailing-Gridbasis in Long-Richtung (gute Performance)
- * - Short        : ein uni-direktionales Grid mit Trailing-Gridbasis in Short-Richtung (gute Performance)
- * - Long + Short : zwei sich überlagernde uni-direktionale Grids mit Trailing-Gridbasis in Long- und Short-Richtung (beste Performance)
- *
- *
- * @see http://sites.google.com/site/prof7bit/snowball
+ * - Bidirectional: ein bi-direktionales Grid mit fester Gridbasis in Long- und Short-Richtung (mäßige Performance)
+ * - Long         : ein uni-direktionales Grid mit Trailing-Gridbasis in Long-Richtung (bessere Performance)
+ * - Short        : ein uni-direktionales Grid mit Trailing-Gridbasis in Short-Richtung (bessere Performance)
+ * - Long + Short : zwei sich überlagernde uni-direktionale Grids mit Trailing-Gridbasis in Long- und Short-Richtung
  *
  *
  *  TODO:
