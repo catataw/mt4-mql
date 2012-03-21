@@ -12,6 +12,16 @@
  *
  *  TODO:
  *  -----
+ *  - Bugs: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
+ *  - Bugs: Stop außerhalb von StopSequence()
+ *  - Bugs: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
+ *  - Bugs: SS-Anzeige Gridbasis
+ *  - Bugs: SS-Anzeige P/L
+ *  - Bugs: STATUS_FINISHED  -> STATUS_STOPPED
+ *  - Bugs: STATUS_FINISHING -> STATUS_STOPPING
+ *  - Bugs: Gridbasis abspeichern (für Client-Side-Limits)
+ *  - Bugs: Execution-Time abspeichern
+ *
  *  - Exit-Rule implementieren: onBreakeven, onProfit(value|pip), onLimit  *
  *  - PendingOrders nicht per Tick trailen                                 *
  *  - Pause/Resume implementieren                                          *
@@ -21,7 +31,7 @@
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
  *  - Upload der Statusdatei implementieren
- *  - STATUS_FINISHING und STATUS_MONITORING implementieren
+ *  - STATUS_STOPPING und STATUS_MONITORING implementieren
  *  - Laufzeit im Tester optimieren (I/O-Operations, Logging, etc.)
  *  - StartCondition "@time" implementieren
  *  - Client-Side-Limits implementieren
