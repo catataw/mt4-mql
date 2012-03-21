@@ -12,9 +12,9 @@
  *
  *  TODO:
  *  -----
- *  - Pause/Resume implementieren                                          *
- *  - PendingOrders nicht per Tick trailen                                 *
  *  - Exit-Rule implementieren: onBreakeven, onProfit(value|pip), onLimit  *
+ *  - PendingOrders nicht per Tick trailen                                 *
+ *  - Pause/Resume implementieren                                          *
  *  - beidseitig unidirektionales Grid implementieren                      *
  *
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
