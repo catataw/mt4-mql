@@ -4,10 +4,10 @@
  *
  * Trade-Modes:
  * ------------
- * - Bidirectional: ein bi-direktionales Grid mit fester Gridbasis in Long- und Short-Richtung (mäßige Performance)
- * - Long         : ein uni-direktionales Grid mit Trailing-Gridbasis in Long-Richtung (bessere Performance)
- * - Short        : ein uni-direktionales Grid mit Trailing-Gridbasis in Short-Richtung (bessere Performance)
- * - Long + Short : zwei sich überlagernde uni-direktionale Grids mit Trailing-Gridbasis in Long- und Short-Richtung
+ * - Bidirectional: ein bi-direktionales Grid mit fester Gridbasis in Long- und Short-Richtung
+ * - Long:          ein uni-direktionales Grid mit Trailing-Gridbasis in Long-Richtung
+ * - Short:         ein uni-direktionales Grid mit Trailing-Gridbasis in Short-Richtung
+ * - Long + Short:  zwei sich überlagernde uni-direktionale Grids mit Trailing-Gridbasis in Long- und Short-Richtung
  *
  *
  *  TODO:
@@ -787,7 +787,7 @@ bool Grid.AddOrder(int type, int level) {
 bool Grid.ModifyPendingOrder(int i) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("Grid.ModifyPendingOrder(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("Grid.ModifyPendingOrder(1)   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
    if (orders.type[i] != OP_UNDEFINED)          return(_false(catch("Grid.ModifyPendingOrder(2)   cannot modify open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
    if (orders.closeTime[i] != 0)                return(_false(catch("Grid.ModifyPendingOrder(3)   cannot modify cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
@@ -983,12 +983,12 @@ int PendingStopOrder(int type, int level) {
       return(-1);
 
    if (type == OP_BUYSTOP) {
-      if (level <= 0) return(_int(-1, catch("PendingStopOrder(1)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (level <= 0) return(_int(-1, catch("PendingStopOrder(1)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_ILLEGAL_INPUT_PARAMVALUE)));
    }
    else if (type == OP_SELLSTOP) {
-      if (level >= 0) return(_int(-1, catch("PendingStopOrder(2)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (level >= 0) return(_int(-1, catch("PendingStopOrder(2)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_ILLEGAL_INPUT_PARAMVALUE)));
    }
-   else               return(_int(-1, catch("PendingStopOrder(3)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   else               return(_int(-1, catch("PendingStopOrder(3)   illegal parameter type = "+ type, ERR_ILLEGAL_INPUT_PARAMVALUE)));
 
    double stopPrice   = grid.base +          level  * GridSize * Pips;
    double stopLoss    = stopPrice - MathSign(level) * GridSize * Pips;
@@ -1109,7 +1109,7 @@ bool StopSequence() {
  */
 int CreateMagicNumber(int level) {
    if (sequenceId < 1000) return(_int(-1, catch("CreateMagicNumber(1)   illegal sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
-   if (level == 0)        return(_int(-1, catch("CreateMagicNumber(2)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (level == 0)        return(_int(-1, catch("CreateMagicNumber(2)   illegal parameter level = "+ level, ERR_ILLEGAL_INPUT_PARAMVALUE)));
 
    // Für bessere Obfuscation ist die Reihenfolge der Werte [ea,level,sequence] und nicht [ea,sequence,level]. Dies wären aufeinander folgende Werte.
    int ea       = Strategy.Id & 0x3FF << 22;                         // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
@@ -1801,7 +1801,8 @@ bool ValidateConfiguration(int reason=NULL) {
    string strValue     = StringToLower(StringTrim(StringReplace(StringReplace(StringReplace(GridDirection, "+", ""), "&", ""), " ", "")) +"b");
    switch (StringGetChar(strValue, 0)) {
       case 'l': if (StringStartsWith(strValue, "longshort") || StringStartsWith(strValue, "ls")) {
-                   //grid.direction = D_LONG_SHORT; break;
+                   return(_false(catch("ValidateConfiguration(1)  Trade mode Long+Short not yet implemented", ERR_FUNCTION_NOT_IMPLEMENTED)));
+                   grid.direction = D_LONG_SHORT; break;
                 }
                 grid.direction    = D_LONG;       break;
       case 's': grid.direction    = D_SHORT;      break;
@@ -2888,7 +2889,7 @@ bool ChartMarker.OrderSent(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
    if (i < 0 || ArraySize(orders.ticket) < i+1)
-      return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
@@ -2925,7 +2926,7 @@ bool ChartMarker.OrderFilled(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
    if (i < 0 || ArraySize(orders.ticket) < i+1)
-      return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
@@ -2955,7 +2956,7 @@ bool ChartMarker.PositionClosed(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(true);
    if (i < 0 || ArraySize(orders.ticket) < i+1)
-      return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
@@ -3117,7 +3118,7 @@ string BreakevenEventToStr(int type) {
       case EV_POSITION_STOPOUT: return("EV_POSITION_STOPOUT");
       case EV_POSITION_CLOSE  : return("EV_POSITION_CLOSE"  );
    }
-   return(_empty(catch("BreakevenEventToStr()  illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_empty(catch("BreakevenEventToStr()  illegal parameter type = "+ type, ERR_ILLEGAL_INPUT_PARAMVALUE)));
 }
 
 
@@ -3135,7 +3136,7 @@ string GridDirectionToStr(int direction) {
       case D_SHORT     : return("D_SHORT"     );
       case D_LONG_SHORT: return("D_LONG_SHORT");
    }
-   return(_empty(catch("GridDirectionToStr()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_empty(catch("GridDirectionToStr()  illegal parameter direction = "+ direction, ERR_ILLEGAL_INPUT_PARAMVALUE)));
 }
 
 
@@ -3153,5 +3154,5 @@ string GridDirectionDescription(int direction) {
       case D_SHORT     : return("short"        );
       case D_LONG_SHORT: return("long + short" );
    }
-   return(_empty(catch("GridDirectionDescription()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_empty(catch("GridDirectionDescription()  illegal parameter direction = "+ direction, ERR_ILLEGAL_INPUT_PARAMVALUE)));
 }
