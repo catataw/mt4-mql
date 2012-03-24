@@ -12,15 +12,12 @@
  *
  *  TODO:
  *  -----
- *  - Bugs: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
- *  - Bugs: Stop außerhalb von StopSequence()
- *  - Bugs: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
- *  - Bugs: STATUS_FINISHED  -> STATUS_STOPPED
- *  - Bugs: STATUS_FINISHING -> STATUS_STOPPING
  *  - Bugs: Gridbasis abspeichern (für Client-Side-Limits)
  *  - Bugs: Execution-Time abspeichern
+ *  - Bugs: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
+ *  - Bugs: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
  *
- *  - Exit-Rule implementieren: onBreakeven, onProfit(value|pip), onLimit  *
+ *  - Exit-Rule implementieren: onProfit(value|%), onLimit                 *
  *  - PendingOrders nicht per Tick trailen                                 *
  *  - Pause/Resume implementieren                                          *
  *  - beidseitig unidirektionales Grid implementieren                      *
@@ -29,7 +26,7 @@
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
  *  - Upload der Statusdatei implementieren
- *  - STATUS_STOPPING und STATUS_MONITORING implementieren
+ *  - STATUS_MONITORING implementieren
  *  - Laufzeit im Tester optimieren (I/O-Operations, Logging, etc.)
  *  - StartCondition "@time" implementieren
  *  - Client-Side-Limits implementieren
@@ -52,15 +49,16 @@ int Strategy.Id = 103;                       // eindeutige ID der Strategie (Ber
 // Sequenzstatus-Werte
 #define STATUS_WAITING        0              // default
 #define STATUS_PROGRESSING    1
-#define STATUS_FINISHED       2
-#define STATUS_DISABLED       3
+#define STATUS_STOPPING       2
+#define STATUS_STOPPED        3
+#define STATUS_DISABLED       4
 
 
 // OrderDisplay-Modes
 #define DM_NONE               0              // - keine Anzeige -
 #define DM_STOPS              1              // Pending,       ClosedByStop
-#define DM_PYRAMID            2              // Pending, Open,               ClosedByFinish (default)
-#define DM_ALL                3              // Pending, Open, ClosedByStop, ClosedByFinish
+#define DM_PYRAMID            2              // Pending, Open,               Closed (default)
+#define DM_ALL                3              // Pending, Open, ClosedByStop, Closed
 
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
@@ -100,7 +98,7 @@ datetime sequenceStartTime;                              // Daten bei Beginn des
 double   sequenceStartPrice;
 double   sequenceStartEquity;
 
-datetime sequenceStopTime;                               // Daten bei Aufruf von StopSequence() oder STATUS_FINISHED (bei externem Stop)
+datetime sequenceStopTime;                               // Daten bei Aufruf von StopSequence() oder STATUS_STOPPED (bei externem Stop)
 double   sequenceStopPrice;
 
 double   entry.limit;
@@ -117,7 +115,7 @@ double   grid.base.value[];                              // Gridbasis zum Zeitpu
 
 int      grid.stops;                                     // Anzahl der bisher getriggerten Stops
 double   grid.stopsPL;                                   // P/L der getriggerten Stops (0 oder negativ)
-double   grid.finishedPL;                                // P/L sonstiger geschlossener Positionen (realizedPL = stopsPL + finishedPL)
+double   grid.closedPL;                                  // P/L sonstiger geschlossener Positionen (realizedPL = stopsPL + closedPL)
 double   grid.floatingPL;                                // P/L offener Positionen
 double   grid.totalPL;                                   // Gesamt-P/L der Sequenz:  realizedPL + floatingPL
 double   grid.openStopValue;                             // Stoploss-Betrag aller offenen Positionen (0 oder positiv)
@@ -318,11 +316,13 @@ int deinit() {
    }
 
    if (IsTesting()) {
-      if (StopSequence())                                               // ruft intern ggf. UpdateStatus() und SaveStatus() auf
+      if (StopSequence())                                               // ruft intern nötigenfalls UpdateStatus() und SaveStatus() auf
          ShowStatus();
    }
-   else if (UpdateStatus()) {
-      SaveStatus();
+
+   if (status != STATUS_STOPPED) {                                      // der Sequenzstatus kann extern geändert worden sein
+      if (UpdateStatus())
+         SaveStatus();
    }
 
    if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE)
@@ -338,7 +338,7 @@ int deinit() {
  * @return int - Fehlerstatus
  */
 int onTick() {
-   if (status==STATUS_FINISHED || status==STATUS_DISABLED)
+   if (status==STATUS_STOPPED || status==STATUS_DISABLED)
       return(last_error);
 
    static int    last.grid.level;
@@ -347,9 +347,9 @@ int onTick() {
    breakevenUpdated = false;
 
 
-   // ****** TEMPORÄR ******
-   //if (sequenceId==11857 && StringICompare(GetComputerName(), "sirius")) {
-   // ****** TEMPORÄR ******
+   /******** TEMPORÄR ********
+   if (sequenceId==11857 && StringICompare(GetComputerName(), "sirius")) {
+   ********* TEMPORÄR *******/
 
 
    // (1) Sequenz wartet entweder auf Startsignal...
@@ -357,11 +357,15 @@ int onTick() {
       if (IsStartSignal())                    StartSequence();
    }
 
-   // (2) ...oder läuft: Daten und Orders aktualisieren
-   else if (UpdateStatus()) {
-      if      (IsProfitTargetReached())       StopSequence();
-      else if (grid.level != last.grid.level) UpdatePendingOrders();
-      else if (NE(grid.base, last.grid.base)) UpdatePendingOrders();
+   else {
+      // (2) ...oder läuft: Daten und Orders aktualisieren
+      UpdateStatus();
+
+      if (!IsLastError()) {
+         if      (IsProfitTargetReached())       StopSequence();
+         else if (grid.level != last.grid.level) UpdatePendingOrders();
+         else if (NE(grid.base, last.grid.base)) UpdatePendingOrders();
+      }
    }
 
    last.grid.level = grid.level;
@@ -382,7 +386,8 @@ int onTick() {
 /**
  * Prüft und synchronisiert die im EA gespeicherten mit den aktuellen Laufzeitdaten.
  *
- * @return bool - Erfolgsstatus
+ * @return bool - TRUE, wenn der Status aufgrund einer Orderänderung abgespeichert werden sollte;
+ *                FALSE bei keinen oder nur geringfügigen Änderungen oder wenn ein Fehler auftrat
  */
 bool UpdateStatus() {
    if (IsLastError() || status==STATUS_DISABLED || status==STATUS_WAITING)
@@ -392,8 +397,9 @@ bool UpdateStatus() {
 
    grid.floatingPL = 0;
 
-   bool wasPending, isClosed;
-   int  orders = ArraySize(orders.ticket);
+   bool     majorChange, stopping, wasPending, isClosed;
+   datetime stopTime;
+   int      orders = ArraySize(orders.ticket);
 
 
    // (1) Tickets prüfen
@@ -407,6 +413,8 @@ bool UpdateStatus() {
          if (wasPending) {
             // beim letzten Aufruf Pending-Order
             if (OrderType() != orders.pendingType[i]) {              // Order wurde ausgeführt
+               majorChange = true;
+
                orders.type        [i] = OrderType();
                orders.openTime    [i] = OrderOpenTime();
                orders.openPrice   [i] = OrderOpenPrice();
@@ -420,8 +428,8 @@ bool UpdateStatus() {
                grid.level         += MathSign(orders.level[i]);
                grid.maxLevelLong   = MathMax(grid.level, grid.maxLevelLong ) +0.1;                       // (int) double
                grid.maxLevelShort  = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();   // (int) double
-               grid.openStopValue += orders.stopValue[i];                                                // realizedPL = stopsPL + finishedPL
-               grid.valueAtRisk    = grid.openStopValue - grid.stopsPL; SS.Grid.ValueAtRisk();           // ohne finishedPL => ist während Laufzeit 0
+               grid.openStopValue += orders.stopValue[i];                                                // realizedPL = stopsPL + closedPL
+               grid.valueAtRisk    = grid.openStopValue - grid.stopsPL; SS.Grid.ValueAtRisk();           // ohne closedPL => ist während Laufzeit 0
                breakevenUpdated    = Grid.UpdateBreakeven();
             }
          }
@@ -436,9 +444,12 @@ bool UpdateStatus() {
 
          if (!isClosed) {                                            // weiterhin offenes Ticket
             grid.floatingPL += OrderSwap() + OrderCommission() + OrderProfit();
+            stopping = true;
          }
          else {                                                      // jetzt geschlossenes Ticket: gestrichene Pending-Order oder geschlossene Position
-            orders.closeTime [i] = OrderCloseTime();                 // Bei Spikes kann eine Pending-Order ausgeführt *und* bereits geschlossen sein.
+            majorChange = true;                                      // Bei Spikes kann eine Pending-Order ausgeführt *und* bereits geschlossen sein.
+
+            orders.closeTime [i] = OrderCloseTime();
             orders.closePrice[i] = OrderClosePrice();
 
             if (orders.type[i] == OP_UNDEFINED) {                    // gestrichene Pending-Order
@@ -454,10 +465,13 @@ bool UpdateStatus() {
                   grid.level      -= MathSign(orders.level[i]);
                   grid.stops++;
                   grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
-                  grid.valueAtRisk = grid.openStopValue - grid.stopsPL; SS.Grid.ValueAtRisk();  // ohne finishedPL => ist während Laufzeit 0 und wird ab Sequenzstop nicht mehr berücksichtigt
+                  grid.valueAtRisk = grid.openStopValue - grid.stopsPL; SS.Grid.ValueAtRisk();  // ohne closedPL => ist während Laufzeit 0 und wird ab Sequenzstop nicht mehr berücksichtigt
                }
                else {
-                  grid.finishedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];  // bei Sequenzstop geschlossen, valueAtRisk wird nicht mehr verändert
+                  grid.closedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];    // bei Sequenzstop geschlossen, valueAtRisk wird nicht mehr verändert
+
+                  if (stopTime == 0) stopTime = orders.closeTime[i];
+                  else               stopTime = MathMin(stopTime, orders.closeTime[i]) +0.1;    // (int) double
                }
                breakevenUpdated = Grid.UpdateBreakeven();
             }
@@ -466,8 +480,25 @@ bool UpdateStatus() {
    }
 
 
-   // (2) P/L-Kennziffern  aktualisieren
-   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL; SS.Grid.TotalPL();
+   // (2) Status aktualisieren
+   if (stopTime > 0) {                                               // mindestens eine Position wurde geschlossen
+      if (stopping) status = STATUS_STOPPING;                        // mindestens ein Ticket ist noch offen
+      else          status = STATUS_STOPPED;                         // alle Tickets sind geschlossen
+
+      if (sequenceStopTime == 0) {
+         sequenceStopTime = stopTime;
+         double price = (Bid + Ask)/2;
+         if      (LT(grid.base, price) || grid.direction==D_LONG ) sequenceStopPrice = Bid;
+         else if (GT(grid.base, price) || grid.direction==D_SHORT) sequenceStopPrice = Ask;
+         else                                                      sequenceStopPrice = price;
+         sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);
+         RedrawStartStop();
+      }
+   }
+
+
+   // (3) P/L-Kennziffern  aktualisieren
+   grid.totalPL = grid.stopsPL + grid.closedPL + grid.floatingPL; SS.Grid.TotalPL();
 
    if (grid.totalPL > grid.maxProfitLoss) {
       grid.maxProfitLoss     = grid.totalPL;
@@ -479,26 +510,28 @@ bool UpdateStatus() {
    }
 
 
-   // (3) Gridbasis prüfen und ggf. trailen
-   if (grid.level == 0) {
-      double last.grid.base=grid.base, price=NormalizeDouble((Bid + Ask)/2, Digits);
+   if (status == STATUS_PROGRESSING) {
+      // (4) Gridbasis prüfen und ggf. trailen
+      if (grid.level == 0) {
+         double last.grid.base = grid.base;
 
-      if      (grid.direction == D_LONG ) grid.base = MathMin(grid.base, price);
-      else if (grid.direction == D_SHORT) grid.base = MathMax(grid.base, price);
+         if      (grid.direction == D_LONG ) grid.base = MathMin(grid.base, NormalizeDouble((Bid + Ask)/2, Digits));
+         else if (grid.direction == D_SHORT) grid.base = MathMax(grid.base, NormalizeDouble((Bid + Ask)/2, Digits));
 
-      if (NE(grid.base, last.grid.base)) {
-         Grid.BaseChange(TimeCurrent(), grid.base);
-         if (grid.maxLevelLong-grid.maxLevelShort > 0)
-            breakevenUpdated = Grid.UpdateBreakeven();            // ab dem ersten ausgeführten Trade wird Breakeven neuberechnet
+         if (NE(grid.base, last.grid.base)) {
+            Grid.BaseChange(TimeCurrent(), grid.base);
+            if (grid.maxLevelLong-grid.maxLevelShort > 0)
+               breakevenUpdated = Grid.UpdateBreakeven();            // ab dem ersten ausgeführten Trade wird Breakeven neuberechnet
+         }
       }
+
+
+      // (5) Jede Minute Breakeven-Indikator neuzeichnen, damit er bei Timeframewechsel immer aktuell ist
+      if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);  // TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
+      else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                   // TODO: langlaufendes UpdateStatus() überspringt evt. BarOpen-Event
    }
 
-
-   // (4) Jede Minute Breakeven-Indikator neuzeichnen, damit er bei Timeframewechsel immer aktuell ist
-   if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);  // TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
-   else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                   // TODO: langlaufendes UpdateStatus() überspringt evt. BarOpen-Event
-
-   return(IsNoError(catch("UpdateStatus(2)")));
+   return(majorChange && IsNoError(catch("UpdateStatus(2)")));
 }
 
 
@@ -622,6 +655,8 @@ bool StartSequence() {
  */
 bool UpdatePendingOrders() {
    if (IsLastError() || status==STATUS_DISABLED)
+      return(false);
+   if (status==STATUS_STOPPING || status==STATUS_STOPPED)
       return(false);
 
    bool nextOrderExists, ordersChanged;
@@ -1017,8 +1052,8 @@ int PendingStopOrder(int type, int level) {
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
-   #define DM_PYRAMID   2     // Pending, Open,               ClosedByFinish
-   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish
+   #define DM_PYRAMID   2     // Pending, Open,               Closed
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, Closed
    */
    if (orderDisplayMode == DM_NONE)
       markerColor = CLR_NONE;
@@ -1051,7 +1086,7 @@ bool IsProfitTargetReached() {
 bool StopSequence() {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
-   if (status==STATUS_FINISHED)
+   if (status==STATUS_STOPPING || status==STATUS_STOPPED)
       return(false);
 
    if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort eine Tradeoperation triggert
@@ -1080,7 +1115,7 @@ bool StopSequence() {
 
 
    // Status vorm Schließen evt. offener Positionen setzen
-   status           = STATUS_FINISHED;
+   status           = STATUS_STOPPED;
    sequenceStopTime = TimeCurrent();
 
    double price = (Bid + Ask)/2;
@@ -1110,8 +1145,9 @@ bool StopSequence() {
 
    // Daten aktualisieren und speichern
    if (ordersChanged) {
-      if (!UpdateStatus()) return(false);
-      if (!SaveStatus()  ) return(false);
+      if (UpdateStatus())
+         if (!SaveStatus())
+            return(false);
    }
 
    RedrawStartStop();
@@ -1165,7 +1201,8 @@ int ShowStatus(bool init=false) {
                                if (StringLen(StartCondition) > 0)
                                   msg = StringConcatenate(msg, " for crossing of ", str.entry.limit);                                                                    break;
       case STATUS_PROGRESSING: msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " progressing at level ", grid.level, "  ", str.grid.maxLevel); break;
-      case STATUS_FINISHED:    msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " stopped at level ", grid.level, "  ", str.grid.maxLevel);     break;
+      case STATUS_STOPPING:    msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " stopping at level ", grid.level, "  ", str.grid.maxLevel);    break;
+      case STATUS_STOPPED:     msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " stopped at level ", grid.level, "  ", str.grid.maxLevel);     break;
       case STATUS_DISABLED:    msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " disabled", str.error);                                        break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
@@ -1402,7 +1439,7 @@ bool Grid.UpdateBreakeven(datetime time=0) {
    double distance1, distance2;
 
    // wenn floatingPL = -realizedPL, dann totalPL = 0.00     => Breakeven-Punkt auf aktueller Seite
-   distance1 = ProfitToDistance(-grid.stopsPL, grid.level);          // ohne finishedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
+   distance1 = ProfitToDistance(-grid.stopsPL, grid.level);          // ohne closedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
 
    if (grid.level == 0) {                                            // realizedPL und valueAtRisk sind identisch, Abstand der Breakeven-Punkte ist gleich
       grid.breakevenLong  = grid.base + distance1*Pips;
@@ -1967,9 +2004,9 @@ bool SaveStatus() {
 
    int      grid.stops;                      // nein: kann aus Orderdaten restauriert werden
    double   grid.stopsPL;                    // nein: kann aus Orderdaten restauriert werden
-   double   grid.finishedPL;                 // nein: kann aus Orderdaten restauriert werden
+   double   grid.closedPL;                   // nein: kann aus Orderdaten restauriert werden
    double   grid.floatingPL;                 // nein: kann aus offenen Positionen restauriert werden
-   double   grid.totalPL;                    // nein: kann aus stopsPL, finishedPL und floatingPL restauriert werden
+   double   grid.totalPL;                    // nein: kann aus stopsPL, closedPL und floatingPL restauriert werden
    double   grid.openStopValue;              // nein: kann aus Orderdaten restauriert werden
    double   grid.valueAtRisk;                // nein: kann aus Orderdaten restauriert werden
 
@@ -2555,8 +2592,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       if (!StringIsDigit(strClosedByStop))                                  return(_false(catch("RestoreStatus.Runtime(77)   illegal closedByStop value \""+ strClosedByStop +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       bool closedByStop = _bool(StrToInteger(strClosedByStop));
       if (type!=OP_UNDEFINED && closeTime!=0 && !closedByStop) {
-         if (sequenceStopTime == 0)                                         return(_false(catch("RestoreStatus.Runtime(78)   sequenceStopTime/finished position mis-match "+ sequenceStopTime +"/#"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-         if (closeTime < sequenceStopTime)                                  return(_false(catch("RestoreStatus.Runtime(79)   sequenceStopTime/finished position close time mis-match '"+ TimeToStr(sequenceStopTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'/#"+ ticket +" '"+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (sequenceStopTime == 0)                                         return(_false(catch("RestoreStatus.Runtime(78)   sequence stop time/closed position mis-match "+ sequenceStopTime +"/#"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (closeTime < sequenceStopTime)                                  return(_false(catch("RestoreStatus.Runtime(79)   sequence stop/position close time mis-match '"+ TimeToStr(sequenceStopTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'/#"+ ticket +" '"+ TimeToStr(closeTime, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       }
 
       // swap
@@ -2674,7 +2711,7 @@ bool SynchronizeStatus() {
    /*int   */ grid.maxLevelShort  = 0;
    /*int   */ grid.stops          = 0;
    /*double*/ grid.stopsPL        = 0;
-   /*double*/ grid.finishedPL     = 0;
+   /*double*/ grid.closedPL       = 0;
    /*double*/ grid.floatingPL     = 0;
    /*double*/ grid.totalPL        = 0;
    /*double*/ grid.openStopValue  = 0;
@@ -2700,7 +2737,7 @@ bool SynchronizeStatus() {
       closedPosition = !pendingOrder && !openPosition;
 
       if (closedPosition) {                                             // geschlossenes Ticket
-         if (ArraySize(openLevels)!=0 && !orders.closedByStop[i]) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both open (#?) and finished (#"+ orders.ticket[i] +") positions found", ERR_RUNTIME_ERROR)));
+         if (ArraySize(openLevels)!=0 && !orders.closedByStop[i]) return(_false(catch("SynchronizeStatus(2)   illegal sequence status, both open (#?) and closed (#"+ orders.ticket[i] +") positions found", ERR_RUNTIME_ERROR)));
       }
 
       if (!pendingOrder) {
@@ -2717,7 +2754,7 @@ bool SynchronizeStatus() {
          else if (orders.closedByStop[i]) {
             Sync.PushBreakevenEvent(events, orders.closeTime[i], EV_POSITION_STOPOUT, gridBase, orders.level[i], profitLoss, NULL, -orders.stopValue[i]);
          }
-         else /*(closedByFinish)*/ {
+         else /*(closed)*/ {
             Sync.PushBreakevenEvent(events, orders.closeTime[i], EV_POSITION_CLOSE, gridBase, orders.level[i], NULL, profitLoss, -orders.stopValue[i]);
          }
       }
@@ -2744,7 +2781,7 @@ bool SynchronizeStatus() {
    }
 
    if (sequenceStopTime != 0) {
-      status = STATUS_FINISHED;
+      status = STATUS_STOPPED;
       if (ArraySize(openLevels) != 0)        return(_false(catch("SynchronizeStatus(6)   illegal sequence status "+ SequenceStatusToStr(status) +", open positions found", ERR_RUNTIME_ERROR)));
    }
 
@@ -2778,11 +2815,11 @@ bool SynchronizeStatus() {
       grid.base           = events[i][2];
       level               = events[i][3] + MathSign(events[i][2])*0.1;  // (int) double
       grid.stopsPL       += events[i][4];
-      grid.finishedPL    += events[i][5];
+      grid.closedPL      += events[i][5];
       grid.openStopValue += events[i][6];
 
-      if (type != EV_POSITION_CLOSE)                                    // realizedPL = stopsPL + finishedPL
-         grid.valueAtRisk = grid.openStopValue - grid.stopsPL;          // ohne finishedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
+      if (type != EV_POSITION_CLOSE)                                    // realizedPL = stopsPL + closedPL
+         grid.valueAtRisk = grid.openStopValue - grid.stopsPL;          // ohne closedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
 
       if      (type == EV_POSITION_OPEN   ) { grid.level = level;                               }
       else if (type == EV_POSITION_STOPOUT) { grid.level = level-MathSign(level); grid.stops++; }
@@ -2792,7 +2829,7 @@ bool SynchronizeStatus() {
    }
 
 
-   grid.totalPL = grid.stopsPL + grid.finishedPL + grid.floatingPL;
+   grid.totalPL = grid.stopsPL + grid.closedPL + grid.floatingPL;
    SS.Grid.Base();
    SS.Grid.MaxLevel();
    SS.Grid.Stops();
@@ -2812,12 +2849,12 @@ bool SynchronizeStatus() {
  * @param  double   gridBase      - Gridbasis des neuen Events
  * @param  int      level         - Gridlevel des neuen Events
  * @param  double   stopsPL       - Änderung des Profit/Loss durch ausgestoppte Positionen
- * @param  double   finishedPL    - Änderung des Profit/Loss durch sonstige geschlossene Positionen
+ * @param  double   closedPL      - Änderung des Profit/Loss durch sonstige geschlossene Positionen
  * @param  double   openStopValue - Änderung des OpenStop-Values durch das neue Event
  *
  * @return bool - Erfolgsstatus
  */
-bool Sync.PushBreakevenEvent(double& events[][], datetime time, int type, double gridBase, int level, double stopsPL, double finishedPL, double openStopValue) {
+bool Sync.PushBreakevenEvent(double& events[][], datetime time, int type, double gridBase, int level, double stopsPL, double closedPL, double openStopValue) {
    int size = ArrayRange(events, 0);
    ArrayResize(events, size+1);
 
@@ -2826,7 +2863,7 @@ bool Sync.PushBreakevenEvent(double& events[][], datetime time, int type, double
    events[size][2] = gridBase;
    events[size][3] = level;
    events[size][4] = stopsPL;
-   events[size][5] = finishedPL;
+   events[size][5] = closedPL;
    events[size][6] = openStopValue;
 
    grid.maxLevelLong  = MathMax(grid.maxLevelLong,  level) +0.1;     // (int) double
@@ -2967,8 +3004,8 @@ bool ChartMarker.OrderSent(int i) {
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
-   #define DM_PYRAMID   2     // Pending, Open,               ClosedByFinish
-   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish
+   #define DM_PYRAMID   2     // Pending, Open,               Closed
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, Closed
    */
    bool pending = orders.pendingType[i] != OP_UNDEFINED;
 
@@ -3004,8 +3041,8 @@ bool ChartMarker.OrderFilled(int i) {
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
-   #define DM_PYRAMID   2     // Pending, Open,               ClosedByFinish
-   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish
+   #define DM_PYRAMID   2     // Pending, Open,               Closed
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, Closed
    */
    string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(orders.level[i], "+."));
    color  markerColor = CLR_NONE;
@@ -3034,8 +3071,8 @@ bool ChartMarker.PositionClosed(int i) {
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
-   #define DM_PYRAMID   2     // Pending, Open,               ClosedByFinish
-   #define DM_ALL       3     // Pending, Open, ClosedByStop, ClosedByFinish
+   #define DM_PYRAMID   2     // Pending, Open,               Closed
+   #define DM_ALL       3     // Pending, Open, ClosedByStop, Closed
    */
    color markerColor = CLR_NONE;
 
@@ -3152,7 +3189,8 @@ string SequenceStatusToStr(int status) {
    switch (status) {
       case STATUS_WAITING    : return("STATUS_WAITING"    );
       case STATUS_PROGRESSING: return("STATUS_PROGRESSING");
-      case STATUS_FINISHED   : return("STATUS_FINISHED"   );
+      case STATUS_STOPPING   : return("STATUS_STOPPING"   );
+      case STATUS_STOPPED    : return("STATUS_STOPPED"    );
       case STATUS_DISABLED   : return("STATUS_DISABLED"   );
    }
    return(_empty(catch("SequenceStatusToStr()  invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
