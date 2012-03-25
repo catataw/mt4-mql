@@ -12,7 +12,7 @@
  *
  *  TODO:
  *  -----
- *  - Bugs: Gridbasis abspeichern (für Client-Side-Limits)
+ *  - Bugs: Gridbasis abspeichern
  *  - Bugs: Execution-Time abspeichern
  *  - Bugs: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bugs: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
