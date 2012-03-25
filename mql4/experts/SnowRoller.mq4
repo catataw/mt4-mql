@@ -12,15 +12,14 @@
  *
  *  TODO:
  *  -----
- *  - Bugs: Execution-Time abspeichern
- *  - Bugs: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
- *  - Bugs: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
- *
+ *  - Execution-Time abspeichern                                           *
  *  - Exit-Rule implementieren: onProfit(value|%), onLimit                 *
  *  - PendingOrders nicht per Tick trailen                                 *
  *  - Pause/Resume implementieren                                          *
  *  - beidseitig unidirektionales Grid implementieren                      *
  *
+ *  - Bugs: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
+ *  - Bugs: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
