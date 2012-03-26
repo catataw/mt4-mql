@@ -947,7 +947,7 @@ bool Grid.PushTicket(int ticket, double gridBase/*=NULL*/, int execution[]) {
             return(_false(catch("Grid.PushTicket(5)   #"+ orders.ticket[size] +" pending openPrice mis-match: calculated = "+ NumberToStr(value, PriceFormat) +" / found = "+ NumberToStr(OrderOpenPrice(), PriceFormat), ERR_RUNTIME_ERROR)));
       }
    orders.pendingPrice     [size] = ifDouble(IsPendingTradeOperation(OrderType()), OrderOpenPrice(),     0);
-   orders.pendingExecution [size] = NormalizeDouble(ifDouble(IsPendingTradeOperation(OrderType()), execution[EXEC_TIME], 0), 1);
+   orders.pendingExecution [size] = NormalizeDouble(ifDouble(IsPendingTradeOperation(OrderType()), execution[EXEC_TIME], 0)/1000.0, 1);
 
    orders.type             [size] = ifInt   (!IsPendingTradeOperation(OrderType()), OrderType(), OP_UNDEFINED);
    orders.openTime         [size] = ifInt   (!IsPendingTradeOperation(OrderType()), OrderOpenTime(),        0);
