@@ -631,8 +631,8 @@ bool StartSequence() {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
 
-   if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort eine Tradeoperation triggert
-      if (!IsTesting()) {                                            // jedoch nicht im Tester
+   if (firstTick) {                                                  // Sicherheitsabfrage beim Aufruf beim ersten Tick
+      if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __SCRIPT__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
@@ -649,7 +649,7 @@ bool StartSequence() {
    status = STATUS_PROGRESSING;
 
    // Stop-Orders in den Markt legen
-   if (!UpdatePendingOrders())
+   if (!UpdatePendingOrders(true))
       return(false);
 
    RedrawStartStop();
@@ -660,9 +660,11 @@ bool StartSequence() {
 /**
  * Setzt dem Gridlevel entsprechend fehlende und löscht unnötige PendingOrders.
  *
+ * @param  bool confirmed - ob Tradeoperationen beim ersten Tick bereits bestätigt worden sind (default: nein)
+ *
  * @return bool - Erfolgsstatus
  */
-bool UpdatePendingOrders() {
+bool UpdatePendingOrders(bool confirmed=false) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
    if (status==STATUS_STOPPING || status==STATUS_STOPPED)
@@ -679,14 +681,14 @@ bool UpdatePendingOrders() {
                nextOrderExists = true;
                continue;
             }
-            if (!Grid.DeleteOrder(orders.ticket[i]))
+            if (!Grid.DeleteOrder(orders.ticket[i], confirmed))
                return(false);
             ordersChanged = true;
          }
       }
       // wenn nötig, neue Stop-Order in den Markt legen
       if (!nextOrderExists) {
-         if (!Grid.AddOrder(OP_BUYSTOP, nextLevel))
+         if (!Grid.AddOrder(OP_BUYSTOP, nextLevel, confirmed))
             return(false);
          ordersChanged = true;
       }
@@ -700,14 +702,14 @@ bool UpdatePendingOrders() {
                nextOrderExists = true;
                continue;
             }
-            if (!Grid.DeleteOrder(orders.ticket[i]))
+            if (!Grid.DeleteOrder(orders.ticket[i], confirmed))
                return(false);
             ordersChanged = true;
          }
       }
       // wenn nötig, neue Stop-Order in den Markt legen
       if (!nextOrderExists) {
-         if (!Grid.AddOrder(OP_SELLSTOP, nextLevel))
+         if (!Grid.AddOrder(OP_SELLSTOP, nextLevel, confirmed))
             return(false);
          ordersChanged = true;
       }
@@ -721,7 +723,7 @@ bool UpdatePendingOrders() {
          if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]==0) {  // if (isPending && !isClosed)
             if (grid.direction!=D_SHORT) /*&&*/ if (orders.level[i]==1) {
                if (NE(orders.pendingPrice[i], grid.base + GridSize*Pips)) {
-                  if (!Grid.ModifyPendingOrder(i))
+                  if (!Grid.ModifyPendingOrder(i, confirmed))
                      return(false);
                   ordersChanged = true;
                }
@@ -730,26 +732,26 @@ bool UpdatePendingOrders() {
             }
             if (grid.direction!=D_LONG) /*&&*/ if (orders.level[i]==-1) {
                if (NE(orders.pendingPrice[i], grid.base - GridSize*Pips)) {
-                  if (!Grid.ModifyPendingOrder(i))
+                  if (!Grid.ModifyPendingOrder(i, confirmed))
                      return(false);
                   ordersChanged = true;
                }
                sellOrderExists = true;
                continue;
             }
-            if (!Grid.DeleteOrder(orders.ticket[i]))
+            if (!Grid.DeleteOrder(orders.ticket[i], confirmed))
                return(false);
             ordersChanged = true;
          }
       }
       // wenn nötig, neue Stop-Orders in den Markt legen
       if (grid.direction!=D_SHORT) /*&&*/ if (!buyOrderExists) {
-         if (!Grid.AddOrder(OP_BUYSTOP, 1))
+         if (!Grid.AddOrder(OP_BUYSTOP, 1, confirmed))
             return(false);
          ordersChanged = true;
       }
       if (grid.direction!=D_LONG) /*&&*/ if (!sellOrderExists) {
-         if (!Grid.AddOrder(OP_SELLSTOP, -1))
+         if (!Grid.AddOrder(OP_SELLSTOP, -1, confirmed))
             return(false);
          ordersChanged = true;
       }
@@ -818,14 +820,25 @@ double Grid.BaseChange(datetime time, double value) {
 /**
  * Legt die angegebene Stop-Order in den Markt und fügt den Grid-Arrays deren Daten hinzu.
  *
- * @param  int type  - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
- * @param  int level - Gridlevel der Order
+ * @param  int   type      - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
+ * @param  int   level     - Gridlevel der Order
+ * @param  bool& confirmed - Zeiger auf Variable, die anzeigt, ob Tradeoperationen beim ersten Tick bereits bestätigt worden sind
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.AddOrder(int type, int level) {
+bool Grid.AddOrder(int type, int level, bool& confirmed) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
+
+   if (firstTick && !confirmed) {                                    // Sicherheitsabfrage beim Aufruf beim ersten Tick
+      if (!IsTesting()) {
+         ForceSound("notify.wav");
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a new "+ OperationTypeDescription(type) +" order now?", __SCRIPT__ +" - Grid.AddOrder()", MB_ICONQUESTION|MB_OKCANCEL);
+         if (button != IDOK)
+            return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("Grid.AddOrder(1)")));
+      }
+   }
+   confirmed = true;
 
    int execution[] = {0,0,0,0};
 
@@ -838,23 +851,34 @@ bool Grid.AddOrder(int type, int level) {
    if (!Grid.PushTicket(ticket, grid.base, execution))
       return(false);
 
-   return(IsNoError(catch("Grid.AddOrder()")));
+   return(IsNoError(catch("Grid.AddOrder(2)")));
 }
 
 
 /**
  * Justiert den Stop-Preis der angegebenen Order beim Broker und aktualisiert die Datenarrays des Grids.
  *
- * @param  int i - Index der Order in den Datenarrays
+ * @param  int   i         - Index der Order in den Datenarrays
+ * @param  bool& confirmed - Zeiger auf Variable, die anzeigt, ob Tradeoperationen beim ersten Tick bereits bestätigt worden sind
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.ModifyPendingOrder(int i) {
+bool Grid.ModifyPendingOrder(int i, bool& confirmed) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
    if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("Grid.ModifyPendingOrder(1)   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
    if (orders.type[i] != OP_UNDEFINED)          return(_false(catch("Grid.ModifyPendingOrder(2)   cannot modify open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
    if (orders.closeTime[i] != 0)                return(_false(catch("Grid.ModifyPendingOrder(3)   cannot modify cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+
+   if (firstTick && !confirmed) {                                    // Sicherheitsabfrage beim Aufruf beim ersten Tick
+      if (!IsTesting()) {
+         ForceSound("notify.wav");
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to modify the "+ OperationTypeDescription(orders.type[i]) +" order #"+ orders.ticket[i] +" now?", __SCRIPT__ +" - Grid.ModifyPendingOrder()", MB_ICONQUESTION|MB_OKCANCEL);
+         if (button != IDOK)
+            return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("Grid.ModifyPendingOrder(4)")));
+      }
+   }
+   confirmed = true;
 
    double stopPrice   = grid.base +          orders.level[i]  * GridSize * Pips;
    double stopLoss    = stopPrice - MathSign(orders.level[i]) * GridSize * Pips;
@@ -862,7 +886,7 @@ bool Grid.ModifyPendingOrder(int i) {
    int    execution[] = {0,0,0,0};
 
    if (EQ(orders.pendingPrice[i], stopPrice)) /*&&*/ if (EQ(orders.stopLoss[i], stopLoss))
-      return(_false(catch("Grid.ModifyPendingOrder(4)   nothing to modify for order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+      return(_false(catch("Grid.ModifyPendingOrder(5)   nothing to modify for order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
    if (!OrderModifyEx(orders.ticket[i], stopPrice, stopLoss, NULL, NULL, markerColor, execution))
       return(_false(SetLastError(stdlib_PeekLastError())));
@@ -873,20 +897,36 @@ bool Grid.ModifyPendingOrder(int i) {
    orders.stopLoss         [i] = stopLoss;
    orders.gridBase         [i] = grid.base;
 
-   return(IsNoError(catch("Grid.ModifyPendingOrder(5)")));
+   return(IsNoError(catch("Grid.ModifyPendingOrder(6)")));
 }
 
 
 /**
  * Streicht die angegebene Order beim Broker und entfernt sie aus den Datenarrays des Grids.
  *
- * @param  int ticket - Orderticket
+ * @param  int   ticket    - Orderticket
+ * @param  bool& confirmed - Zeiger auf Variable, die anzeigt, ob Tradeoperationen beim ersten Tick bereits bestätigt worden sind
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.DeleteOrder(int ticket) {
+bool Grid.DeleteOrder(int ticket, bool& confirmed) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
+
+   // Position in Datenarrays bestimmen
+   int i = SearchIntArray(orders.ticket, ticket);
+   if (i == -1)
+      return(_false(catch("Grid.DeleteOrder(1)   #"+ ticket +" not found in grid arrays", ERR_RUNTIME_ERROR)));
+
+   if (firstTick && !confirmed) {                                    // Sicherheitsabfrage beim Aufruf beim ersten Tick
+      if (!IsTesting()) {
+         ForceSound("notify.wav");
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ ticket +" now?", __SCRIPT__ +" - Grid.DeleteOrder()", MB_ICONQUESTION|MB_OKCANCEL);
+         if (button != IDOK)
+            return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("Grid.DeleteOrder(2)")));
+      }
+   }
+   confirmed = true;
 
    if (!OrderDeleteEx(ticket, CLR_NONE))
       return(_false(SetLastError(stdlib_PeekLastError())));
@@ -894,7 +934,7 @@ bool Grid.DeleteOrder(int ticket) {
    if (!Grid.DropTicket(ticket))
       return(false);
 
-   return(IsNoError(catch("Grid.DeleteOrder()")));
+   return(IsNoError(catch("Grid.DeleteOrder(3)")));
 }
 
 
@@ -1154,8 +1194,8 @@ bool StopSequence() {
    if (status==STATUS_STOPPING || status==STATUS_STOPPED)
       return(false);
 
-   if (firstTick) {                                                  // Sicherheitsabfrage, wenn der erste Tick sofort eine Tradeoperation triggert
-      if (!IsTesting()) {                                            // jedoch nicht im Tester
+   if (firstTick) {                                                  // Sicherheitsabfrage beim Aufruf beim ersten Tick
+      if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", __SCRIPT__ +" - StopSequence()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
@@ -1200,19 +1240,18 @@ bool StopSequence() {
 
       for (i=0; i < size; i++) {
          pos = SearchIntArray(orders.ticket, positions[i]);
-         orders.closeExecution[pos] = NormalizeDouble(execution[i*3+EXEC_TIME    ]/1000.0, 1);                 // in execution[] in Millisekunden
+         orders.closeExecution[pos] = NormalizeDouble(execution[i*3+EXEC_TIME    ]/1000.0, 1);     // in execution[] in Millisekunden
          orders.closeRequotes [pos] =                 execution[i*3+EXEC_REQUOTES];
-         orders.closeSlippage [pos] = NormalizeDouble(execution[i*3+EXEC_SLIPPAGE]/10.0, Digits-PipDigits);    // in execution[] in Subpips
+         orders.closeSlippage [pos] = NormalizeDouble(execution[i*3+EXEC_SLIPPAGE]/10.0, 1);       // in execution[] in Subpips
       }
       ordersChanged = true;
    }
 
 
    // Pending-Orders streichen
+   bool confirmed = true;
    for (i=ArraySize(pendings)-1; i >= 0; i--) {
-      if (!OrderDeleteEx(pendings[i], CLR_NONE))
-         return(_false(SetLastError(stdlib_PeekLastError())));
-      if (!Grid.DropTicket(pendings[i]))
+      if (!Grid.DeleteOrder(pendings[i], confirmed))
          return(false);
       ordersChanged = true;
    }
