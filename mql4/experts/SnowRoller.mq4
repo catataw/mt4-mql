@@ -12,20 +12,22 @@
  *
  *  TODO:
  *  -----
- *  - Exit-Rule implementieren: onProfit(value|%), onLimit     *
- *  - PendingOrders nicht per Tick trailen                     *
- *  - Pause/Resume implementieren                              *
- *  - beidseitig unidirektionales Grid implementieren          *
+ *  - Bug: StopSequence() reparieren                                          *
+ *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird    *
+ *  - Exit-Rule implementieren: onProfit(value|%), onLimit                    *
+ *  - PendingOrders nicht per Tick trailen                                    *
+ *  - Pause/Resume implementieren                                             *
+ *  - beidseitig unidirektionales Grid implementieren                         *
  *
- *  - Bugs: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
- *  - Bugs: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
+ *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
+ *  - Bug: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
+ *  - Logging im Tester reduzieren
+ *  - StartCondition "@time" implementieren
  *  - Upload der Statusdatei implementieren
  *  - STATUS_MONITORING implementieren
- *  - Laufzeit im Tester optimieren (I/O-Operations, Logging, etc.)
- *  - StartCondition "@time" implementieren
  *  - Client-Side-Limits implementieren
  *  - Heartbeat implementieren
  */
@@ -2084,16 +2086,20 @@ bool ValidateConfiguration(int reason=NULL) {
 bool SaveStatus() {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
-   if (IsTestSequence()) /*&&*/ if (!IsTesting())
-      return(false);
    if (sequenceId == 0)
       return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+   if (IsTestSequence()) /*&&*/ if (!IsTesting())
+      return(false);
+
+   static int counter;
+   if (IsTesting()) /*&&*/ if (counter!=0) /*&&*/ if (status!=STATUS_STOPPED)    // im Tester Ausführung nur bei Start und Stop
+      return(true);
+   counter++;
+   //debug("SaveStatus("+ counter +")");
 
    /*
-   Der komplette Laufzeitstatus wird abgespeichert.
-   ------------------------------------------------
-   Speichernotwendigkeit der einzelnen Variablen:
-
+   Speichernotwendigkeit der einzelnen Variablen
+   ---------------------------------------------
    int      status;                          // nein: kann aus Orderdaten und offenen Positionen restauriert werden
    bool     testSequence;                    // nein: wird aus Statusdatei ermittelt
 
