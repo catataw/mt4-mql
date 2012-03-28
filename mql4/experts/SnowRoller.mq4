@@ -503,8 +503,8 @@ bool UpdateStatus() {
    }
 
 
+   // (4) ggf. Gridbasis trailen
    if (status == STATUS_PROGRESSING) {
-      // (4) ggf. Gridbasis trailen
       if (grid.level == 0) {
          double last.grid.base = grid.base;
 
@@ -514,20 +514,19 @@ bool UpdateStatus() {
          if (NE(grid.base, last.grid.base)) {
             Grid.BaseChange(TimeCurrent(), grid.base);
             if (grid.maxLevelLong-grid.maxLevelShort > 0)
-               gridBaseChanged = true;                                     // Signal für Breakeven erst ab dem ersten ausgeführten Trade
+               gridBaseChanged = true;                                     // Signal für Breakeven nicht vorm ersten ausgeführten Trade
          }
       }
 
 
-      // (5) Breakeven neuberechnen und Indikator aktualisieren
+      // (5) ggf. Breakeven neu berechnen und anzeigen...
       if (positionsChanged || gridBaseChanged) {
          Grid.UpdateBreakeven();
       }
-      else {
-         // Breakeven-Indikator mindestens 1 x je Minute aktualisieren, damit er bei Timeframewechsel immer aktuell ist
-         if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);  // TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
-         else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                   // TODO: langlaufendes UpdateStatus() überspringt evt. BarOpen-Event
-      }
+      else if (grid.maxLevelLong-grid.maxLevelShort > 0) {                 // ...oder nur Anzeige aktualisieren (nicht vorm ersten ausgeführten Trade)
+         if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
+         else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);             // TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
+      }                                                                    // TODO: langlaufendes UpdateStatus() überspringt evt. BarOpen-Event
    }
 
    return(!IsLastError() && IsNoError(catch("UpdateStatus(2)")));
@@ -542,9 +541,7 @@ bool UpdateStatus() {
  * @return int - Fehlerstatus
  */
 int onBarOpen(int timeframes[]) {
-   // Breakeven-Indikator neuzeichnen, damit er bei Timeframewechsel immer aktuell ist
-   if (grid.maxLevelLong-grid.maxLevelShort > 0)                     // jedoch nicht vor dem ersten ausgeführten Trade
-      Grid.DrawBreakeven();
+   Grid.DrawBreakeven();
    return(catch("onBarOpen()"));
 }
 
