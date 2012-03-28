@@ -12,15 +12,15 @@
  *
  *  TODO:
  *  -----
- *  - Bug: StopSequence() reparieren                                          *
- *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird    *
- *  - Exit-Rule implementieren: onProfit(value|%), onLimit                    *
- *  - PendingOrders nicht per Tick trailen                                    *
- *  - Pause/Resume implementieren                                             *
- *  - beidseitig unidirektionales Grid implementieren                         *
+ *  - Bug: StopSequence() reparieren                                             *
+ *  - Exit-Rule implementieren: onProfit(value|%), onLimit                       *
+ *  - PendingOrders nicht per Tick trailen                                       *
+ *  - Pause/Resume implementieren                                                *
+ *  - beidseitig unidirektionales Grid implementieren                            *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
+ *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
@@ -67,8 +67,8 @@ extern               string GridDirection.Help              = "Bidirectional* | 
 extern               int    GridSize                        = 20;
 extern               double LotSize                         = 0.1;
 extern               string StartCondition                  = "";
-extern /*transient*/ string OrderDisplayMode                = "Pyramid";
-extern               string OrderDisplayMode.Help           = "None | Stops | Pyramid* | All";
+extern /*transient*/ string OrderDisplayMode                = "None";
+extern               string OrderDisplayMode.Help           = "None* | Stops | Pyramid | All";
 extern /*transient*/ color  Color.Breakeven                 = DodgerBlue;
 extern               string _______________________________ = "======== Sequence to Manage =========";
 extern /*transient*/ string Sequence.ID                     = "";
@@ -178,8 +178,7 @@ color    CLR_SHORT = Red;
 color    CLR_CLOSE = Orange;
 
 int      orderDisplayMode;
-bool     firstTick        = true;
-bool     breakevenUpdated = false;                       // ob Breakeven während des aktuellen Ticks bereits neuberechnet wurde (verhindert Mehrfachberechnungen)
+bool     firstTick = true;
 
 
 /**
@@ -318,13 +317,13 @@ int deinit() {
    }
 
    if (IsTesting()) {
-      if (StopSequence())                                               // ruft intern nötigenfalls UpdateStatus() und SaveStatus() auf
+      if (StopSequence())                                               // ruft intern ggf. UpdateStatus() und SaveStatus() auf
          ShowStatus();
    }
 
-   if (status != STATUS_STOPPED) {                                      // der Sequenzstatus kann extern geändert worden sein
-      if (UpdateStatus())
-         SaveStatus();
+   if (status != STATUS_STOPPED) {                                      // der Status kann sich seit dem letzten Tick extern geändert haben
+      UpdateStatus();
+      SaveStatus();
    }
 
    if (UninitializeReason()==REASON_CHARTCLOSE || UninitializeReason()==REASON_RECOMPILE)
@@ -345,8 +344,6 @@ int onTick() {
 
    static int    last.grid.level;
    static double last.grid.base;
-
-   breakevenUpdated = false;
 
 
    // (1) Sequenz wartet entweder auf Startsignal...
@@ -383,34 +380,31 @@ int onTick() {
 /**
  * Prüft und synchronisiert die im EA gespeicherten mit den aktuellen Laufzeitdaten.
  *
- * @return bool - TRUE, wenn der Status aufgrund einer Orderänderung abgespeichert werden sollte;
- *                FALSE bei keinen oder nur geringfügigen Änderungen oder wenn ein Fehler auftrat
+ * @return bool - Erfolgsstatus
  */
 bool UpdateStatus() {
-   if (IsLastError() || status==STATUS_DISABLED || status==STATUS_WAITING)
-      return(false);
-   if (!IsTesting()) /*&&*/ if (IsTestSequence())
-      return(false);
+   if (IsLastError() || status==STATUS_DISABLED || status==STATUS_WAITING) return(false);
+   if (!IsTesting()) /*&&*/ if (IsTestSequence())                          return(false);
 
    grid.floatingPL = 0;
 
-   bool     majorChange, stopping, wasPending, isClosed;
+   bool     wasPending, isClosed, isStopping, positionsChanged, gridBaseChanged;
    datetime stopTime;
    int      orders = ArraySize(orders.ticket);
 
 
    // (1) Tickets prüfen
    for (int i=0; i < orders; i++) {
-      if (orders.closeTime[i] == 0) {                                // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
+      if (orders.closeTime[i] == 0) {                                      // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
          if (!OrderSelectByTicket(orders.ticket[i], "UpdateStatus(1)"))
             return(false);
 
-         wasPending = orders.type[i] == OP_UNDEFINED;                // ob die Order beim letzten Aufruf "pending" war
+         wasPending = orders.type[i] == OP_UNDEFINED;                      // ob die Order beim letzten Aufruf "pending" war
 
          if (wasPending) {
             // beim letzten Aufruf Pending-Order
-            if (OrderType() != orders.pendingType[i]) {              // Order wurde ausgeführt
-               majorChange = true;
+            if (OrderType() != orders.pendingType[i]) {                    // Order wurde ausgeführt
+               positionsChanged = true;                                    // Signal für Breakeven
 
                orders.type        [i] = OrderType();
                orders.openTime    [i] = OrderOpenTime();
@@ -427,7 +421,6 @@ bool UpdateStatus() {
                grid.maxLevelShort  = MathMin(grid.level, grid.maxLevelShort) -0.1; SS.Grid.MaxLevel();   // (int) double
                grid.openStopValue += orders.stopValue[i];                                                // realizedPL = stopsPL + closedPL
                grid.valueAtRisk    = grid.openStopValue - grid.stopsPL; SS.Grid.ValueAtRisk();           // ohne closedPL => ist während Laufzeit 0
-               breakevenUpdated    = Grid.UpdateBreakeven();
             }
          }
          else {
@@ -437,21 +430,21 @@ bool UpdateStatus() {
             orders.profit    [i] = OrderProfit();
          }
 
-         isClosed = OrderCloseTime() != 0;                           // ob das Ticket jetzt geschlossen ist
+         isClosed = OrderCloseTime() != 0;                                 // ob das Ticket jetzt geschlossen ist
 
-         if (!isClosed) {                                            // weiterhin offenes Ticket
+         if (!isClosed) {                                                  // weiterhin offenes Ticket
             grid.floatingPL += OrderSwap() + OrderCommission() + OrderProfit();
-            stopping = true;
+            isStopping = true;
          }
-         else {                                                      // jetzt geschlossenes Ticket: gestrichene Pending-Order oder geschlossene Position
-            majorChange = true;                                      // Bei Spikes kann eine Pending-Order ausgeführt *und* bereits geschlossen sein.
-
-            orders.closeTime [i] = OrderCloseTime();
+         else {                                                            // jetzt geschlossenes Ticket: gestrichene Pending-Order oder geschlossene Position
+            orders.closeTime [i] = OrderCloseTime();                       // Bei Spikes kann eine Pending-Order ausgeführt *und* bereits geschlossen sein.
             orders.closePrice[i] = OrderClosePrice();
 
-            if (orders.type[i] == OP_UNDEFINED) {                    // gestrichene Pending-Order
+            if (orders.type[i] == OP_UNDEFINED) {                          // gestrichene Pending-Order
             }
-            else {                                                   // geschlossene Position
+            else {                                                         // geschlossene Position
+               positionsChanged = true;                                    // Signal für Breakeven
+
                orders.closedByStop [i] = IsOrderClosedByStop();
                orders.closeSlippage[i] = GetClosePriceSlippage(i);
                ChartMarker.PositionClosed(i);
@@ -470,31 +463,13 @@ bool UpdateStatus() {
                   if (stopTime == 0) stopTime = orders.closeTime[i];
                   else               stopTime = MathMin(stopTime, orders.closeTime[i]) +0.1;    // (int) double
                }
-               breakevenUpdated = Grid.UpdateBreakeven();
             }
          }
       }
    }
 
 
-   // (2) Status aktualisieren
-   if (stopTime > 0) {                                               // mindestens eine Position wurde geschlossen
-      if (stopping) status = STATUS_STOPPING;                        // mindestens ein Ticket ist noch offen
-      else          status = STATUS_STOPPED;                         // alle Tickets sind geschlossen
-
-      if (sequenceStopTime == 0) {
-         sequenceStopTime = stopTime;
-         double price = (Bid + Ask)/2;
-         if      (LT(grid.base, price) || grid.direction==D_LONG ) sequenceStopPrice = Bid;
-         else if (GT(grid.base, price) || grid.direction==D_SHORT) sequenceStopPrice = Ask;
-         else                                                      sequenceStopPrice = price;
-         sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);
-         RedrawStartStop();
-      }
-   }
-
-
-   // (3) P/L-Kennziffern  aktualisieren
+   // (2) P/L-Kennziffern  aktualisieren
    grid.totalPL = grid.stopsPL + grid.closedPL + grid.floatingPL; SS.Grid.TotalPL();
 
    if (GT(grid.totalPL, grid.maxProfitLoss)) {
@@ -507,8 +482,29 @@ bool UpdateStatus() {
    }
 
 
+   // (3) Status aktualisieren
+   if (stopTime > 0) {                                                     // mindestens eine Position wurde geschlossen
+      if (isStopping) status = STATUS_STOPPING;                            // mindestens ein Ticket ist noch offen
+      else            status = STATUS_STOPPED;                             // alle Tickets sind geschlossen
+
+      if (sequenceStopTime == 0) {
+         sequenceStopTime = stopTime;
+         double price = (Bid + Ask)/2;
+         if      (LT(grid.base, price) || grid.direction==D_LONG ) sequenceStopPrice = Bid;
+         else if (GT(grid.base, price) || grid.direction==D_SHORT) sequenceStopPrice = Ask;
+         else                                                      sequenceStopPrice = price;
+         sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);   // TODO: korrekten StopPrice ermitteln (kann bei Hedges weiter zurückliegen)
+      }
+      else {
+         sequenceStopTime = MathMin(sequenceStopTime, stopTime) +0.1;      // (int) double
+         //sequenceStopPrice = ????;                                       // TODO: korrekten StopPrice ermitteln (kann bei Hedges weiter zurückliegen)
+      }
+      RedrawStartStop();
+   }
+
+
    if (status == STATUS_PROGRESSING) {
-      // (4) Gridbasis prüfen und ggf. trailen
+      // (4) ggf. Gridbasis trailen
       if (grid.level == 0) {
          double last.grid.base = grid.base;
 
@@ -518,17 +514,23 @@ bool UpdateStatus() {
          if (NE(grid.base, last.grid.base)) {
             Grid.BaseChange(TimeCurrent(), grid.base);
             if (grid.maxLevelLong-grid.maxLevelShort > 0)
-               breakevenUpdated = Grid.UpdateBreakeven();            // ab dem ersten ausgeführten Trade wird Breakeven neuberechnet
+               gridBaseChanged = true;                                     // Signal für Breakeven erst ab dem ersten ausgeführten Trade
          }
       }
 
 
-      // (5) Jede Minute Breakeven-Indikator neuzeichnen, damit er bei Timeframewechsel immer aktuell ist
-      if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);  // TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
-      else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                   // TODO: langlaufendes UpdateStatus() überspringt evt. BarOpen-Event
+      // (5) Breakeven neuberechnen und Indikator aktualisieren
+      if (positionsChanged || gridBaseChanged) {
+         Grid.UpdateBreakeven();
+      }
+      else {
+         // Breakeven-Indikator mindestens 1 x je Minute aktualisieren, damit er bei Timeframewechsel immer aktuell ist
+         if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);  // TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
+         else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                   // TODO: langlaufendes UpdateStatus() überspringt evt. BarOpen-Event
+      }
    }
 
-   return(majorChange && !IsLastError() && IsNoError(catch("UpdateStatus(2)")));
+   return(!IsLastError() && IsNoError(catch("UpdateStatus(2)")));
 }
 
 
@@ -541,10 +543,8 @@ bool UpdateStatus() {
  */
 int onBarOpen(int timeframes[]) {
    // Breakeven-Indikator neuzeichnen, damit er bei Timeframewechsel immer aktuell ist
-   if (!breakevenUpdated) {
-      if (grid.maxLevelLong-grid.maxLevelShort > 0)                  // jedoch nicht vor dem ersten ausgeführten Trade
-         Grid.DrawBreakeven();
-   }
+   if (grid.maxLevelLong-grid.maxLevelShort > 0)                     // jedoch nicht vor dem ersten ausgeführten Trade
+      Grid.DrawBreakeven();
    return(catch("onBarOpen()"));
 }
 
@@ -667,10 +667,8 @@ bool StartSequence() {
  * @return bool - Erfolgsstatus
  */
 bool UpdatePendingOrders(bool confirmed=false) {
-   if (IsLastError() || status==STATUS_DISABLED)
-      return(false);
-   if (status==STATUS_STOPPING || status==STATUS_STOPPED)
-      return(false);
+   if (IsLastError() || status==STATUS_DISABLED)          return(false);
+   if (status==STATUS_STOPPING || status==STATUS_STOPPED) return(false);
 
    bool nextOrderExists, ordersChanged;
    int  nextLevel = grid.level + MathSign(grid.level);
@@ -866,11 +864,10 @@ bool Grid.AddOrder(int type, int level, bool& confirmed) {
  * @return bool - Erfolgsstatus
  */
 bool Grid.ModifyPendingOrder(int i, bool& confirmed) {
-   if (IsLastError() || status==STATUS_DISABLED)
-      return(false);
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("Grid.ModifyPendingOrder(1)   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
-   if (orders.type[i] != OP_UNDEFINED)          return(_false(catch("Grid.ModifyPendingOrder(2)   cannot modify open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
-   if (orders.closeTime[i] != 0)                return(_false(catch("Grid.ModifyPendingOrder(3)   cannot modify cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+   if (IsLastError() || status==STATUS_DISABLED) return( false);
+   if (i < 0 || ArraySize(orders.ticket) < i+1)  return(_false(catch("Grid.ModifyPendingOrder(1)   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (orders.type[i] != OP_UNDEFINED)           return(_false(catch("Grid.ModifyPendingOrder(2)   cannot modify open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+   if (orders.closeTime[i] != 0)                 return(_false(catch("Grid.ModifyPendingOrder(3)   cannot modify cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
    if (firstTick && !confirmed) {                                    // Sicherheitsabfrage beim Aufruf beim ersten Tick
       if (!IsTesting()) {
@@ -1191,10 +1188,8 @@ bool IsProfitTargetReached() {
  * @return bool - Erfolgsstatus: ob die Sequenz erfolgreich gestoppt wurde (FALSE, wenn sie bereits gestoppt war)
  */
 bool StopSequence() {
-   if (IsLastError() || status==STATUS_DISABLED)
-      return(false);
-   if (status==STATUS_STOPPING || status==STATUS_STOPPED)
-      return(false);
+   if (IsLastError() || status==STATUS_DISABLED)          return(false);
+   if (status==STATUS_STOPPING || status==STATUS_STOPPED) return(false);
 
    if (firstTick) {                                                  // Sicherheitsabfrage beim Aufruf beim ersten Tick
       if (!IsTesting()) {
@@ -1231,6 +1226,7 @@ bool StopSequence() {
    else                                                      sequenceStopPrice = price;
    sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);
 
+
    bool ordersChanged;
 
 
@@ -1261,14 +1257,11 @@ bool StopSequence() {
 
    // Daten aktualisieren und speichern
    if (ordersChanged) {
-      UpdateStatus();
-      if (IsLastError())
-         return(false);
-      if (!SaveStatus())
-         return(false);
+      if (!UpdateStatus()) return(false);
+      if (  !SaveStatus()) return(false);
    }
-
    RedrawStartStop();
+
    return(IsNoError(catch("StopSequence(3)")));
 }
 
@@ -2051,10 +2044,10 @@ bool ValidateConfiguration(int reason=NULL) {
 
    // OrderDisplayMode
    string modes[] = {"None", "Stops", "Pyramid", "All"};
-   switch (StringGetChar(StringToUpper(StringTrim(OrderDisplayMode) +"P"), 0)) {
-      case 'N': orderDisplayMode = DM_NONE;    break;
+   switch (StringGetChar(StringToUpper(StringTrim(OrderDisplayMode) +"N"), 0)) {
+      case 'N': orderDisplayMode = DM_NONE;    break;                   // default
       case 'S': orderDisplayMode = DM_STOPS;   break;
-      case 'P': orderDisplayMode = DM_PYRAMID; break;                   // default für leeren Input-Parameter
+      case 'P': orderDisplayMode = DM_PYRAMID; break;
       case 'A': orderDisplayMode = DM_ALL;     break;
       default:                              return(_false(catch("ValidateConfiguration(14)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
@@ -2084,12 +2077,9 @@ bool ValidateConfiguration(int reason=NULL) {
  * @return bool - Erfolgsstatus
  */
 bool SaveStatus() {
-   if (IsLastError() || status==STATUS_DISABLED)
-      return(false);
-   if (sequenceId == 0)
-      return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
-   if (IsTestSequence()) /*&&*/ if (!IsTesting())
-      return(false);
+   if (IsLastError() || status==STATUS_DISABLED)  return( false);
+   if (IsTestSequence()) /*&&*/ if (!IsTesting()) return( false);
+   if (sequenceId == 0)                           return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
    static int counter;
    if (IsTesting()) /*&&*/ if (counter!=0) /*&&*/ if (status!=STATUS_STOPPED)    // im Tester Ausführung nur bei Start und Stop
@@ -2266,10 +2256,8 @@ bool SaveStatus() {
  * @return int - Fehlerstatus
  */
 int UploadStatus(string company, int account, string symbol, string filename) {
-   if (IsLastError() || status==STATUS_DISABLED)
-      return(last_error);
-   if (IsTestSequence())                                             // skipping for Tests
-      return(NO_ERROR);
+   if (IsLastError() || status==STATUS_DISABLED) return(last_error);
+   if (IsTestSequence())                         return(NO_ERROR);
 
    // TODO: Existenz von wget.exe prüfen
 
@@ -2303,10 +2291,8 @@ int UploadStatus(string company, int account, string symbol, string filename) {
  * @return bool - ob der Status erfolgreich restauriert wurde
  */
 bool RestoreStatus() {
-   if (IsLastError() || status==STATUS_DISABLED)
-      return(false);
-   if (sequenceId == 0)
-      return(_false(catch("RestoreStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+   if (IsLastError() || status==STATUS_DISABLED) return( false);
+   if (sequenceId == 0)                          return(_false(catch("RestoreStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
    // (1) bei nicht existierender lokaler Konfiguration die Datei vom Server laden
    string filesDir = TerminalPath() + "\\experts\\files\\";                                              // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
@@ -2950,15 +2936,12 @@ bool SynchronizeStatus() {
    }
 
 
-   // (3) Start-/Stop-Marker zeichnen
+   // (3) Start-/Stop-Marker und Orders zeichnen
    RedrawStartStop();
-
-
-   // (4) Orders visualisieren
    RedrawOrders();
 
 
-   // (5) Breakeven-Verlauf restaurieren und Indikator neu zeichnen
+   // (4) Breakeven-Verlauf restaurieren und Indikator neu zeichnen
    int time, lastTime, minute, lastMinute, type, level;
    size = ArrayRange(events, 0);
    if (size > 0)
@@ -3175,10 +3158,8 @@ void RedrawOrders() {
  * @return bool - Erfolgsstatus
  */
 bool ChartMarker.OrderSent(int i) {
-   if (IsTesting()) /*&&*/ if (!IsVisualMode())
-      return(true);
-   if (i < 0 || ArraySize(orders.ticket) < i+1)
-      return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
+   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
@@ -3212,10 +3193,8 @@ bool ChartMarker.OrderSent(int i) {
  * @return bool - Erfolgsstatus
  */
 bool ChartMarker.OrderFilled(int i) {
-   if (IsTesting()) /*&&*/ if (!IsVisualMode())
-      return(true);
-   if (i < 0 || ArraySize(orders.ticket) < i+1)
-      return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
+   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
@@ -3242,10 +3221,8 @@ bool ChartMarker.OrderFilled(int i) {
  * @return bool - Erfolgsstatus
  */
 bool ChartMarker.PositionClosed(int i) {
-   if (IsTesting()) /*&&*/ if (!IsVisualMode())
-      return(true);
-   if (i < 0 || ArraySize(orders.ticket) < i+1)
-      return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
+   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
