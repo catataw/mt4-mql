@@ -513,20 +513,21 @@ bool UpdateStatus() {
 
          if (NE(grid.base, last.grid.base)) {
             Grid.BaseChange(TimeCurrent(), grid.base);
-            if (grid.maxLevelLong-grid.maxLevelShort > 0)
-               gridBaseChanged = true;                                     // Signal für Breakeven nicht vorm ersten ausgeführten Trade
+            gridBaseChanged = true;                                        // Signal für Breakeven
          }
       }
 
 
-      // (5) ggf. Breakeven neu berechnen und anzeigen...
-      if (positionsChanged || gridBaseChanged) {
-         Grid.UpdateBreakeven();
+      // (5) ggf. Breakeven neu berechnen und anzeigen
+      if (grid.maxLevelLong-grid.maxLevelShort > 0) {                      // nicht vorm ersten ausgeführten Trade
+         if (positionsChanged || gridBaseChanged) {
+            Grid.UpdateBreakeven();
+         }
+         else {                                                            // mind. 1 x je Minute Anzeige aktualisieren
+            if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
+            else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);          // TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
+         }                                                                 // TODO: langlaufendes UpdateStatus() überspringt evt. BarOpen-Event
       }
-      else if (grid.maxLevelLong-grid.maxLevelShort > 0) {                 // ...oder nur Anzeige aktualisieren (nicht vorm ersten ausgeführten Trade)
-         if      (!IsTesting())   HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);
-         else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);             // TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
-      }                                                                    // TODO: langlaufendes UpdateStatus() überspringt evt. BarOpen-Event
    }
 
    return(!IsLastError() && IsNoError(catch("UpdateStatus(2)")));
