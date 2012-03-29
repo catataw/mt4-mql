@@ -1265,8 +1265,20 @@ bool StopSequence() {
       double   orders.commission       [];   // ja: kann UpdateStatus() wegen OrderMultiClose() nur schwierig ermitteln
       double   orders.profit           [];   // ja: kann UpdateStatus() wegen OrderMultiClose() nur schwierig ermitteln
 
-      double   grid.openStopValue;           // ja
+      int      grid.stops;                   // nein
+      double   grid.stopsPL;                 // nein
       double   grid.closedPL;                // ja
+      double   grid.floatingPL;              // ja: nach Stop => 0
+      double   grid.totalPL;                 // ja
+      double   grid.openStopValue;           // ja: nach Stop => 0
+      double   grid.valueAtRisk;             // nein (wird nicht mehr verändert)
+
+      double   grid.maxProfitLoss;           // ja: kann sich durch Stop u.U. ein letztes Mal ändern
+      datetime grid.maxProfitLossTime;       // ja: kann sich durch Stop u.U. ein letztes Mal ändern
+      double   grid.maxDrawdown;             // ja: kann sich durch Stop u.U. ein letztes Mal ändern
+      datetime grid.maxDrawdownTime;         // ja: kann sich durch Stop u.U. ein letztes Mal ändern
+      double   grid.breakevenLong;           // nein (wird nicht mehr verändert)
+      double   grid.breakevenShort;          // nein (wird nicht mehr verändert)
       */
 
       for (i=0; i < size; i++) {
@@ -2851,7 +2863,7 @@ bool SynchronizeStatus() {
       }
    }
 
-   double execution[9] = {NULL};
+   double execution[10] = {NULL};
 
    // (1.2) alle erreichbaren Online-Tickets mit Datenarrays synchronisieren
    for (i=OrdersTotal()-1; i >= 0; i--) {                               // offene Tickets
