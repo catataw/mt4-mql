@@ -1161,7 +1161,7 @@ int PendingStopOrder(int type, int level, double& execution[]) {
 
    int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, NULL, stopLoss, NULL, comment, magicNumber, NULL, markerColor, execution);
    if (ticket == -1)
-      SetLastError(stdlib_PeekLastError());
+      return(_int(-1, SetLastError(stdlib_PeekLastError())));
 
    if (IsError(catch("PendingStopOrder(4)")))
       return(-1);
@@ -1268,17 +1268,17 @@ bool StopSequence() {
       int      grid.stops;                   // nein
       double   grid.stopsPL;                 // nein
       double   grid.closedPL;                // ja
-      double   grid.floatingPL;              // ja: nach Stop => 0
+      double   grid.floatingPL;              // ja: nach Stop 0.00
       double   grid.totalPL;                 // ja
-      double   grid.openStopValue;           // ja: nach Stop => 0
-      double   grid.valueAtRisk;             // nein (wird nicht mehr verändert)
+      double   grid.openStopValue;           // ja: nach Stop 0.00
+      double   grid.valueAtRisk;             // nein: wird nicht mehr verändert
 
-      double   grid.maxProfitLoss;           // ja: kann sich durch Stop u.U. ein letztes Mal ändern
-      datetime grid.maxProfitLossTime;       // ja: kann sich durch Stop u.U. ein letztes Mal ändern
-      double   grid.maxDrawdown;             // ja: kann sich durch Stop u.U. ein letztes Mal ändern
-      datetime grid.maxDrawdownTime;         // ja: kann sich durch Stop u.U. ein letztes Mal ändern
-      double   grid.breakevenLong;           // nein (wird nicht mehr verändert)
-      double   grid.breakevenShort;          // nein (wird nicht mehr verändert)
+      double   grid.maxProfitLoss;           // ja: kann sich beim Stop ggf. ein letztes Mal ändern
+      datetime grid.maxProfitLossTime;       // ja: kann sich beim Stop ggf. ein letztes Mal ändern
+      double   grid.maxDrawdown;             // ja: kann sich beim Stop ggf. ein letztes Mal ändern
+      datetime grid.maxDrawdownTime;         // ja: kann sich beim Stop ggf. ein letztes Mal ändern
+      double   grid.breakevenLong;           // nein: wird nicht mehr verändert
+      double   grid.breakevenShort;          // nein: wird nicht mehr verändert
       */
 
       for (i=0; i < size; i++) {
