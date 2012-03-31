@@ -921,7 +921,8 @@ bool Grid.DeleteOrder(int ticket, bool& confirmed) {
    }
    confirmed = true;
 
-   if (!OrderDeleteEx(ticket, CLR_NONE))
+   double execution[] = {NULL};
+   if (!OrderDeleteEx(ticket, CLR_NONE, execution))
       return(_false(SetLastError(stdlib_PeekLastError())));
 
    if (!Grid.DropTicket(ticket))
