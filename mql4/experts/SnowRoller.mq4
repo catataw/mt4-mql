@@ -884,7 +884,7 @@ bool Grid.ModifyPendingOrder(int i, bool& confirmed) {
    if (!OrderModifyEx(orders.ticket[i], stopPrice, stopLoss, NULL, NULL, markerColor, execution))
       return(_false(SetLastError(stdlib_PeekLastError())));
 
-   orders.pendingModifyTime[i] = TimeCurrent();
+   orders.pendingModifyTime[i] = execution[EXEC_TIME    ];
    orders.pendingPrice     [i] = stopPrice;
    orders.pendingExecution [i] = execution[EXEC_DURATION];
    orders.stopLoss         [i] = stopLoss;
