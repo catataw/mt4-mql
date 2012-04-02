@@ -48,7 +48,7 @@ int onTick() {
       sessionStart = GetServerSessionStartTime(time);
    }
    datetime sessionEnd = sessionStart + 1*DAY;
-   //debug("onTick()   sessionStart = '"+ TimeToStr(sessionStart, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'   sessionEnd = '"+ TimeToStr(sessionEnd, TIME_DATE|TIME_MINUTES|TIME_SECONDS) +"'");
+   //debug("onTick()   sessionStart = '"+ TimeToStr(sessionStart, TIME_FULL) +"'   sessionEnd = '"+ TimeToStr(sessionEnd, TIME_FULL) +"'");
 
    // (2) geeignete Periode wählen
    int period = Period();
