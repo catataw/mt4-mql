@@ -15,6 +15,7 @@
  *  - Bug: StopSequence() reparieren                                             *
  *  - Exit-Rule implementieren: onProfit(value|%), onLimit                       *
  *  - PendingOrders nicht per Tick trailen                                       *
+ *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)            *
  *  - Pause/Resume implementieren                                                *
  *  - beidseitig unidirektionales Grid implementieren                            *
  *
