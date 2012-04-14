@@ -2274,11 +2274,11 @@ bool SaveStatus() {
 
    int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);
    if (hFile < 0)
-      return(_false(catch("SaveStatus(2)->FileOpen(\""+ filename +"\")")));
+      return(_false(catch("SaveStatus(2) ->FileOpen(\""+ filename +"\")")));
 
    for (i=0; i < ArraySize(lines); i++) {
       if (FileWrite(hFile, lines[i]) < 0) {
-         catch("SaveStatus(3)->FileWrite(line #"+ (i+1) +")");
+         catch("SaveStatus(3) ->FileWrite(line #"+ (i+1) +")");
          FileClose(hFile);
          return(false);
       }

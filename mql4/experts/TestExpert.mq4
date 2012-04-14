@@ -52,7 +52,7 @@ int onTick() {
          ticket1 = OrderSendEx(Symbol(), OP_BUY, 0.7, NULL, NULL, NULL, NULL, "order comment", 111, NULL, Blue, execution);
          if (ticket1 == -1)
             return(SetLastError(stdlib_PeekLastError()));
-         //debug("onTick(1)->open        #"+ ticket1 +" = "+ ExecutionToStr(execution));
+         //debug("onTick(1) ->open        #"+ ticket1 +" = "+ ExecutionToStr(execution));
 
          if (!OrderSelectByTicket(ticket1, "onTick(1)"))
             return(last_error);
@@ -68,7 +68,7 @@ int onTick() {
          ticket2 = OrderSendEx(Symbol(), OP_SELL, 1, NULL, NULL, NULL, NULL, "order comment", 222, NULL, Red, execution);
          if (ticket2 == -1)
             return(SetLastError(stdlib_PeekLastError()));
-         //debug("onTick(2)->open        #"+ ticket2 +" = "+ ExecutionToStr(execution));
+         //debug("onTick(2) ->open        #"+ ticket2 +" = "+ ExecutionToStr(execution));
 
          if (!OrderSelectByTicket(ticket2, "onTick(2)"))
             return(last_error);
@@ -89,13 +89,13 @@ int onTick() {
 
          /*
          if (!OrderCloseBy(ticket2, ticket1, Orange))
-            return(catch("onTick(5)->OrderCloseBy()", ifInt(IsError(SetLastError(GetLastError())), last_error, ERR_RUNTIME_ERROR)));
+            return(catch("onTick(5) ->OrderCloseBy()", ifInt(IsError(SetLastError(GetLastError())), last_error, ERR_RUNTIME_ERROR)));
          */
 
          execution[EXEC_FLAGS] = NULL;
          if (!OrderCloseByEx(ticket1, ticket2, Orange, execution))
             return(SetLastError(stdlib_PeekLastError()));
-         debug("onTick(3)->closeBy     #"+ ticket1 +" = "+ ExecutionToStr(execution));
+         debug("onTick(3) ->closeBy     #"+ ticket1 +" = "+ ExecutionToStr(execution));
 
 
          if (!OrderSelectByTicket(ticket1, "onTick(6)"))
@@ -134,7 +134,7 @@ int onTick() {
          ticket = OrderSendEx(Symbol(), OP_BUY, 1.0, NULL, NULL, NULL, NULL, "order comment", 666, NULL, Blue, execution);
          if (ticket == -1)
             return(SetLastError(stdlib_PeekLastError()));
-         debug("onTick(1)->open        #"+ ticket +" = "+ ExecutionToStr(execution));
+         debug("onTick(1) ->open        #"+ ticket +" = "+ ExecutionToStr(execution));
 
          if (!OrderSelectByTicket(ticket, "onTick(1)"))
             return(last_error);
@@ -153,7 +153,7 @@ int onTick() {
          execution[EXEC_FLAGS] = NULL;
          if (!OrderCloseEx(ticket, 0.7, NULL, NULL, Orange, execution))
             return(SetLastError(stdlib_PeekLastError()));
-         debug("onTick(2)->close       #"+ ticket +" = "+ ExecutionToStr(execution));
+         debug("onTick(2) ->close       #"+ ticket +" = "+ ExecutionToStr(execution));
 
          if (!OrderSelectByTicket(OrderTicket(), "onTick(3)"))
             return(last_error);
@@ -180,7 +180,7 @@ int onTick() {
             execution[EXEC_FLAGS] = NULL;
             if (!OrderCloseEx(partial, NULL, NULL, NULL, Orange, execution))
                return(SetLastError(stdlib_PeekLastError()));
-            debug("onTick(3)->close       #"+ partial +" = "+ ExecutionToStr(execution));
+            debug("onTick(3) ->close       #"+ partial +" = "+ ExecutionToStr(execution));
 
             if (!OrderSelectByTicket(partial, "onTick(6)"))
                return(last_error);
