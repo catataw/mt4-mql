@@ -2268,9 +2268,9 @@ bool SaveStatus() {
 
 
    // (2) Daten in lokaler Datei speichern/überschreiben
-   string filename;
-   if (!IsTestSequence() || IsTesting()) filename = "presets\\SR."+         sequenceId +".set"; // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
-   else                                  filename = "presets\\tester\\SR."+ sequenceId +".set"; //  ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+   string filename = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
+   if (IsTesting() || !IsTestSequence()) filename = "presets\\"+         filename;     // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
+   else                                  filename = "presets\\tester\\"+ filename;     //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
 
    int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);
    if (hFile < 0)
@@ -2345,8 +2345,10 @@ bool RestoreStatus() {
    if (sequenceId == 0)                          return(_false(catch("RestoreStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
    // (1) bei nicht existierender lokaler Konfiguration die Datei vom Server laden
-   string filesDir = TerminalPath() + "\\experts\\files\\";                                              // "experts\files\presets" ist ein Softlink auf "experts\presets", dadurch
-   string fileName = "presets\\"+ ifString(IsTestSequence(), "tester\\", "") +"SR."+ sequenceId +".set"; // ist das Presets-Verzeichnis für die MQL-Dateifunktionen erreichbar.
+   string filesDir = TerminalPath() +"\\experts\\files\\";
+   string fileName = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
+   if (!IsTestSequence()) fileName = "presets\\"+         fileName;           // "experts\files\presets" ist Symlink auf "experts\presets", dadurch
+   else                   fileName = "presets\\tester\\"+ fileName;           // ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
 
    if (!IsFile(filesDir + fileName)) {
       if (IsTestSequence())
