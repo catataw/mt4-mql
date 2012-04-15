@@ -13,13 +13,14 @@
  *  TODO:
  *  -----
  *  - Bug: StopSequence() reparieren                                             *
- *  - Symbol in Dateinamen der Statusdatei aufnehmen                             *
- *  - Start-/StopTime im Klartext speichern                                      *
  *  - Exit-Rule implementieren: onProfit(value|%), onLimit                       *
- *  - PendingOrders nicht per Tick trailen                                       *
- *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)            *
  *  - Pause/Resume implementieren                                                *
  *  - beidseitig unidirektionales Grid implementieren                            *
+ *  - PendingOrders nicht per Tick trailen                                       *
+ *  - StartCondition "@time" implementieren                                      *
+ *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)            *
+ *  - AccountCompany in Dateinamen der Statusdatei aufnehmen                     *
+ *  - Start-/StopTime im Klartext speichern                                      *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
@@ -28,11 +29,11 @@
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
  *  - Logging im Tester reduzieren
- *  - StartCondition "@time" implementieren
  *  - Upload der Statusdatei implementieren
  *  - STATUS_MONITORING implementieren
  *  - Client-Side-Limits implementieren
  *  - Heartbeat implementieren
+ *  - double execution[] als Struct implementieren
  */
 #include <stdlib.mqh>
 #include <win32api.mqh>
