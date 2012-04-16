@@ -2632,10 +2632,10 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
 
       // ticket
       string strTicket = StringTrim(values[0]);
-      if (!StringIsDigit(strTicket))                                            return(_false(catch("RestoreStatus.Runtime(38)   illegal order ticket \""+ strTicket +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (!StringIsDigit(strTicket))                                            return(_false(catch("RestoreStatus.Runtime(38)   illegal ticket \""+ strTicket +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       int ticket = StrToInteger(strTicket);
-      if (ticket == 0)                                                          return(_false(catch("RestoreStatus.Runtime(39)   illegal order ticket #"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      if (IntInArray(orders.ticket, ticket))                                    return(_false(catch("RestoreStatus.Runtime(40)   duplicate order ticket #"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (ticket == 0)                                                          return(_false(catch("RestoreStatus.Runtime(39)   illegal ticket #"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (IntInArray(orders.ticket, ticket))                                    return(_false(catch("RestoreStatus.Runtime(40)   duplicate ticket #"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // level
       string strLevel = StringTrim(values[1]);
