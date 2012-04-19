@@ -12,15 +12,15 @@
  *
  *  TODO:
  *  -----
- *  - Bug: StopSequence() reparieren                                             *
- *  - Exit-Rule implementieren: onProfit(value|%), onLimit                       *
- *  - Pause/Resume implementieren                                                *
- *  - beidseitig unidirektionales Grid implementieren                            *
- *  - PendingOrders nicht per Tick trailen                                       *
- *  - StartCondition "@time" implementieren                                      *
- *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)            *
- *  - AccountCompany in Dateinamen der Statusdatei aufnehmen                     *
- *  - Start-/StopTime im Klartext speichern                                      *
+ *  - Bug: StopSequence() reparieren                                                      *
+ *  - Exit-Rule implementieren: onProfit(value|%), onLimit                                *
+ *  - Pause/Resume implementieren                                                         *
+ *  - beidseitig unidirektionales Grid implementieren                                     *
+ *  - PendingOrders nicht per Tick trailen                                                *
+ *  - StartCondition "@time" implementieren                                               *
+ *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                     *
+ *  - AccountCompany in Dateinamen der Statusdatei aufnehmen                              *
+ *  - Start-/StopTime im Klartext speichern                                               *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
