@@ -5,6 +5,9 @@
 #include <win32api.mqh>
 
 
+datetime startTime;
+
+
 /**
  * Initialisierung
  *
@@ -38,13 +41,17 @@ int onTick() {
    if (IsError(prev_error))
       return(prev_error);
 
+   if (startTime == 0)
+      startTime = TimeCurrent();
+
+
    static bool done1, done2, done3, done4;
    static int ticket, ticket1, ticket2, partial;
 
    double execution[] = {NULL};
 
    if (!done1) {
-      if (TimeCurrent() > D'2012.03.19 11:00:00') {
+      if (TimeCurrent() > startTime + 1*HOUR) {
          done1 = true;
          debug("onTick(1)          Ticket         Type   Lots   Symbol              OpenTime   OpenPrice             CloseTime   ClosePrice   Swap   Commission   Profit   MagicNumber   Comment");
 
@@ -61,7 +68,7 @@ int onTick() {
    }
 
    if (!done2) {
-      if (TimeCurrent() > D'2012.03.19 14:00:00') {
+      if (TimeCurrent() > startTime + 2*HOURS) {
          done2 = true;
 
          execution[EXEC_FLAGS] = NULL;
@@ -77,7 +84,7 @@ int onTick() {
    }
 
    if (!done3) {
-      if (TimeCurrent() > D'2012.03.20 20:00:00') {
+      if (TimeCurrent() > startTime + 3*HOURS) {
          done3 = true;
 
          if (!OrderSelectByTicket(ticket1, "onTick(3)"))
@@ -87,108 +94,22 @@ int onTick() {
             return(last_error);
          debug("onTick(3)       "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
 
-         /*
-         if (!OrderCloseBy(ticket2, ticket1, Orange))
-            return(catch("onTick(5) ->OrderCloseBy()", ifInt(IsError(SetLastError(GetLastError())), last_error, ERR_RUNTIME_ERROR)));
-         */
+         int tickets[];
+         ArrayPushInt(tickets, ticket1);
+         ArrayPushInt(tickets, ticket2);
 
          execution[EXEC_FLAGS] = NULL;
-         if (!OrderCloseByEx(ticket1, ticket2, Orange, execution))
+         if (!OrderMultiClose(tickets, NULL, Orange, execution))
             return(SetLastError(stdlib_PeekLastError()));
-         debug("onTick(3) ->closeBy     #"+ ticket1 +" = "+ ExecutionToStr(execution));
+         debug("onTick(3) ->OrderMultiClose = "+ ExecutionToStr(execution));
 
-
-         if (!OrderSelectByTicket(ticket1, "onTick(6)"))
-            return(last_error);
-         debug("onTick(3)       "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-         if (!OrderSelectByTicket(ticket2, "onTick(7)"))
-            return(last_error);
-         debug("onTick(3)       "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-
-         int orders = OrdersTotal();
+         int orders = OrdersHistoryTotal();
          for (int i=0; i < orders; i++) {
-            OrderSelect(i, SELECT_BY_POS);
-            if (OrderTicket() == ticket1) continue;
-            if (OrderTicket() == ticket2) continue;
+            OrderSelect(i, SELECT_BY_POS, MODE_HISTORY);
             debug("onTick(3)       "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-
-            execution[EXEC_FLAGS] = NULL;
-            if (!OrderCloseEx(OrderTicket(), NULL, NULL, NULL, Orange, execution))
-               return(SetLastError(stdlib_PeekLastError()));
-            if (!OrderSelectByTicket(OrderTicket(), "onTick(6)"))
-               return(last_error);
-            debug("onTick(3)       "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-            break;
          }
       }
    }
-
-
-   /*
-   if (!done1) {
-      if (TimeCurrent() > D'2012.03.19 11:00:00') {
-         done1 = true;
-         debug("onTick(1)          Ticket         Type   Lots   Symbol              OpenTime   OpenPrice             CloseTime   ClosePrice   Swap   Commission   Profit   MagicNumber   Comment");
-
-         execution[EXEC_FLAGS] = NULL;
-         ticket = OrderSendEx(Symbol(), OP_BUY, 1.0, NULL, NULL, NULL, NULL, "order comment", 666, NULL, Blue, execution);
-         if (ticket == -1)
-            return(SetLastError(stdlib_PeekLastError()));
-         debug("onTick(1) ->open        #"+ ticket +" = "+ ExecutionToStr(execution));
-
-         if (!OrderSelectByTicket(ticket, "onTick(1)"))
-            return(last_error);
-         debug("onTick(1) open  "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-      }
-   }
-
-   if (!done2) {
-      if (TimeCurrent() > D'2012.03.20 12:00:00') {
-         done2 = true;
-
-         if (!OrderSelectByTicket(ticket, "onTick(2)"))
-            return(last_error);
-         debug("onTick(2)       "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-
-         execution[EXEC_FLAGS] = NULL;
-         if (!OrderCloseEx(ticket, 0.7, NULL, NULL, Orange, execution))
-            return(SetLastError(stdlib_PeekLastError()));
-         debug("onTick(2) ->close       #"+ ticket +" = "+ ExecutionToStr(execution));
-
-         if (!OrderSelectByTicket(OrderTicket(), "onTick(3)"))
-            return(last_error);
-         debug("onTick(2) close "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-
-         partial = execution[EXEC_TICKET] +0.1;
-         if (partial != 0) {
-            if (!OrderSelectByTicket(partial, "onTick(4)"))
-               return(last_error);
-            debug("onTick(2)       "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-         }
-      }
-   }
-
-   if (!done3) {
-      if (TimeCurrent() > D'2012.03.21 14:00:00') {
-         done3 = true;
-
-         if (partial != 0) {
-            if (!OrderSelectByTicket(partial, "onTick(5)"))
-               return(last_error);
-            debug("onTick(3)       "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-
-            execution[EXEC_FLAGS] = NULL;
-            if (!OrderCloseEx(partial, NULL, NULL, NULL, Orange, execution))
-               return(SetLastError(stdlib_PeekLastError()));
-            debug("onTick(3) ->close       #"+ partial +" = "+ ExecutionToStr(execution));
-
-            if (!OrderSelectByTicket(partial, "onTick(6)"))
-               return(last_error);
-            debug("onTick(3) close "+ StringLeftPad("#"+ OrderTicket(), 9, " ") +"   "+ StringLeftPad(OperationTypeDescription(OrderType()), 10, " ") +"   "+ DoubleToStr(OrderLots(), 2) +"   "+ OrderSymbol() +"   "+ TimeToStr(OrderOpenTime(), TIME_FULL) +" "+ StringLeftPad(NumberToStr(OrderOpenPrice(), PriceFormat), 11, " ") +"   "+ ifString(OrderCloseTime()==0, "                   ", TimeToStr(OrderCloseTime(), TIME_FULL)) +" "+ StringLeftPad(NumberToStr(OrderClosePrice(), PriceFormat), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderSwap(), 2), 6, " ") +" "+ StringLeftPad(DoubleToStr(OrderCommission(), 2), 12, " ") +" "+ StringLeftPad(DoubleToStr(OrderProfit(), 2), 8, " ") +"   "+ StringLeftPad(OrderMagicNumber(), 11, " ") +"   "+ OrderComment());
-         }
-      }
-   }
-   */
 
    return(catch("onTick(7)"));
 }
