@@ -17,11 +17,20 @@ int init() {
    if (IsError(onInit(T_EXPERT)))
       return(last_error);
 
+
+   string moduleName;
+   int hModule = GetModuleHandleA(moduleName);
+   debug("init()   hModule = 0x"+ IntToHexStr(hModule));
+
+   int hCursor = LoadCursor(NULL, IDC_ARROW);
+   debug("init()   hCursor = 0x"+ IntToHexStr(hCursor));
+
+
+
+   return(catch("init()"));
    debug("init()   terminalVersion = "+ GetTerminalVersion());
    debug("init()   terminalBuild = "+ GetTerminalBuild());
    debug("init()   hWndTester = "+ GetTesterWindow());
-
-   return(catch("init()"));
 }
 
 
@@ -37,17 +46,17 @@ int GetTesterWindow() {
 
    /*
    - Das Fenster kann im Terminalfensters oder in einem Toplevel-Window angedockt sein, das Handle dieses Child-Windows ist in beiden Fällen dasselbe.
-   - Die Afx-Klassennamen sind dynamisch und müssen zur Laufzeit ermittelt werden (Fenstertexte dürfen wegen Internationalisierung nicht benutzt werden).
+   - Die Afx-Klassennamen sind dynamisch und müssen zur Laufzeit ermittelt werden (Fenstertexte werden wegen evt. Internationalisierung nicht benutzt).
    - Klassennamen:
-     +------------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
-     | Build      | Terminal                     | Tester Toplevel-Wrapper                   | Tester                                    | AfxControlBar    |
-     +------------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
-     | 225-402    | MetaQuotes::MetaTrader::4.00 | Afx:400000:8:10013:0:0                    | Afx:400000:b:10013:0:0                    | AfxControlBar42  |
-     +------------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
-     | 406-409    | MetaQuotes::MetaTrader::4.00 | Afx:400000:8:10013:0:0                    | Afx:400000:b:10013:0:0                    | AfxControlBar42s |
-     +------------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
-     | 416-419    | MetaQuotes::MetaTrader::4.00 | Afx:00400000:8:00010013:00000000:00000000 | Afx:00400000:b:00010013:00000000:00000000 | AfxControlBar90s |
-     +------------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
+     +---------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
+     | Build   | Terminal                     | Tester Toplevel-Wrapper                   | Tester                                    | AfxControlBar    |
+     +---------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
+     | 225-402 | MetaQuotes::MetaTrader::4.00 | Afx:400000:8:10013:0:0                    | Afx:400000:b:10013:0:0                    | AfxControlBar42  |
+     +---------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
+     | 406-409 | MetaQuotes::MetaTrader::4.00 | Afx:400000:8:10013:0:0                    | Afx:400000:b:10013:0:0                    | AfxControlBar42s |
+     +---------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
+     | 416-419 | MetaQuotes::MetaTrader::4.00 | Afx:00400000:8:00010013:00000000:00000000 | Afx:00400000:b:00010013:00000000:00000000 | AfxControlBar90s |
+     +---------+------------------------------+-------------------------------------------+-------------------------------------------+------------------+
 
    - Afx-Namensschema (@see http://msdn.microsoft.com/en-us/library/btbxa0ad%28v=vs.90%29.aspx)
 
@@ -67,7 +76,7 @@ int GetTesterWindow() {
    */
 
    int    build = GetTerminalBuild();
-   string class, classTopLevel, classTester, classAfxControlBar;
+   string class, classTerminal, classTopLevel, classTester, classAfxControlBar;
 
    // (1) Zunächst alle Child-Windows des Terminalfensters der Klasse "AfxControlBar42" durchlaufen und prüfen, ob Tester dort angedockt ist.
    int hChild = GetTopWindow(GetTerminalWindow());
