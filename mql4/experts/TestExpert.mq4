@@ -17,7 +17,14 @@ int init() {
    if (IsError(onInit(T_EXPERT)))
       return(last_error);
 
-   debug("init()   hWndTester = 0x"+ IntToHexStr(GetTesterWindow()));
+   /*
+   rt.instanceStartTime=1332721346
+   rt.sequenceStartTime=1332721353
+   rt.grid.maxProfitLossTime=1332768133
+   rt.grid.maxDrawdownTime=1332761054
+   */
+
+   //debug("init()   1333335098 = '"+ TimeToStr(1333335098, TIME_FULL) +"'");
 
    return(catch("init()"));
 }

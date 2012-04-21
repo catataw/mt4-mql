@@ -2136,7 +2136,6 @@ bool SaveStatus() {
    if (IsTesting()) /*&&*/ if (counter!=0) /*&&*/ if (status!=STATUS_STOPPED)    // im Tester Ausführung nur bei Start und Stop
       return(true);
    counter++;
-   //debug("SaveStatus("+ counter +")");
 
    /*
    Speichernotwendigkeit der einzelnen Variablen
@@ -2218,18 +2217,18 @@ bool SaveStatus() {
    ArrayPushString(lines, /*string*/   "StartCondition="+                                       StartCondition);
 
    // (1.2) Laufzeit-Variablen
-   ArrayPushString(lines, /*datetime*/ "rt.instanceStartTime="     +             instanceStartTime         );
+   ArrayPushString(lines, /*datetime*/ "rt.instanceStartTime="     +             instanceStartTime      + ifString(instanceStartTime     ==0, "", " ("+ TimeToStr(instanceStartTime     , TIME_FULL) +")"));
    ArrayPushString(lines, /*double*/   "rt.instanceStartPrice="    + NumberToStr(instanceStartPrice, ".+") );
    ArrayPushString(lines, /*double*/   "rt.instanceStartEquity="   + NumberToStr(instanceStartEquity, ".+"));
-   ArrayPushString(lines, /*datetime*/ "rt.sequenceStartTime="     +             sequenceStartTime         );
+   ArrayPushString(lines, /*datetime*/ "rt.sequenceStartTime="     +             sequenceStartTime      + ifString(sequenceStartTime     ==0, "", " ("+ TimeToStr(sequenceStartTime     , TIME_FULL) +")"));
    ArrayPushString(lines, /*double*/   "rt.sequenceStartPrice="    + NumberToStr(sequenceStartPrice, ".+") );
    ArrayPushString(lines, /*double*/   "rt.sequenceStartEquity="   + NumberToStr(sequenceStartEquity, ".+"));
-   ArrayPushString(lines, /*datetime*/ "rt.sequenceStopTime="      +             sequenceStopTime          );
+   ArrayPushString(lines, /*datetime*/ "rt.sequenceStopTime="      +             sequenceStopTime       + ifString(sequenceStopTime      ==0, "", " ("+ TimeToStr(sequenceStopTime      , TIME_FULL) +")"));
    ArrayPushString(lines, /*double*/   "rt.sequenceStopPrice="     + NumberToStr(sequenceStopPrice, ".+")  );
    ArrayPushString(lines, /*double*/   "rt.grid.maxProfitLoss="    + NumberToStr(grid.maxProfitLoss, ".+") );
-   ArrayPushString(lines, /*datetime*/ "rt.grid.maxProfitLossTime="+             grid.maxProfitLossTime    );
+   ArrayPushString(lines, /*datetime*/ "rt.grid.maxProfitLossTime="+             grid.maxProfitLossTime + ifString(grid.maxProfitLossTime==0, "", " ("+ TimeToStr(grid.maxProfitLossTime, TIME_FULL) +")"));
    ArrayPushString(lines, /*double*/   "rt.grid.maxDrawdown="      + NumberToStr(grid.maxDrawdown, ".+")   );
-   ArrayPushString(lines, /*datetime*/ "rt.grid.maxDrawdownTime="  +             grid.maxDrawdownTime      );
+   ArrayPushString(lines, /*datetime*/ "rt.grid.maxDrawdownTime="  +             grid.maxDrawdownTime   + ifString(grid.maxDrawdownTime  ==0, "", " ("+ TimeToStr(grid.maxDrawdownTime  , TIME_FULL) +")"));
       string values[]; ArrayResize(values, 0);
       int size = ArraySize(grid.base.time);
       for (int i=0; i < size; i++) {
@@ -2269,13 +2268,14 @@ bool SaveStatus() {
 
 
    // (2) Daten in lokaler Datei speichern/überschreiben
-   string filename = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
-   if (IsTesting() || !IsTestSequence()) filename = "presets\\"+         filename;     // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
-   else                                  filename = "presets\\tester\\"+ filename;     //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
+   string fileName = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
+   if      (IsTesting())      fileName = "presets\\"+ fileName;                                          // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
+   else if (IsTestSequence()) fileName = "presets\\tester\\"+ fileName;                                  //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
+   else                       fileName = "presets\\"+ ShortAccountCompany() +"\\"+ fileName;
 
-   int hFile = FileOpen(filename, FILE_CSV|FILE_WRITE);
+   int hFile = FileOpen(fileName, FILE_CSV|FILE_WRITE);
    if (hFile < 0)
-      return(_false(catch("SaveStatus(2) ->FileOpen(\""+ filename +"\")")));
+      return(_false(catch("SaveStatus(2) ->FileOpen(\""+ fileName +"\")")));
 
    for (i=0; i < ArraySize(lines); i++) {
       if (FileWrite(hFile, lines[i]) < 0) {
@@ -2288,7 +2288,7 @@ bool SaveStatus() {
 
 
    // (3) Datei auf Server laden
-   int error = UploadStatus(ShortAccountCompany(), AccountNumber(), StdSymbol(), filename);
+   int error = UploadStatus(ShortAccountCompany(), AccountNumber(), StdSymbol(), fileName);
    if (IsError(error))
       return(false);
 
@@ -2348,8 +2348,10 @@ bool RestoreStatus() {
    // (1) bei nicht existierender lokaler Konfiguration die Datei vom Server laden
    string filesDir = TerminalPath() +"\\experts\\files\\";
    string fileName = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
-   if (!IsTestSequence()) fileName = "presets\\"+         fileName;           // "experts\files\presets" ist Symlink auf "experts\presets", dadurch
-   else                   fileName = "presets\\tester\\"+ fileName;           // ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
+
+   if      (IsTesting())      fileName = "presets\\"+ fileName;                                 // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
+   else if (IsTestSequence()) fileName = "presets\\tester\\"+ fileName;                         //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
+   else                       fileName = "presets\\"+ ShortAccountCompany() +"\\"+ fileName;
 
    if (!IsFile(filesDir + fileName)) {
       if (IsTestSequence())
@@ -2523,6 +2525,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
    string values[], data[];
 
    if (key == "rt.instanceStartTime") {
+      Explode(value, "(", values, 2);
+      value = StringTrim(values[0]);
       if (!StringIsDigit(value))                                                return(_false(catch("RestoreStatus.Runtime(1)   illegal instanceStartTime \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       instanceStartTime = StrToInteger(value);
       if (instanceStartTime == 0)                                               return(_false(catch("RestoreStatus.Runtime(2)   illegal instanceStartTime "+ instanceStartTime +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -2541,6 +2545,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       ArrayDropString(keys, key);
    }
    else if (key == "rt.sequenceStartTime") {
+      Explode(value, "(", values, 2);
+      value = StringTrim(values[0]);
       if (!StringIsDigit(value))                                                return(_false(catch("RestoreStatus.Runtime(7)   illegal sequenceStartTime \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       sequenceStartTime = StrToInteger(value);
       if (instanceStartTime > sequenceStartTime)                                return(_false(catch("RestoreStatus.Runtime(8)   instance/sequence start time mis-match '"+ TimeToStr(instanceStartTime, TIME_FULL) +"'/'"+ TimeToStr(sequenceStartTime, TIME_FULL) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -2563,6 +2569,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       ArrayDropString(keys, key);
    }
    else if (key == "rt.sequenceStopTime") {
+      Explode(value, "(", values, 2);
+      value = StringTrim(values[0]);
       if (!StringIsDigit(value))                                                return(_false(catch("RestoreStatus.Runtime(17)   illegal sequenceStopTime \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       sequenceStopTime = StrToInteger(value);
       if (sequenceStopTime!=0 && sequenceStartTime >= sequenceStopTime)         return(_false(catch("RestoreStatus.Runtime(18)   sequence start/stop time mis-match '"+ TimeToStr(sequenceStartTime, TIME_FULL) +"'/'"+ TimeToStr(sequenceStopTime, TIME_FULL) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -2582,6 +2590,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       ArrayDropString(keys, key);
    }
    else if (key == "rt.grid.maxProfitLossTime") {
+      Explode(value, "(", values, 2);
+      value = StringTrim(values[0]);
       if (!StringIsDigit(value))                                                return(_false(catch("RestoreStatus.Runtime(24)   illegal grid.maxProfitLossTime \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       grid.maxProfitLossTime = StrToInteger(value);
       if (grid.maxProfitLossTime==0 && NE(grid.maxProfitLoss, 0))               return(_false(catch("RestoreStatus.Runtime(25)   grid.maxProfitLoss/grid.maxProfitLossTime mis-match "+ NumberToStr(grid.maxProfitLoss, ".2") +"/'"+ TimeToStr(grid.maxProfitLossTime, TIME_FULL) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -2593,6 +2603,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       ArrayDropString(keys, key);
    }
    else if (key == "rt.grid.maxDrawdownTime") {
+      Explode(value, "(", values, 2);
+      value = StringTrim(values[0]);
       if (!StringIsDigit(value))                                                return(_false(catch("RestoreStatus.Runtime(27)   illegal grid.maxDrawdownTime \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       grid.maxDrawdownTime = StrToInteger(value);
       if (grid.maxDrawdownTime==0 && NE(grid.maxDrawdown, 0))                   return(_false(catch("RestoreStatus.Runtime(28)   grid.maxDrawdown/grid.maxDrawdownTime mis-match "+ NumberToStr(grid.maxDrawdown, ".2") +"/'"+ TimeToStr(grid.maxDrawdownTime, TIME_FULL) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -2821,29 +2833,29 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       // Daten speichern
       orders.ticket           [i] = ticket;
       orders.level            [i] = level;
-      orders.gridBase         [i] = gridBase;
+      orders.gridBase         [i] = NormalizeDouble(gridBase, Digits);
       orders.pendingType      [i] = pendingType;
       orders.pendingTime      [i] = pendingTime;
       orders.pendingModifyTime[i] = pendingModifyTime;
-      orders.pendingPrice     [i] = pendingPrice;
+      orders.pendingPrice     [i] = NormalizeDouble(pendingPrice, Digits);
       orders.pendingExecution [i] = pendingExecution;
       orders.type             [i] = type;
       orders.openTime         [i] = openTime;
-      orders.openPrice        [i] = openPrice;
+      orders.openPrice        [i] = NormalizeDouble(openPrice, Digits);
       orders.openSlippage     [i] = openSlippage;
       orders.openExecution    [i] = openExecution;
       orders.openRequotes     [i] = openRequotes;
       orders.closeTime        [i] = closeTime;
-      orders.closePrice       [i] = closePrice;
-      orders.stopLoss         [i] = stopLoss;
-      orders.stopValue        [i] = stopValue;
+      orders.closePrice       [i] = NormalizeDouble(closePrice, Digits);
+      orders.stopLoss         [i] = NormalizeDouble(stopLoss, Digits);
+      orders.stopValue        [i] = NormalizeDouble(stopValue, 2);
       orders.closedByStop     [i] = closedByStop;
       orders.closeSlippage    [i] = closeSlippage;
       orders.closeExecution   [i] = closeExecution;
       orders.closeRequotes    [i] = closeRequotes;
-      orders.swap             [i] = swap;
-      orders.commission       [i] = commission;
-      orders.profit           [i] = profit;
+      orders.swap             [i] = NormalizeDouble(swap,       2);
+      orders.commission       [i] = NormalizeDouble(commission, 2);
+      orders.profit           [i] = NormalizeDouble(profit,     2);
 
       //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  gridBase="+ NumberToStr(gridBase, PriceFormat) +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime='"+ TimeToStr(pendingTime, TIME_FULL) +"'  pendingModifyTime='"+ TimeToStr(pendingModifyTime, TIME_FULL) +"'  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  pendingExecution="+ DoubleToStr(pendingExecution, 1) +"  type="+ OperationTypeToStr(type) +"  openTime='"+ TimeToStr(openTime, TIME_FULL) +"'  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  openSlippage="+ DoubleToStr(openSlippage, Digits-PipDigits) +"  openExecution="+ DoubleToStr(openExecution, 1) +"  openRequotes="+ openRequotes +"  closeTime='"+ TimeToStr(closeTime, TIME_FULL) +"'  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  stopValue="+ DoubleToStr(stopValue, 2) +"  closedByStop="+ BoolToStr(closedByStop) +"  closeSlippage="+ DoubleToStr(closeSlippage, Digits-PipDigits) +"  closeExecution="+ DoubleToStr(closeExecution, 1) +"  closeRequotes="+ closeRequotes +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
    }
@@ -2864,6 +2876,9 @@ bool SynchronizeStatus() {
    for (int i=ArraySize(orders.ticket)-1; i >= 0; i--) {
       // Daten synchronisieren, wenn das Ticket beim letzten Mal noch offen war
       if (orders.closeTime[i] == 0) {
+
+         //debug("SynchronizeStatus()   #"+ orders.ticket[i] +" ist offen");
+
          if (!OrderSelectByTicket(orders.ticket[i], "SynchronizeStatus(1)   cannot synchronize "+ OperationTypeDescription(ifInt(orders.type[i]==OP_UNDEFINED, orders.pendingType[i], orders.type[i])) +" order, #"+ orders.ticket[i] +" not found"))
             return(false);
          if (!Grid.ReplaceTicket(orders.ticket[i]))
