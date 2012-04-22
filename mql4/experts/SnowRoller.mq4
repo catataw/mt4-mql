@@ -951,7 +951,6 @@ bool Grid.PushTicket(int ticket, double gridBase/*=NULL*/, double execution[]) {
    bool isClosed  = OrderCloseTime() != 0;
    bool isOpen    = !isPending && !isClosed;
 
-   debug("Grid.PushTicket()   #"+ OrderTicket() +"   isPending="+ isPending +"   isOpen="+ isOpen +"   isClosed="+ isClosed);
 
    // Arrays vergrößern und Daten speichern
    int i = ArraySize(orders.ticket);
