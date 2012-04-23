@@ -2,14 +2,6 @@
  * SnowRoller - Pyramiding Anti-Martingale Strategy
  *
  *
- * Trade-Modes:
- * ------------
- * - Bidirectional: ein bi-direktionales Grid mit fester Gridbasis in Long- und Short-Richtung
- * - Long:          ein uni-direktionales Grid mit Trailing-Gridbasis in Long-Richtung
- * - Short:         ein uni-direktionales Grid mit Trailing-Gridbasis in Short-Richtung
- * - Long + Short:  zwei sich überlagernde uni-direktionale Grids mit Trailing-Gridbasis in Long- und Short-Richtung
- *
- *
  *  TODO:
  *  -----
  *  - Bug: StopSequence() reparieren                                                      *
@@ -19,13 +11,10 @@
  *  - PendingOrders nicht per Tick trailen                                                *
  *  - StartCondition "@time" implementieren                                               *
  *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                     *
- *  - AccountCompany in Dateinamen der Statusdatei aufnehmen                              *
- *  - Start-/StopTime im Klartext speichern                                               *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
- *  - Umschaltung der OrderDisplay-Modes per Hotkey implementieren
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
  *  - Logging im Tester reduzieren
