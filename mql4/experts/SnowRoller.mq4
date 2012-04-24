@@ -1279,17 +1279,17 @@ bool StopSequence() {
       }
    }
 
-   int pendings[], positions[], orders=ArraySize(orders.ticket);
-   ArrayResize(pendings,  0);
-   ArrayResize(positions, 0);
+   int pendingOrders[], openPositions[], sizeOfTickets=ArraySize(orders.ticket);
+   ArrayResize(pendingOrders, 0);
+   ArrayResize(openPositions, 0);
 
-   for (int i=0; i < orders; i++) {
+   for (int i=0; i < sizeOfTickets; i++) {
       if (orders.closeTime[i] == 0) {                                   // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
          if (!OrderSelectByTicket(orders.ticket[i], "StopSequence(2)"))
             return(false);
          if (OrderCloseTime() == 0) {                                   // offene Tickets je nach Typ zwischenspeichern
-            if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendings,  orders.ticket[i]);
-            else                                      ArrayPushInt(positions, orders.ticket[i]);
+            if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendingOrders, orders.ticket[i]);
+            else                                      ArrayPushInt(openPositions, orders.ticket[i]);
          }
       }
    }
@@ -1308,10 +1308,11 @@ bool StopSequence() {
 
    // offene Positionen schließen
    bool ordersChanged;
-   int  size = ArraySize(positions);
-   if (size > 0) {
+   int  sizeOfOpenPositions = ArraySize(openPositions);
+
+   if (sizeOfOpenPositions > 0) {
       double execution[] = {NULL};
-      if (!OrderMultiClose(positions, NULL, CLR_CLOSE, execution))
+      if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, execution))
          return(_false(SetLastError(stdlib_PeekLastError())));
 
       /*
@@ -1363,11 +1364,11 @@ bool StopSequence() {
       double   grid.breakevenShort;          // nein: wird nicht mehr verändert
       */
 
-      for (i=0; i < size; i++) {
-         int pos = SearchIntArray(orders.ticket, positions[i]);
-         orders.closeExecution[pos] = execution[i*8+EXEC_DURATION];
-         orders.closeRequotes [pos] = execution[i*8+EXEC_REQUOTES] +0.1;   // (int)(double) int
-         orders.closeSlippage [pos] = execution[i*8+EXEC_SLIPPAGE];
+      for (i=0; i < sizeOfOpenPositions; i++) {
+         int pos = SearchIntArray(orders.ticket, openPositions[i]);
+         orders.closeExecution[pos] = execution[9*i+EXEC_DURATION];
+         orders.closeRequotes [pos] = execution[9*i+EXEC_REQUOTES] +0.1;   // (int)(double) int
+         orders.closeSlippage [pos] = execution[9*i+EXEC_SLIPPAGE];
       }
       ordersChanged = true;
    }
@@ -1375,8 +1376,10 @@ bool StopSequence() {
 
    // Pending-Orders streichen
    bool confirmed = true;
-   for (i=ArraySize(pendings)-1; i >= 0; i--) {
-      if (!Grid.DeleteOrder(pendings[i], confirmed))
+   int  sizeOfPendingOrders = ArraySize(pendingOrders);
+
+   for (i=0; i < sizeOfPendingOrders; i++) {
+      if (!Grid.DeleteOrder(pendingOrders[i], confirmed))
          return(false);
       ordersChanged = true;
    }
@@ -1394,7 +1397,7 @@ bool StopSequence() {
 
 
 /**
- * Generiert einen Wert für OrderMagicNumber() für den angegebenen Gridlevel.
+ * Generiert für den angegebenen Gridlevel eine MagicNumber.
  *
  * @param  int level - Gridlevel
  *
