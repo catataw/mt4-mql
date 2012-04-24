@@ -16,12 +16,6 @@ datetime startTime;
 int init() {
    if (IsError(onInit(T_EXPERT)))
       return(last_error);
-
-   /*
-   rt.instanceStartTime=1332721346
-   debug("init()   1332721346 = '"+ TimeToStr(1332721346, TIME_FULL) +"'");
-   */
-
    return(catch("init()"));
 }
 
@@ -46,6 +40,10 @@ int deinit() {
 int onTick() {
    if (IsError(prev_error))
       return(prev_error);
+
+   int build = GetTerminalBuild();
+   debug("onTick()   build = "+ build);
+   return(NO_ERROR);
 
 
    if (startTime == 0)

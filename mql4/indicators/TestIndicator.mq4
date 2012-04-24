@@ -34,6 +34,11 @@ int deinit() {
  */
 int onTick() {
 
+   int build = GetTerminalBuild();
+   debug("onTick()   build = "+ build);
+   return(NO_ERROR);
+
+
    // Ermittlung von OHLC der letzten Session
    // ---------------------------------------
 
