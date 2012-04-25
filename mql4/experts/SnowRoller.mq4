@@ -2082,13 +2082,17 @@ int ClearTransientStatus() {
  */
 bool GetRunningSequences(int ids[]) {
    ArrayResize(ids, 0);
+   int id;
 
    for (int i=OrdersTotal()-1; i >= 0; i--) {
       if (!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))               // FALSE: während des Auslesens wurde in einem anderen Thread eine offene Order entfernt
          continue;
 
-      if (IsMyOrder())
-         ArrayPushInt(ids, OrderMagicNumber() & 0x3FFF);             // 14 Bits (Bits 1-14) => sequenceId
+      if (IsMyOrder()) {
+         id = OrderMagicNumber() & 0x3FFF;                           // 14 Bits (Bits 1-14) => sequenceId
+         if (!IntInArray(ids, id))
+            ArrayPushInt(ids, id);
+      }
    }
    return(ArraySize(ids) != 0);
 }
