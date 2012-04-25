@@ -10,7 +10,6 @@
  *  - PendingOrders nicht per Tick trailen                                                      *
  *  - StartCondition "@time" implementieren                                                     *
  *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                           *
- *  - Account mis-match bei Anzeige von Tests abfangen                                          *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops
@@ -170,7 +169,8 @@ color    CLR_SHORT = Red;
 color    CLR_CLOSE = Orange;
 
 int      orderDisplayMode;
-bool     firstTick = true;
+bool     firstTick          = true;
+bool     firstTickConfirmed = false;
 
 
 /**
@@ -197,41 +197,64 @@ int init() {
 
       // (1.1) Recompilation ----------------------------------------------------------------------------------------------------------------------------------
       if (UninitializeReason() == REASON_RECOMPILE) {
-         if (RestoreTransientStatus())                               // falls transienter Status vorhanden (im Chart), restaurieren
+         if (RestoreTransientStatus()) {                             // falls transienter Status vorhanden (im Chart), restaurieren
             if (RestoreStatus())                                     // ohne transienten Status weiter in (1.2)
                if (ValidateConfiguration())
                   SynchronizeStatus();
+         }
       }
 
       // (1.2) Neustart ---------------------------------------------------------------------------------------------------------------------------------------
-      if (sequenceId == 0) {
+      if (sequenceId==0 && !IsLastError()) {
          if (IsInputSequenceId()) {                                  // Zuerst eine ausdrücklich angegebene Sequenz restaurieren...
-            if (RestoreInputSequenceId())
+            if (RestoreInputSequenceId()) {
                if (RestoreStatus())
                   if (ValidateConfiguration())
                      SynchronizeStatus();
+            }
          }
          else if (RestoreTransientStatus()) {                        // ...dann ggf. transiente (im Chart gespeicherte) Sequenz restaurieren...
             if (RestoreStatus())
                if (ValidateConfiguration())
                   SynchronizeStatus();
          }
-         else if (RestoreRunningSequenceId()) {                      // ...dann ID aus laufender Sequenz restaurieren.
-            if (RestoreStatus())
-               if (ValidateConfiguration())
-                  SynchronizeStatus();
+         if (sequenceId==0 && !IsLastError()) {
+            int ids[], button;
+            if (GetRunningSequences(ids)) {                          // ...dann laufende Sequenzen ermitteln und ggf. eine davon laden...
+               int sizeOfIds = ArraySize(ids);
+               for (int i=0; i < sizeOfIds; i++) {
+                  ForceSound("notify.wav");
+                  button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Running sequence"+ ifString(sizeOfIds==1, " ", "s ") + JoinInts(ids, ", ") +" found.\n\nDo you want to load "+ ifString(sizeOfIds==1, "it", ids[i]) +"?", __SCRIPT__, MB_ICONQUESTION|MB_OKCANCEL);
+                  if (button == IDOK) {
+                     sequenceId = ids[i]; SS.SequenceId();
+                     if (RestoreStatus())
+                        if (ValidateConfiguration())
+                           SynchronizeStatus();
+                     break;
+                  }
+               }
+               if (sequenceId==0 && !IsLastError()) {
+                  ForceSound("notify.wav");
+                  button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you want to start a new sequence?", __SCRIPT__, MB_ICONQUESTION|MB_OKCANCEL);
+                  if (button == IDOK) firstTickConfirmed = true;
+                  else                last_error         = ERR_CANCELLED_BY_USER;
+               }
+            }
          }
-         else if (ValidateConfiguration()) {                         // Zum Schluß neue Sequenz anlegen.
-            instanceStartTime   = TimeCurrent();
-            instanceStartPrice  = NormalizeDouble((Bid + Ask)/2, Digits);
-            instanceStartEquity = AccountEquity()-AccountCredit();
-            sequenceId          = CreateSequenceId(); SS.SequenceId();
-            testSequence        = IsTesting(); SS.TestSequence();
-            RedrawStartStop();
+         if (sequenceId==0 && !IsLastError()) {
+            if (ValidateConfiguration()) {                           // ...zum Schluß neue Sequenz anlegen
+               instanceStartTime   = TimeCurrent();
+               instanceStartPrice  = NormalizeDouble((Bid + Ask)/2, Digits);
+               instanceStartEquity = AccountEquity()-AccountCredit();
+               sequenceId          = CreateSequenceId(); SS.SequenceId();
+               testSequence        = IsTesting(); SS.TestSequence();
+               RedrawStartStop();
 
-            if (StartCondition != "")                                // Ohne StartCondition erfolgt sofortiger Sequenzstart, in diesem Fall wird der
-               SaveStatus();                                         // Status erst nach Sicherheitsabfrage in StartSequence() gespeichert.
+               if (StartCondition != "")                             // Ohne StartCondition erfolgt sofortiger Sequenzstart, in diesem Fall wird der
+                  SaveStatus();                                      // Status erst nach Sicherheitsabfrage in StartSequence() gespeichert.
+            }
          }
+
       }
       ClearTransientStatus();
    }
@@ -622,7 +645,7 @@ bool StartSequence() {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
 
-   if (firstTick) {                                                  // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage beim Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __SCRIPT__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
@@ -630,6 +653,7 @@ bool StartSequence() {
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StartSequence(1)")));
       }
    }
+   firstTickConfirmed = true;
 
    // Startvariablen und Status setzen
    sequenceStartTime   = TimeCurrent();
@@ -640,7 +664,7 @@ bool StartSequence() {
    status = STATUS_PROGRESSING;
 
    // Stop-Orders in den Markt legen
-   if (!UpdatePendingOrders(true))
+   if (!UpdatePendingOrders())
       return(false);
 
    RedrawStartStop();
@@ -651,11 +675,9 @@ bool StartSequence() {
 /**
  * Aktualisiert vorhandene, setzt fehlende und löscht unnötige PendingOrders.
  *
- * @param  bool confirmed - ob Tradeoperationen beim ersten Tick bereits bestätigt worden sind (default: nein)
- *
  * @return bool - Erfolgsstatus
  */
-bool UpdatePendingOrders(bool confirmed=false) {
+bool UpdatePendingOrders() {
    if (IsLastError() || status==STATUS_DISABLED)          return(false);
    if (status==STATUS_STOPPING || status==STATUS_STOPPED) return(false);
 
@@ -670,14 +692,14 @@ bool UpdatePendingOrders(bool confirmed=false) {
                nextOrderExists = true;
                continue;
             }
-            if (!Grid.DeleteOrder(orders.ticket[i], confirmed))
+            if (!Grid.DeleteOrder(orders.ticket[i]))
                return(false);
             ordersChanged = true;
          }
       }
       // wenn nötig, neue Stop-Order in den Markt legen
       if (!nextOrderExists) {
-         if (!Grid.AddOrder(OP_BUYSTOP, nextLevel, confirmed))
+         if (!Grid.AddOrder(OP_BUYSTOP, nextLevel))
             return(false);
          ordersChanged = true;
       }
@@ -691,14 +713,14 @@ bool UpdatePendingOrders(bool confirmed=false) {
                nextOrderExists = true;
                continue;
             }
-            if (!Grid.DeleteOrder(orders.ticket[i], confirmed))
+            if (!Grid.DeleteOrder(orders.ticket[i]))
                return(false);
             ordersChanged = true;
          }
       }
       // wenn nötig, neue Stop-Order in den Markt legen
       if (!nextOrderExists) {
-         if (!Grid.AddOrder(OP_SELLSTOP, nextLevel, confirmed))
+         if (!Grid.AddOrder(OP_SELLSTOP, nextLevel))
             return(false);
          ordersChanged = true;
       }
@@ -712,7 +734,7 @@ bool UpdatePendingOrders(bool confirmed=false) {
             if (grid.direction!=D_SHORT) /*&&*/ if (orders.level[i]==1) {
                if (NE(orders.pendingPrice[i], grid.base + GridSize*Pips)) {
                   // Pending-Order aktualisieren
-                  if (!Grid.ModifyPendingOrder(i, confirmed))
+                  if (!Grid.ModifyPendingOrder(i))
                      return(false);
                   ordersChanged = true;
                }
@@ -722,7 +744,7 @@ bool UpdatePendingOrders(bool confirmed=false) {
             if (grid.direction!=D_LONG) /*&&*/ if (orders.level[i]==-1) {
                if (NE(orders.pendingPrice[i], grid.base - GridSize*Pips)) {
                   // Pending-Order aktualisieren
-                  if (!Grid.ModifyPendingOrder(i, confirmed))
+                  if (!Grid.ModifyPendingOrder(i))
                      return(false);
                   ordersChanged = true;
                }
@@ -730,19 +752,19 @@ bool UpdatePendingOrders(bool confirmed=false) {
                continue;
             }
             // unnötige Pending-Orders löschen
-            if (!Grid.DeleteOrder(orders.ticket[i], confirmed))
+            if (!Grid.DeleteOrder(orders.ticket[i]))
                return(false);
             ordersChanged = true;
          }
       }
       // wenn nötig, neue Stop-Orders in den Markt legen
       if (grid.direction!=D_SHORT) /*&&*/ if (!buyOrderExists) {
-         if (!Grid.AddOrder(OP_BUYSTOP, 1, confirmed))
+         if (!Grid.AddOrder(OP_BUYSTOP, 1))
             return(false);
          ordersChanged = true;
       }
       if (grid.direction!=D_LONG) /*&&*/ if (!sellOrderExists) {
-         if (!Grid.AddOrder(OP_SELLSTOP, -1, confirmed))
+         if (!Grid.AddOrder(OP_SELLSTOP, -1))
             return(false);
          ordersChanged = true;
       }
@@ -811,17 +833,16 @@ double Grid.BaseChange(datetime time, double value) {
 /**
  * Legt die angegebene Stop-Order in den Markt und fügt den Grid-Arrays deren Daten hinzu.
  *
- * @param  int   type      - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
- * @param  int   level     - Gridlevel der Order
- * @param  bool& confirmed - Zeiger auf Variable, die anzeigt, ob Tradeoperationen beim ersten Tick bereits bestätigt worden sind
+ * @param  int type  - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
+ * @param  int level - Gridlevel der Order
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.AddOrder(int type, int level, bool& confirmed) {
+bool Grid.AddOrder(int type, int level) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
 
-   if (firstTick && !confirmed) {                                    // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage beim Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a new "+ OperationTypeDescription(type) +" order now?", __SCRIPT__ +" - Grid.AddOrder()", MB_ICONQUESTION|MB_OKCANCEL);
@@ -829,7 +850,7 @@ bool Grid.AddOrder(int type, int level, bool& confirmed) {
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("Grid.AddOrder(1)")));
       }
    }
-   confirmed = true;
+   firstTickConfirmed = true;
 
    // Order in den Markt legen
    double execution[] = {NULL};
@@ -848,26 +869,25 @@ bool Grid.AddOrder(int type, int level, bool& confirmed) {
 /**
  * Justiert PendingOpenPrice() und StopLoss() der angegebenen Order beim Broker und aktualisiert die Datenarrays des Grids.
  *
- * @param  int   i         - Index der Order in den Datenarrays
- * @param  bool& confirmed - Zeiger auf Variable, die anzeigt, ob Tradeoperationen beim ersten Tick bereits bestätigt worden sind
+ * @param  int i - Index der Order in den Datenarrays
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.ModifyPendingOrder(int i, bool& confirmed) {
+bool Grid.ModifyPendingOrder(int i) {
    if (IsLastError() || status==STATUS_DISABLED) return( false);
    if (i < 0 || ArraySize(orders.ticket) < i+1)  return(_false(catch("Grid.ModifyPendingOrder(1)   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
    if (orders.type[i] != OP_UNDEFINED)           return(_false(catch("Grid.ModifyPendingOrder(2)   cannot modify open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
    if (orders.closeTime[i] != 0)                 return(_false(catch("Grid.ModifyPendingOrder(3)   cannot modify cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
-   if (firstTick && !confirmed) {                                    // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage beim Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to modify the "+ OperationTypeDescription(orders.type[i]) +" order #"+ orders.ticket[i] +" now?", __SCRIPT__ +" - Grid.ModifyPendingOrder()", MB_ICONQUESTION|MB_OKCANCEL);
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to modify the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ orders.ticket[i] +" now?", __SCRIPT__ +" - Grid.ModifyPendingOrder()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("Grid.ModifyPendingOrder(4)")));
       }
    }
-   confirmed = true;
+   firstTickConfirmed = true;
 
    double stopPrice   = grid.base +          orders.level[i]  * GridSize * Pips;
    double stopLoss    = stopPrice - MathSign(orders.level[i]) * GridSize * Pips;
@@ -893,12 +913,11 @@ bool Grid.ModifyPendingOrder(int i, bool& confirmed) {
 /**
  * Streicht die angegebene Order beim Broker und entfernt sie aus den Datenarrays des Grids.
  *
- * @param  int   ticket    - Orderticket
- * @param  bool& confirmed - Zeiger auf Variable, die anzeigt, ob Tradeoperationen beim ersten Tick bereits bestätigt worden sind
+ * @param  int ticket - Orderticket
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.DeleteOrder(int ticket, bool& confirmed) {
+bool Grid.DeleteOrder(int ticket) {
    if (IsLastError() || status==STATUS_DISABLED)
       return(false);
 
@@ -907,7 +926,7 @@ bool Grid.DeleteOrder(int ticket, bool& confirmed) {
    if (i == -1)
       return(_false(catch("Grid.DeleteOrder(1)   #"+ ticket +" not found in grid arrays", ERR_RUNTIME_ERROR)));
 
-   if (firstTick && !confirmed) {                                    // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage beim Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ ticket +" now?", __SCRIPT__ +" - Grid.DeleteOrder()", MB_ICONQUESTION|MB_OKCANCEL);
@@ -915,7 +934,7 @@ bool Grid.DeleteOrder(int ticket, bool& confirmed) {
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("Grid.DeleteOrder(2)")));
       }
    }
-   confirmed = true;
+   firstTickConfirmed = true;
 
    double execution[] = {NULL};
    if (!OrderDeleteEx(ticket, CLR_NONE, execution))
@@ -1352,11 +1371,10 @@ bool StopSequence() {
 
 
    // (4) Pending-Orders streichen
-   int  sizeOfPendingOrders = ArraySize(pendingOrders);
-   bool confirmed = true;
+   int sizeOfPendingOrders = ArraySize(pendingOrders);
 
    for (i=0; i < sizeOfPendingOrders; i++) {
-      if (!Grid.DeleteOrder(pendingOrders[i], confirmed))
+      if (!Grid.DeleteOrder(pendingOrders[i]))
          return(false);
       ordersChanged = true;
    }
@@ -1935,33 +1953,35 @@ bool RestoreInputSequenceId() {
  * @return int - Fehlerstatus
  */
 int StoreTransientStatus() {
-   string label = StringConcatenate(__SCRIPT__, ".transient.Sequence.ID");
-   if (ObjectFind(label) == 0)
-      ObjectDelete(label);
-   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
-   ObjectSetText(label, ifString(IsTest(), "T", "") + sequenceId, 1);
+   if (sequenceId != 0) {
+      string label = StringConcatenate(__SCRIPT__, ".transient.Sequence.ID");
+      if (ObjectFind(label) == 0)
+         ObjectDelete(label);
+      ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+      ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
+      ObjectSetText(label, ifString(IsTest(), "T", "") + sequenceId, 1);
 
-   label = StringConcatenate(__SCRIPT__, ".transient.OrderDisplayMode");
-   if (ObjectFind(label) == 0)
-      ObjectDelete(label);
-   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
-   ObjectSetText(label, OrderDisplayMode, 1);
+      label = StringConcatenate(__SCRIPT__, ".transient.OrderDisplayMode");
+      if (ObjectFind(label) == 0)
+         ObjectDelete(label);
+      ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+      ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
+      ObjectSetText(label, OrderDisplayMode, 1);
 
-   label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Color");
-   if (ObjectFind(label) == 0)
-      ObjectDelete(label);
-   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
-   ObjectSetText(label, StringConcatenate("", Breakeven.Color), 1);
+      label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Color");
+      if (ObjectFind(label) == 0)
+         ObjectDelete(label);
+      ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+      ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
+      ObjectSetText(label, StringConcatenate("", Breakeven.Color), 1);
 
-   label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Width");
-   if (ObjectFind(label) == 0)
-      ObjectDelete(label);
-   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
-   ObjectSetText(label, StringConcatenate("", Breakeven.Width), 1);
+      label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Width");
+      if (ObjectFind(label) == 0)
+         ObjectDelete(label);
+      ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+      ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
+      ObjectSetText(label, StringConcatenate("", Breakeven.Width), 1);
+   }
 
    if (last_error == ERR_CANCELLED_BY_USER) {
       label = StringConcatenate(__SCRIPT__, ".transient.last_error");
@@ -1982,42 +2002,43 @@ int StoreTransientStatus() {
  * @return bool - ob eine Sequenz-ID gefunden und restauriert wurde
  */
 bool RestoreTransientStatus() {
-   string strValue;
+   string label, strValue;
    int    iValue;
+   bool   idFound;
 
-   string label = StringConcatenate(__SCRIPT__, ".transient.Sequence.ID");
+   label = StringConcatenate(__SCRIPT__, ".transient.Sequence.ID");
    if (ObjectFind(label) == 0) {
       Sequence.ID = StringTrim(ObjectDescription(label));
       if (!RestoreInputSequenceId())                                 // RestoreInputSequenceId() wiederverwenden
          return(_false(catch("RestoreTransientStatus(1)")));
-   }
-   else return(_false(catch("RestoreTransientStatus(2)")));
+      idFound = true;
 
-   label = StringConcatenate(__SCRIPT__, ".transient.OrderDisplayMode");
-   if (ObjectFind(label) == 0) {
-      string modes[] = {"None", "Stops", "Pyramid", "All"};
-      strValue = StringTrim(ObjectDescription(label));
-      if (StringInArray(modes, strValue))
-         OrderDisplayMode = strValue;
-   }
-
-   label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Color");
-   if (ObjectFind(label) == 0) {
-      strValue = StringTrim(ObjectDescription(label));
-      if (StringIsInteger(strValue)) {
-         iValue = StrToInteger(strValue);
-         if (CLR_NONE <= iValue && iValue <= C'255,255,255')
-            Breakeven.Color = iValue;
+      label = StringConcatenate(__SCRIPT__, ".transient.OrderDisplayMode");
+      if (ObjectFind(label) == 0) {
+         string modes[] = {"None", "Stops", "Pyramid", "All"};
+         strValue = StringTrim(ObjectDescription(label));
+         if (StringInArray(modes, strValue))
+            OrderDisplayMode = strValue;
       }
-   }
 
-   label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Width");
-   if (ObjectFind(label) == 0) {
-      strValue = StringTrim(ObjectDescription(label));
-      if (StringIsInteger(strValue)) {
-         iValue = StrToInteger(strValue);
-         if (1 <= iValue && iValue <= 5)
-            Breakeven.Width = iValue;
+      label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Color");
+      if (ObjectFind(label) == 0) {
+         strValue = StringTrim(ObjectDescription(label));
+         if (StringIsInteger(strValue)) {
+            iValue = StrToInteger(strValue);
+            if (CLR_NONE <= iValue && iValue <= C'255,255,255')
+               Breakeven.Color = iValue;
+         }
+      }
+
+      label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Width");
+      if (ObjectFind(label) == 0) {
+         strValue = StringTrim(ObjectDescription(label));
+         if (StringIsInteger(strValue)) {
+            iValue = StrToInteger(strValue);
+            if (1 <= iValue && iValue <= 5)
+               Breakeven.Width = iValue;
+         }
       }
    }
 
@@ -2030,7 +2051,8 @@ bool RestoreTransientStatus() {
             last_error = iValue;
       }
    }
-   return(IsNoError(catch("RestoreTransientStatus(3)")));
+
+   return(idFound && IsNoError(catch("RestoreTransientStatus(2)")));
 }
 
 
@@ -2052,21 +2074,23 @@ int ClearTransientStatus() {
 
 
 /**
- * Restauriert die Sequenz-ID einer laufenden Sequenz.
+ * Ermittelt die aktuell laufenden Sequenzen.
  *
- * @return bool - ob eine laufende Sequenz gefunden und die ID restauriert wurde
+ * @param  int ids[] - Array zur Aufnahme der gefunden Sequenz-IDs
+ *
+ * @return bool - ob mindestens eine laufende Sequenz gefunden wurde
  */
-bool RestoreRunningSequenceId() {
+bool GetRunningSequences(int ids[]) {
+   ArrayResize(ids, 0);
+
    for (int i=OrdersTotal()-1; i >= 0; i--) {
       if (!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))               // FALSE: während des Auslesens wurde in einem anderen Thread eine offene Order entfernt
          continue;
 
-      if (IsMyOrder()) {
-         sequenceId = OrderMagicNumber() & 0x3FFF; SS.SequenceId();  // 14 Bits (Bits 1-14) => sequenceId
-         return(_true(catch("RestoreRunningSequenceId(1)")));
-      }
+      if (IsMyOrder())
+         ArrayPushInt(ids, OrderMagicNumber() & 0x3FFF);             // 14 Bits (Bits 1-14) => sequenceId
    }
-   return(_false(catch("RestoreRunningSequenceId(2)")));
+   return(ArraySize(ids) != 0);
 }
 
 
