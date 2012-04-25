@@ -4,12 +4,12 @@
  *
  *  TODO:
  *  -----
- *  - Exit-Rule implementieren: onProfit(value|%), onLimit                                *
- *  - Pause/Resume implementieren                                                         *
- *  - beidseitig unidirektionales Grid implementieren                                     *
- *  - PendingOrders nicht per Tick trailen                                                *
- *  - StartCondition "@time" implementieren                                               *
- *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                     *
+ *  - Exit-Rule implementieren: onProfit(value|%), onLimit                                      *
+ *  - Pause/Resume implementieren                                                               *
+ *  - beidseitig unidirektionales Grid implementieren                                           *
+ *  - PendingOrders nicht per Tick trailen                                                      *
+ *  - StartCondition "@time" implementieren                                                     *
+ *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                           *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops
@@ -21,7 +21,6 @@
  *  - Heartbeat implementieren
  *  - Logging im Tester reduzieren
  *  - Upload der Statusdatei implementieren
- *  - double execution[] als Struct implementieren
  */
 #include <stdlib.mqh>
 #include <win32api.mqh>
