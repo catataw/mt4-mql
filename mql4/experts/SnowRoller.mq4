@@ -10,6 +10,7 @@
  *  - PendingOrders nicht per Tick trailen                                                      *
  *  - StartCondition "@time" implementieren                                                     *
  *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                           *
+ *  - Account mis-match bei Anzeige von Tests abfangen                                          *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops
@@ -53,27 +54,27 @@ int Strategy.Id = 103;                       // eindeutige ID der Strategie (Ber
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
 
-extern               string GridDirection                   = "Bidirectional";
-extern               string GridDirection.Help              = "Bidirectional* | Long | Short | L+S (2 grids)";
+extern /*transient*/ string Sequence.ID                     = "";
+extern               string GridDirection                   = "Bidirectional* | Long | Short | L+S (2 grids)";
 extern               int    GridSize                        = 20;
 extern               double LotSize                         = 0.1;
 extern               string StartCondition                  = "";
 extern /*transient*/ string OrderDisplayMode                = "None";
 extern               string OrderDisplayMode.Help           = "None* | Stops | Pyramid | All";
-extern /*transient*/ color  Color.Breakeven                 = DodgerBlue;
-extern               string _______________________________ = "======== Sequence to Manage =========";
-extern /*transient*/ string Sequence.ID                     = "";
+extern /*transient*/ color  Breakeven.Color                 = DodgerBlue;
+extern /*transient*/ int    Breakeven.Width                 = 1;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-string   last.GridDirection;                             // Input-Parameter sind nicht statisch. Werden sie extern geladen, werden sie bei REASON_CHARTCHANGE
-int      last.GridSize;                                  // mit den Default-Parametern überschrieben. Um dies rückgängig machen zu können und um bei Parameter-
-double   last.LotSize;                                   // änderungen neue mit alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischen-
-string   last.StartCondition;                            // gespeichert.
+string   last.Sequence.ID;                               // Input-Parameter sind nicht statisch. Werden sie extern geladen, werden sie bei REASON_CHARTCHANGE
+string   last.GridDirection;                             // mit den Default-Parametern überschrieben. Um dies rückgängig machen zu können und um bei Parameter-
+int      last.GridSize;                                  // änderungen neue mit alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischen-
+double   last.LotSize;                                   // gespeichert.
+string   last.StartCondition;
 string   last.OrderDisplayMode;
-color    last.Color.Breakeven;
-string   last.Sequence.ID;
+color    last.Breakeven.Color;
+int      last.Breakeven.Width;
 
 int      status = STATUS_WAITING;
 
@@ -240,28 +241,33 @@ int init() {
       if (ValidateConfiguration(REASON_PARAMETERS)) {
          /*
          if (ConfigurationChanged()) {
+            // Sequence.ID    = last.Sequence.ID;                    // TODO: Sequence.ID kann geändert worden sein
             // GridDirection  = last.GridDirection;
             // GridSize       = last.GridSize;
             // LotSize        = last.LotSize;
             // StartCondition = last.StartCondition;
-            // Sequence.ID    = last.Sequence.ID;                    // TODO: Sequence.ID kann geändert worden sein
             SaveStatus();
          }
          */
-         if (OrderDisplayMode != last.OrderDisplayMode) { RedrawOrders();                        }
-         if (Color.Breakeven  != last.Color.Breakeven)  { RedrawStartStop(); RecolorBreakeven(); }
+         if (OrderDisplayMode != last.OrderDisplayMode)
+            RedrawOrders();
+         if (Breakeven.Color!=last.Breakeven.Color || Breakeven.Width!=last.Breakeven.Width) {
+            RedrawStartStop();
+            RecolorBreakeven();
+         }
       }
    }
 
    // (1.4) Timeframewechsel ----------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_CHARTCHANGE) {
-      GridDirection    = last.GridDirection;                         // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
-      GridSize         = last.GridSize;                              // Input-Parameter restauriert.
+      Sequence.ID      = last.Sequence.ID;                           // Alle internen Daten sind vorhanden, es werden nur die nicht-statischen
+      GridDirection    = last.GridDirection;                         // Input-Parameter restauriert.
+      GridSize         = last.GridSize;
       LotSize          = last.LotSize;
       StartCondition   = last.StartCondition;
       OrderDisplayMode = last.OrderDisplayMode;
-      Color.Breakeven  = last.Color.Breakeven;
-      Sequence.ID      = last.Sequence.ID;
+      Breakeven.Color  = last.Breakeven.Color;
+      Breakeven.Width  = last.Breakeven.Width;
    }
 
    // ---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -298,13 +304,14 @@ int deinit() {
    if (UninitializeReason()==REASON_CHARTCHANGE || UninitializeReason()==REASON_PARAMETERS) {
       // REASON_CHARTCHANGE: Input-Parameter sind nicht statisch und werden für's nächste init() zwischengespeichert
       // REASON_PARAMETERS:  Input-Parameter werden für Vergleich mit neuen Parametern zwischengespeichert
+      last.Sequence.ID      = Sequence.ID;
       last.GridDirection    = GridDirection;
       last.GridSize         = GridSize;
       last.LotSize          = LotSize;
       last.StartCondition   = StartCondition;
       last.OrderDisplayMode = OrderDisplayMode;
-      last.Color.Breakeven  = Color.Breakeven;
-      last.Sequence.ID      = Sequence.ID;
+      last.Breakeven.Color  = Breakeven.Color;
+      last.Breakeven.Width  = Breakeven.Width;
       return(catch("deinit(1)"));
    }
 
@@ -1703,7 +1710,8 @@ void Grid.DrawBreakeven(datetime time=NULL) {
          string labelL = StringConcatenate("SR.", sequenceId, ".beL ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(last.startTimeLong, TIME_FULL), ")");
          if (ObjectCreate(labelL, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenLong, now, grid.breakevenLong)) {
             ObjectSet(labelL, OBJPROP_RAY  , false          );
-            ObjectSet(labelL, OBJPROP_COLOR, Color.Breakeven);
+            ObjectSet(labelL, OBJPROP_COLOR, Breakeven.Color);
+            ObjectSet(labelL, OBJPROP_WIDTH, Breakeven.Width);
             if (EQ(last.grid.breakevenLong, grid.breakevenLong)) last.startTimeLong = last.drawingTime;
             else                                                 last.startTimeLong = now;
          }
@@ -1718,7 +1726,8 @@ void Grid.DrawBreakeven(datetime time=NULL) {
          string labelS = StringConcatenate("SR.", sequenceId, ".beS ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(last.startTimeShort, TIME_FULL), ")");
          if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, now, grid.breakevenShort)) {
             ObjectSet(labelS, OBJPROP_RAY  , false          );
-            ObjectSet(labelS, OBJPROP_COLOR, Color.Breakeven);
+            ObjectSet(labelS, OBJPROP_COLOR, Breakeven.Color);
+            ObjectSet(labelS, OBJPROP_WIDTH, Breakeven.Width);
             if (EQ(last.grid.breakevenShort, grid.breakevenShort)) last.startTimeShort = last.drawingTime;
             else                                                   last.startTimeShort = now;
          }
@@ -1752,7 +1761,8 @@ void RecolorBreakeven() {
       for (int i=ObjectsTotal()-1; i>=0; i--) {
          label = ObjectName(i);
          if (ObjectType(label)==OBJ_TREND) /*&&*/ if (StringStartsWith(label, labelBe)) {
-            ObjectSet(label, OBJPROP_COLOR, Color.Breakeven);
+            ObjectSet(label, OBJPROP_COLOR, Breakeven.Color);
+            ObjectSet(label, OBJPROP_WIDTH, Breakeven.Width);
          }
       }
    }
@@ -1919,8 +1929,8 @@ bool RestoreInputSequenceId() {
 
 /**
  * Speichert den transienten Sequenzstatus im Chart, sodaß er daraus wiederhergestellt werden kann (hauptsächlich für REASON_RECOMPILE).
- * Der transiente Status umfaßt alle die User-Eingaben, die nicht im Statusfile gespeichert werden: die aktuelle Sequenz-ID, Farben,
- * Display-Modes, ERR_CANCELLED_BY_USER etc.
+ * Der transiente Status umfaßt alle die User-Eingaben, die nicht im Statusfile gespeichert werden: die aktuelle Sequenz-ID, Display-Modes,
+ * Farben, Strichstärken, ERR_CANCELLED_BY_USER etc.
  *
  * @return int - Fehlerstatus
  */
@@ -1932,19 +1942,26 @@ int StoreTransientStatus() {
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
    ObjectSetText(label, ifString(IsTest(), "T", "") + sequenceId, 1);
 
-   label = StringConcatenate(__SCRIPT__, ".transient.Color.Breakeven");
-   if (ObjectFind(label) == 0)
-      ObjectDelete(label);
-   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
-   ObjectSetText(label, StringConcatenate("", Color.Breakeven), 1);
-
    label = StringConcatenate(__SCRIPT__, ".transient.OrderDisplayMode");
    if (ObjectFind(label) == 0)
       ObjectDelete(label);
    ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
    ObjectSetText(label, OrderDisplayMode, 1);
+
+   label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Color");
+   if (ObjectFind(label) == 0)
+      ObjectDelete(label);
+   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
+   ObjectSetText(label, StringConcatenate("", Breakeven.Color), 1);
+
+   label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Width");
+   if (ObjectFind(label) == 0)
+      ObjectDelete(label);
+   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
+   ObjectSetText(label, StringConcatenate("", Breakeven.Width), 1);
 
    if (last_error == ERR_CANCELLED_BY_USER) {
       label = StringConcatenate(__SCRIPT__, ".transient.last_error");
@@ -1976,22 +1993,32 @@ bool RestoreTransientStatus() {
    }
    else return(_false(catch("RestoreTransientStatus(2)")));
 
-   label = StringConcatenate(__SCRIPT__, ".transient.Color.Breakeven");
-   if (ObjectFind(label) == 0) {
-      strValue = StringTrim(ObjectDescription(label));
-      if (StringIsInteger(strValue)) {
-         iValue = StrToInteger(strValue);
-         if (CLR_NONE <= iValue && iValue <= C'255,255,255')
-            Color.Breakeven = iValue;
-      }
-   }
-
    label = StringConcatenate(__SCRIPT__, ".transient.OrderDisplayMode");
    if (ObjectFind(label) == 0) {
       string modes[] = {"None", "Stops", "Pyramid", "All"};
       strValue = StringTrim(ObjectDescription(label));
       if (StringInArray(modes, strValue))
          OrderDisplayMode = strValue;
+   }
+
+   label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Color");
+   if (ObjectFind(label) == 0) {
+      strValue = StringTrim(ObjectDescription(label));
+      if (StringIsInteger(strValue)) {
+         iValue = StrToInteger(strValue);
+         if (CLR_NONE <= iValue && iValue <= C'255,255,255')
+            Breakeven.Color = iValue;
+      }
+   }
+
+   label = StringConcatenate(__SCRIPT__, ".transient.Breakeven.Width");
+   if (ObjectFind(label) == 0) {
+      strValue = StringTrim(ObjectDescription(label));
+      if (StringIsInteger(strValue)) {
+         iValue = StrToInteger(strValue);
+         if (1 <= iValue && iValue <= 5)
+            Breakeven.Width = iValue;
+      }
    }
 
    label = StringConcatenate(__SCRIPT__, ".transient.last_error");
@@ -2087,61 +2114,65 @@ int CreateSequenceId() {
  * @return bool - ob die Konfiguration gültig ist
  */
 bool ValidateConfiguration(int reason=NULL) {
+   // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
+   if (reason == REASON_PARAMETERS)
+      if (Sequence.ID != last.Sequence.ID)  return(_false(catch("ValidateConfiguration(1)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+
    // GridDirection
    string directions[] = {"Bidirectional", "Long", "Short", "L+S"};
    string strValue     = StringToLower(StringTrim(StringReplace(StringReplace(StringReplace(GridDirection, "+", ""), "&", ""), " ", "")) +"b");
    switch (StringGetChar(strValue, 0)) {
       case 'l': if (StringStartsWith(strValue, "longshort") || StringStartsWith(strValue, "ls")) {
-                   return(_false(catch("ValidateConfiguration(1)  Trade mode Long+Short not yet implemented", ERR_FUNCTION_NOT_IMPLEMENTED)));
+                   return(_false(catch("ValidateConfiguration(2)  Trade mode Long+Short not yet implemented", ERR_FUNCTION_NOT_IMPLEMENTED)));
                    grid.direction = D_LONG_SHORT; break;
                 }
                 grid.direction    = D_LONG;       break;
       case 's': grid.direction    = D_SHORT;      break;
       case 'b': grid.direction    = D_BIDIR;      break;                // default für leeren Input-Parameter
 
-      default:                              return(_false(catch("ValidateConfiguration(1)  Invalid input parameter GridDirection = \""+ GridDirection +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      default:                              return(_false(catch("ValidateConfiguration(3)  Invalid input parameter GridDirection = \""+ GridDirection +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
    if (reason==REASON_PARAMETERS) /*&&*/ if (directions[grid.direction]!=last.GridDirection)
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(2)  Cannot change parameter GridDirection of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(4)  Cannot change parameter GridDirection of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    GridDirection = directions[grid.direction]; SS.Grid.Direction();
 
    // GridSize
    if (reason==REASON_PARAMETERS) /*&&*/ if (GridSize!=last.GridSize)
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(3)  Cannot change parameter GridSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(5)  Cannot change parameter GridSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   if (GridSize < 1)                        return(_false(catch("ValidateConfiguration(4)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
+   if (GridSize < 1)                        return(_false(catch("ValidateConfiguration(6)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // LotSize
    if (reason==REASON_PARAMETERS) /*&&*/ if (NE(LotSize, last.LotSize))
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(5)  Cannot change parameter LotSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(7)  Cannot change parameter LotSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   if (LE(LotSize, 0))                      return(_false(catch("ValidateConfiguration(6)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
+   if (LE(LotSize, 0))                      return(_false(catch("ValidateConfiguration(8)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT );
    double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT );
    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
    int error = GetLastError();
-   if (IsError(error))                      return(_false(catch("ValidateConfiguration(7)   symbol=\""+ Symbol() +"\"", error)));
-   if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(8)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(9)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(10)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (IsError(error))                      return(_false(catch("ValidateConfiguration(9)   symbol=\""+ Symbol() +"\"", error)));
+   if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(10)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(11)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(12)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
    SS.LotSize();
 
    // StartCondition
    StartCondition = StringReplace(StartCondition, " ", "");
    if (reason==REASON_PARAMETERS) /*&&*/ if (StartCondition!=last.StartCondition)
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(11)  Cannot change parameter StartCondition of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(13)  Cannot change parameter StartCondition of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    if (StringLen(StartCondition) == 0) {
       entry.limit = 0;
    }
    else if (StringIsNumeric(StartCondition)) {
       entry.limit = StrToDouble(StartCondition); SS.Entry.Limit();
-      if (LT(entry.limit, 0))               return(_false(catch("ValidateConfiguration(12)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (LT(entry.limit, 0))               return(_false(catch("ValidateConfiguration(14)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
       if (EQ(entry.limit, 0))
          StartCondition = "";
    }
-   else                                     return(_false(catch("ValidateConfiguration(13)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+   else                                     return(_false(catch("ValidateConfiguration(15)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
 
    // OrderDisplayMode
    string modes[] = {"None", "Stops", "Pyramid", "All"};
@@ -2150,24 +2181,22 @@ bool ValidateConfiguration(int reason=NULL) {
       case 'S': orderDisplayMode = DM_STOPS;   break;
       case 'P': orderDisplayMode = DM_PYRAMID; break;
       case 'A': orderDisplayMode = DM_ALL;     break;
-      default:                              return(_false(catch("ValidateConfiguration(14)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      default:                              return(_false(catch("ValidateConfiguration(16)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
    OrderDisplayMode = modes[orderDisplayMode];
 
-   // Color.Breakeven
-   if (Color.Breakeven == 0xFF000000)                                   // kann vom Terminal falsch gesetzt worden sein
-      Color.Breakeven = CLR_NONE;
-   if (Color.Breakeven < CLR_NONE || Color.Breakeven > C'255,255,255')  // kann über transienten Chartstatus falsch reinkommen
-                                            return(_false(catch("ValidateConfiguration(15)  Invalid input parameter Color.Breakeven = 0x"+ IntToHexStr(Color.Breakeven), ERR_INVALID_INPUT_PARAMVALUE)));
-
-   // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
-   if (reason == REASON_PARAMETERS)
-      if (Sequence.ID != last.Sequence.ID)  return(_false(catch("ValidateConfiguration(16)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
-
+   // Breakeven.Color
+   if (Breakeven.Color == 0xFF000000)                                   // kann vom Terminal falsch gesetzt worden sein
+      Breakeven.Color = CLR_NONE;
+   if (Breakeven.Color < CLR_NONE || Breakeven.Color > C'255,255,255')  // kann über transienten Chartstatus falsch reinkommen
+                                            return(_false(catch("ValidateConfiguration(17)  Invalid input parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), ERR_INVALID_INPUT_PARAMVALUE)));
+   // Breakeven.Width
+   if (Breakeven.Width < 1 || Breakeven.Width > 5)                      // kann über transienten Chartstatus falsch reinkommen
+                                            return(_false(catch("ValidateConfiguration(18)  Invalid input parameter Breakeven.Width = "+ Breakeven.Width, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // TODO: Parameter mit externer Konfiguration werden geändert, ohne vorher die Konfigurationsdatei zu laden.
 
-   return(IsNoError(catch("ValidateConfiguration(17)")));
+   return(IsNoError(catch("ValidateConfiguration(19)")));
 }
 
 
@@ -2395,6 +2424,7 @@ bool RestoreStatus() {
    if (IsLastError() || status==STATUS_DISABLED) return( false);
    if (sequenceId == 0)                          return(_false(catch("RestoreStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
+
    // (1) bei nicht existierender lokaler Konfiguration die Datei vom Server laden
    string filesDir = TerminalPath() +"\\experts\\files\\";
    string fileName = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
@@ -2439,7 +2469,8 @@ bool RestoreStatus() {
       return(_false(catch("RestoreStatus(4)   status for sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_RUNTIME_ERROR)));
    }
 
-   // (3) Zeilen in Schlüssel-Wert-Paare aufbrechen, Datentypen validieren und Daten übernehmen
+
+   // (3) notwendige Schlüssel definieren
    string keys[] = { "Account", "Symbol", "Sequence.ID", "GridDirection", "GridSize", "LotSize", "StartCondition", "rt.instanceStartTime", "rt.instanceStartPrice", "rt.instanceStartEquity", "rt.sequenceStartTime", "rt.sequenceStartPrice", "rt.sequenceStartEquity", "rt.sequenceStopTime", "rt.sequenceStopPrice", "rt.grid.maxProfitLoss", "rt.grid.maxProfitLossTime", "rt.grid.maxDrawdown", "rt.grid.maxDrawdownTime", "rt.grid.base" };
    /*                "Account"                  ,
                      "Symbol"                   ,                    // Der Compiler kommt mit den Zeilennummern durcheinander,
@@ -2462,22 +2493,24 @@ bool RestoreStatus() {
                      "rt.grid.maxDrawdownTime"  ,
                      "rt.grid.base"             ,
    */
-   ArrayResize(grid.base.time,  0);
-   ArrayResize(grid.base.value, 0);
 
-   string parts[];
+
+   // (4) Nicht-Runtime-Settings auslesen, validieren und übernehmen
+   string parts[], key, value, accountValue;
+   int    accountLine;
 
    for (int i=0; i < size; i++) {
       if (Explode(lines[i], "=", parts, 2) < 2)          return(_false(catch("RestoreStatus(5)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-      string key=StringTrim(parts[0]), value=StringTrim(parts[1]);
+      key   = StringTrim(parts[0]);
+      value = StringTrim(parts[1]);
 
       if (key == "Account") {
-         string account = ShortAccountCompany() +":"+ GetAccountNumber();
-         if (value != account)                           return(_false(catch("RestoreStatus(6)   account mis-match \""+ value +"\"/\""+ account +"\" in status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         accountValue = value;                           // Abhängigkeit zu Sequence.ID  =>  wird danach validiert
+         accountLine  = i;
          ArrayDropString(keys, key);
       }
       else if (key == "Symbol") {
-         if (value != Symbol())                          return(_false(catch("RestoreStatus(7)   symbol mis-match \""+ value +"\"/\""+ Symbol() +"\" in status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (value != Symbol())                          return(_false(catch("RestoreStatus(6)   symbol mis-match \""+ value +"\"/\""+ Symbol() +"\" in status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          ArrayDropString(keys, key);
       }
       else if (key == "Sequence.ID") {
@@ -2486,22 +2519,22 @@ bool RestoreStatus() {
             testSequence = true; SS.TestSequence();
             value = StringRight(value, -1);
          }
-         if (value != StringConcatenate("", sequenceId)) return(_false(catch("RestoreStatus(8)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (value != StringConcatenate("", sequenceId)) return(_false(catch("RestoreStatus(7)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
          ArrayDropString(keys, key);
       }
       else if (key == "GridDirection") {
-         if (value == "")                                return(_false(catch("RestoreStatus(9)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (value == "")                                return(_false(catch("RestoreStatus(8)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          GridDirection = value;
          ArrayDropString(keys, key);
       }
       else if (key == "GridSize") {
-         if (!StringIsDigit(value))                      return(_false(catch("RestoreStatus(10)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsDigit(value))                      return(_false(catch("RestoreStatus(9)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          GridSize = StrToInteger(value);
          ArrayDropString(keys, key);
       }
       else if (key == "LotSize") {
-         if (!StringIsNumeric(value))                    return(_false(catch("RestoreStatus(11)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsNumeric(value))                    return(_false(catch("RestoreStatus(10)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          LotSize = StrToDouble(value);
          ArrayDropString(keys, key);
       }
@@ -2509,15 +2542,32 @@ bool RestoreStatus() {
          StartCondition = value;
          ArrayDropString(keys, key);
       }
-      else if (StringStartsWith(key, "rt.")) {                       // Laufzeitvariable
+   }
+   // Account: Wenn die AccountCompany (= Zeitzone) übereinstimmt, kann ein Test in einem anderen Account visualisiert werden.
+   if (accountValue != ShortAccountCompany()+":"+GetAccountNumber()) {
+      if (IsTesting() || !IsTest() || !StringIStartsWith(accountValue, ShortAccountCompany()+":"))
+                                                         return(_false(catch("RestoreStatus(11)   account mis-match \""+ accountValue +"\"/\""+ ShortAccountCompany() +":"+ GetAccountNumber() +"\" in status file \""+ fileName +"\" (line \""+ lines[accountLine] +"\")", ERR_RUNTIME_ERROR)));
+   }
+
+
+   // (5) Runtime-Settings auslesen, validieren und übernehmen
+   ArrayResize(grid.base.time,  0);
+   ArrayResize(grid.base.value, 0);
+
+   for (i=0; i < size; i++) {
+      if (Explode(lines[i], "=", parts, 2) < 2)          return(_false(catch("RestoreStatus(12)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+      key   = StringTrim(parts[0]);
+      value = StringTrim(parts[1]);
+
+      if (StringStartsWith(key, "rt."))
          if (!RestoreStatus.Runtime(fileName, lines[i], key, value, keys))
             return(false);
-      }
    }
-   if (ArraySize(keys) > 0)                              return(_false(catch("RestoreStatus(12)   "+ ifString(ArraySize(keys)==1, "entry", "entries") +" \""+ JoinStrings(keys, "\", \"") +"\" missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
-   if (IntInArray(orders.ticket, 0))                     return(_false(catch("RestoreStatus(13)   one or more order entries missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
 
-   return(IsNoError(catch("RestoreStatus(14)")));
+   if (ArraySize(keys) > 0)                              return(_false(catch("RestoreStatus(13)   "+ ifString(ArraySize(keys)==1, "entry", "entries") +" \""+ JoinStrings(keys, "\", \"") +"\" missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
+   if (IntInArray(orders.ticket, 0))                     return(_false(catch("RestoreStatus(14)   one or more order entries missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
+
+   return(IsNoError(catch("RestoreStatus(15)")));
 }
 
 
@@ -3210,15 +3260,15 @@ double GetClosePriceSlippage(int i) {
 
 
 /**
- * Zeichnet die Start-/Stop-Marker der Sequenz.
+ * Zeichnet die Start-/Stop-Marker der Sequenz neu.
  */
 void RedrawStartStop() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
    static color last.MarkerColor = DodgerBlue;
-   if (Color.Breakeven != CLR_NONE)
-      last.MarkerColor = Color.Breakeven;
+   if (Breakeven.Color != CLR_NONE)
+      last.MarkerColor = Breakeven.Color;
 
    // Start-Marker
    datetime startTime  = instanceStartTime;
