@@ -4,7 +4,6 @@
  *
  *  TODO:
  *  -----
- *  - Bug: StopSequence() reparieren                                                      *
  *  - Exit-Rule implementieren: onProfit(value|%), onLimit                                *
  *  - Pause/Resume implementieren                                                         *
  *  - beidseitig unidirektionales Grid implementieren                                     *
@@ -13,15 +12,15 @@
  *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                     *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
- *  - Bug: ChartMarker bei PendingOrders + Stops, Digits aus Funktionsparametern entfernen
+ *  - Bug: ChartMarker bei PendingOrders + Stops
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
- *  - Logging im Tester reduzieren
- *  - Upload der Statusdatei implementieren
  *  - STATUS_MONITORING implementieren
  *  - Client-Side-Limits implementieren
  *  - Heartbeat implementieren
+ *  - Logging im Tester reduzieren
+ *  - Upload der Statusdatei implementieren
  *  - double execution[] als Struct implementieren
  */
 #include <stdlib.mqh>
@@ -382,11 +381,11 @@ bool UpdateStatus() {
    bool     wasPending, isClosed, positionsChanged, gridBaseChanged, openTickets;
    datetime stopTime;
    double   stopPrice;
-   int      orders = ArraySize(orders.ticket);
+   int      sizeOfTickets = ArraySize(orders.ticket);
 
 
    // (1) Tickets aktualisieren
-   for (int i=0; i < orders; i++) {
+   for (int i=0; i < sizeOfTickets; i++) {
       if (orders.closeTime[i] == 0) {                                      // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
          if (!OrderSelectByTicket(orders.ticket[i], "UpdateStatus(1)"))
             return(false);
@@ -1279,6 +1278,8 @@ bool StopSequence() {
       }
    }
 
+
+   // (1) PendingOrders und OpenPositions einlesen
    int pendingOrders[], openPositions[], sizeOfTickets=ArraySize(orders.ticket);
    ArrayResize(pendingOrders, 0);
    ArrayResize(openPositions, 0);
@@ -1295,8 +1296,8 @@ bool StopSequence() {
    }
 
 
-   // Status vorm Schließen setzen
-   status           = STATUS_STOPPED;
+   // (2) vorm Schließen STATUS_STOPPING setzen
+   status           = STATUS_STOPPING;
    sequenceStopTime = TimeCurrent();
 
    double price = (Bid + Ask)/2;
@@ -1306,7 +1307,7 @@ bool StopSequence() {
    sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);
 
 
-   // offene Positionen schließen
+   // (3) offene Positionen schließen
    bool ordersChanged;
    int  sizeOfOpenPositions = ArraySize(openPositions);
 
@@ -1315,77 +1316,48 @@ bool StopSequence() {
       if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, execution))
          return(_false(SetLastError(stdlib_PeekLastError())));
 
-      /*
-      Zu aktualisierende Daten
-      -------------------------
-      int      orders.ticket           [];   // nein
-      int      orders.level            [];   // nein
-      double   orders.gridBase         [];   // nein
-
-      int      orders.pendingType      [];   // nein: Es kann nicht passieren, daß eine Pending-Order seit dem letzten UpdateStatus() ausgeführt worden ist.
-      datetime orders.pendingTime      [];   // nein
-      datetime orders.pendingModifyTime[];   // nein
-      double   orders.pendingPrice     [];   // nein
-      double   orders.pendingExecution [];   // nein
-
-      int      orders.type             [];   // nein
-      datetime orders.openTime         [];   // nein
-      double   orders.openPrice        [];   // nein
-      double   orders.openSlippage     [];   // nein
-      double   orders.openExecution    [];   // nein
-      int      orders.openRequotes     [];   // nein
-
-      datetime orders.closeTime        [];   // ja: kann UpdateStatus() wegen OrderMultiClose() nur schwierig ermitteln
-      double   orders.closePrice       [];   // ja: kann UpdateStatus() wegen OrderMultiClose() nur schwierig ermitteln
-      double   orders.stopLoss         [];   // nein
-      double   orders.stopValue        [];   // nein
-      bool     orders.closedByStop     [];   // ja: kann UpdateStatus() wegen OrderMultiClose() nur schwierig ermitteln (ist u.U. auf closePrice angewiesen)
-      double   orders.closeSlippage    [];   // ja: kann UpdateStatus() nicht ermitteln
-      double   orders.closeExecution   [];   // ja: kann UpdateStatus() nicht ermitteln
-      int      orders.closeRequotes    [];   // ja: kann UpdateStatus() nicht ermitteln
-
-      double   orders.swap             [];   // ja: kann UpdateStatus() wegen OrderMultiClose() nur schwierig ermitteln
-      double   orders.commission       [];   // ja: kann UpdateStatus() wegen OrderMultiClose() nur schwierig ermitteln
-      double   orders.profit           [];   // ja: kann UpdateStatus() wegen OrderMultiClose() nur schwierig ermitteln
-
-      int      grid.stops;                   // nein
-      double   grid.stopsPL;                 // nein
-      double   grid.closedPL;                // ja
-      double   grid.floatingPL;              // ja: nach Stop 0.00
-      double   grid.totalPL;                 // ja
-      double   grid.openStopValue;           // ja: nach Stop 0.00
-      double   grid.valueAtRisk;             // nein: wird nicht mehr verändert
-
-      double   grid.maxProfitLoss;           // ja: kann sich beim Stop ggf. ein letztes Mal ändern
-      datetime grid.maxProfitLossTime;       // ja: kann sich beim Stop ggf. ein letztes Mal ändern
-      double   grid.maxDrawdown;             // ja: kann sich beim Stop ggf. ein letztes Mal ändern
-      datetime grid.maxDrawdownTime;         // ja: kann sich beim Stop ggf. ein letztes Mal ändern
-      double   grid.breakevenLong;           // nein: wird nicht mehr verändert
-      double   grid.breakevenShort;          // nein: wird nicht mehr verändert
-      */
-
       for (i=0; i < sizeOfOpenPositions; i++) {
          int pos = SearchIntArray(orders.ticket, openPositions[i]);
-         orders.closeExecution[pos] = execution[9*i+EXEC_DURATION];
-         orders.closeRequotes [pos] = execution[9*i+EXEC_REQUOTES] +0.1;   // (int)(double) int
-         orders.closeSlippage [pos] = execution[9*i+EXEC_SLIPPAGE];
+
+         orders.closeTime     [pos] = execution[9*i+EXEC_TIME      ] +0.1;    // (datetime)(double) datetime
+         orders.closePrice    [pos] = execution[9*i+EXEC_PRICE     ];
+         orders.closeSlippage [pos] = execution[9*i+EXEC_SLIPPAGE  ];
+         orders.closeExecution[pos] = execution[9*i+EXEC_DURATION  ];
+         orders.closeRequotes [pos] = execution[9*i+EXEC_REQUOTES  ] +0.1;    // (int)(double) int
+         orders.closedByStop  [pos] = false;
+
+         orders.swap          [pos] = execution[9*i+EXEC_SWAP      ];
+         orders.commission    [pos] = execution[9*i+EXEC_COMMISSION];
+         orders.profit        [pos] = execution[9*i+EXEC_PROFIT    ];
+
+         grid.closedPL += orders.swap[pos] + orders.commission[pos] + orders.profit[pos];
       }
+      grid.openStopValue = 0;
+      /*
+      grid.floatingPL        = ...           // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte automatisch aktualisiert.
+      grid.totalPL           = ...
+      grid.maxProfitLoss     = ...
+      grid.maxProfitLossTime = ...
+      grid.maxDrawdown       = ...
+      grid.maxDrawdownTime   = ...
+      */
       ordersChanged = true;
    }
 
 
-   // Pending-Orders streichen
-   bool confirmed = true;
+   // (4) Pending-Orders streichen
    int  sizeOfPendingOrders = ArraySize(pendingOrders);
+   bool confirmed = true;
 
    for (i=0; i < sizeOfPendingOrders; i++) {
       if (!Grid.DeleteOrder(pendingOrders[i], confirmed))
          return(false);
       ordersChanged = true;
    }
+   status = STATUS_STOPPED;
 
 
-   // Daten aktualisieren und speichern
+   // (5) Daten aktualisieren und speichern
    if (ordersChanged) {
       if (!UpdateStatus()) return(false);
       if (  !SaveStatus()) return(false);
