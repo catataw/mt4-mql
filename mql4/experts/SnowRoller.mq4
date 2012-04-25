@@ -375,7 +375,7 @@ int onTick() {
  */
 bool UpdateStatus() {
    if (IsLastError() || status==STATUS_DISABLED || status==STATUS_WAITING) return(false);
-   if (!IsTesting()) /*&&*/ if (IsTestSequence())                          return(false);
+   if (!IsTesting()) /*&&*/ if (IsTest())                                  return(false);
 
    grid.floatingPL = 0;
 
@@ -1936,7 +1936,7 @@ bool RestoreInputSequenceId() {
          int iValue = StrToInteger(strValue);
          if (1000 <= iValue) /*&&*/ if (iValue <= 16383) {
             sequenceId  = iValue; SS.SequenceId();
-            Sequence.ID = ifString(IsTestSequence(), "T", "") + sequenceId;
+            Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
             return(true);
          }
       }
@@ -1959,7 +1959,7 @@ int StoreTransientStatus() {
       ObjectDelete(label);
    ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                  // hidden on all timeframes
-   ObjectSetText(label, ifString(IsTestSequence(), "T", "") + sequenceId, 1);
+   ObjectSetText(label, ifString(IsTest(), "T", "") + sequenceId, 1);
 
    label = StringConcatenate(__SCRIPT__, ".transient.Color.Breakeven");
    if (ObjectFind(label) == 0)
@@ -2207,9 +2207,9 @@ bool ValidateConfiguration(int reason=NULL) {
  * @return bool - Erfolgsstatus
  */
 bool SaveStatus() {
-   if (IsLastError() || status==STATUS_DISABLED)  return( false);
-   if (IsTestSequence()) /*&&*/ if (!IsTesting()) return( false);
-   if (sequenceId == 0)                           return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+   if (IsLastError() || status==STATUS_DISABLED) return( false);
+   if (IsTest()) /*&&*/ if (!IsTesting())        return( false);
+   if (sequenceId == 0)                          return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
    static int counter;
    if (IsTesting()) /*&&*/ if (counter!=0) /*&&*/ if (status!=STATUS_STOPPED)    // im Tester Ausführung nur bei Start und Stop
@@ -2287,13 +2287,13 @@ bool SaveStatus() {
    string lines[]; ArrayResize(lines, 0);
 
    // (1.1) Input-Parameter
-   ArrayPushString(lines, /*string*/   "Account="       + ShortAccountCompany() +":"+ GetAccountNumber()      );
-   ArrayPushString(lines, /*string*/   "Symbol="        +                                       Symbol()      );
-   ArrayPushString(lines, /*string*/   "Sequence.ID="   + ifString(IsTestSequence(), "T", "") + sequenceId    );
-   ArrayPushString(lines, /*string*/   "GridDirection=" +                                       GridDirection );
-   ArrayPushString(lines, /*int   */   "GridSize="      +                                       GridSize      );
-   ArrayPushString(lines, /*double*/   "LotSize="       +                           NumberToStr(LotSize, ".+"));
-   ArrayPushString(lines, /*string*/   "StartCondition="+                                       StartCondition);
+   ArrayPushString(lines, /*string*/   "Account="       + ShortAccountCompany() +":"+ GetAccountNumber());
+   ArrayPushString(lines, /*string*/   "Symbol="        +                                 Symbol()      );
+   ArrayPushString(lines, /*string*/   "Sequence.ID="   +   ifString(IsTest(), "T", "") + sequenceId    );
+   ArrayPushString(lines, /*string*/   "GridDirection=" +                                 GridDirection );
+   ArrayPushString(lines, /*int   */   "GridSize="      +                                 GridSize      );
+   ArrayPushString(lines, /*double*/   "LotSize="       +                     NumberToStr(LotSize, ".+"));
+   ArrayPushString(lines, /*string*/   "StartCondition="+                                 StartCondition);
 
    // (1.2) Laufzeit-Variablen
    ArrayPushString(lines, /*datetime*/ "rt.instanceStartTime="     +             instanceStartTime      + ifString(instanceStartTime     ==0, "", " ("+ TimeToStr(instanceStartTime     , TIME_FULL) +")"));
@@ -2348,9 +2348,9 @@ bool SaveStatus() {
 
    // (2) Daten in lokaler Datei speichern/überschreiben
    string fileName = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
-   if      (IsTesting())      fileName = "presets\\"+ fileName;                                          // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
-   else if (IsTestSequence()) fileName = "presets\\tester\\"+ fileName;                                  //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
-   else                       fileName = "presets\\"+ ShortAccountCompany() +"\\"+ fileName;
+   if      (IsTesting()) fileName = "presets\\"+ fileName;                                // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
+   else if (IsTest())    fileName = "presets\\tester\\"+ fileName;                        //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
+   else                  fileName = "presets\\"+ ShortAccountCompany() +"\\"+ fileName;
 
    int hFile = FileOpen(fileName, FILE_CSV|FILE_WRITE);
    if (hFile < 0)
@@ -2387,7 +2387,7 @@ bool SaveStatus() {
  */
 int UploadStatus(string company, int account, string symbol, string filename) {
    if (IsLastError() || status==STATUS_DISABLED) return(last_error);
-   if (IsTestSequence())                         return(NO_ERROR);
+   if (IsTest())                                 return(NO_ERROR);
 
    // TODO: Existenz von wget.exe prüfen
 
@@ -2428,12 +2428,12 @@ bool RestoreStatus() {
    string filesDir = TerminalPath() +"\\experts\\files\\";
    string fileName = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
 
-   if      (IsTesting())      fileName = "presets\\"+ fileName;                                 // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
-   else if (IsTestSequence()) fileName = "presets\\tester\\"+ fileName;                         //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
-   else                       fileName = "presets\\"+ ShortAccountCompany() +"\\"+ fileName;
+   if      (IsTesting()) fileName = "presets\\"+ fileName;                                // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
+   else if (IsTest())    fileName = "presets\\tester\\"+ fileName;                        //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
+   else                  fileName = "presets\\"+ ShortAccountCompany() +"\\"+ fileName;
 
    if (!IsFile(filesDir + fileName)) {
-      if (IsTestSequence())
+      if (IsTest())
          return(_false(catch("RestoreStatus(2)   status file \""+ filesDir + fileName +"\" for test sequence T"+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
       /*
       // TODO: Existenz von wget.exe prüfen
@@ -2444,18 +2444,18 @@ bool RestoreStatus() {
       string logFile    = filesDir +"\\"+ fileName +".log";
       string cmd        = "wget.exe \""+ url +"\" -O \""+ targetFile +"\" -o \""+ logFile +"\"";
 
-      debug("RestoreStatus()   downloading status file for sequence "+ ifString(IsTestSequence(), "T", "") + sequenceId);
+      debug("RestoreStatus()   downloading status file for sequence "+ ifString(IsTest(), "T", "") + sequenceId);
 
       int error = WinExecAndWait(cmd, SW_HIDE);                      // SW_SHOWNORMAL|SW_HIDE
       if (IsError(error))
          return(_false(SetLastError(error)));
 
-      debug("RestoreStatus()   status file for sequence "+ ifString(IsTestSequence(), "T", "") + sequenceId +" successfully downloaded");
+      debug("RestoreStatus()   status file for sequence "+ ifString(IsTest(), "T", "") + sequenceId +" successfully downloaded");
       FileDelete(fileName +".log");
       */
    }
    if (!IsFile(filesDir + fileName))
-      return(_false(catch("RestoreStatus(3)   status file \""+ filesDir + fileName +"\" for "+ ifString(IsTestSequence(), "test ", "") +"sequence "+ ifString(IsTestSequence(), "T", "") + sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+      return(_false(catch("RestoreStatus(3)   status file \""+ filesDir + fileName +"\" for "+ ifString(IsTest(), "test ", "") +"sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_FILE_NOT_FOUND)));
 
 
    // (2) Datei einlesen
@@ -2465,7 +2465,7 @@ bool RestoreStatus() {
       return(_false(SetLastError(stdlib_PeekLastError())));
    if (size == 0) {
       FileDelete(fileName);
-      return(_false(catch("RestoreStatus(4)   status for sequence "+ ifString(IsTestSequence(), "T", "") + sequenceId +" not found", ERR_RUNTIME_ERROR)));
+      return(_false(catch("RestoreStatus(4)   status for sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_RUNTIME_ERROR)));
    }
 
    // (3) Zeilen in Schlüssel-Wert-Paare aufbrechen, Datentypen validieren und Daten übernehmen
@@ -2516,7 +2516,7 @@ bool RestoreStatus() {
             value = StringRight(value, -1);
          }
          if (value != StringConcatenate("", sequenceId)) return(_false(catch("RestoreStatus(8)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-         Sequence.ID = ifString(IsTestSequence(), "T", "") + sequenceId;
+         Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
          ArrayDropString(keys, key);
       }
       else if (key == "GridDirection") {
@@ -3397,12 +3397,12 @@ bool ChartMarker.PositionClosed(int i) {
 
 
 /**
- * Ob die Sequenz im Tester erzeugt wurde (für Visualisierung von Tests in Live-Charts). Der Aufruf dieser Funktion in Live-Charts mit einer im Tester
- * erzeugten Sequenz (z.B. mit VisualMode=Off) gibt ebenfalls TRUE zurück.
+ * Ob die Sequenz im Tester erzeugt wurde, also ein Test ist. Der Aufruf dieser Funktion in Online-Charts mit einer im Tester
+ * erzeugten Sequenz gibt daher ebenfalls TRUE zurück.
  *
  * @return bool
  */
-bool IsTestSequence() {
+bool IsTest() {
    return(IsTesting() || testSequence);
 }
 
