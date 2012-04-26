@@ -6,6 +6,7 @@
  *  -----
  *  - Exit-Rule implementieren: onProfit(value|%), onLimit                                      *
  *  - Pause/Resume implementieren                                                               *
+ *  - Änderungen der Gridbasis während Auszeit erkennen                                         *
  *  - beidseitig unidirektionales Grid implementieren                                           *
  *  - PendingOrders nicht per Tick trailen                                                      *
  *  - StartCondition "@time" implementieren                                                     *
