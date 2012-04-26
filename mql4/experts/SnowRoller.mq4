@@ -1323,25 +1323,19 @@ bool StopSequence() {
    }
 
 
-   // (2) vorm Schließen STATUS_STOPPING setzen
-   status           = STATUS_STOPPING;
-   sequenceStopTime = TimeCurrent();
-
-   double price = (Bid + Ask)/2;
-   if      (LT(grid.base, price) || grid.direction==D_LONG ) sequenceStopPrice = Bid;
-   else if (GT(grid.base, price) || grid.direction==D_SHORT) sequenceStopPrice = Ask;
-   else                                                      sequenceStopPrice = price;
-   sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);
-
-
-   // (3) offene Positionen schließen
+   // (2) offene Positionen schließen
    bool ordersChanged;
    int  sizeOfOpenPositions = ArraySize(openPositions);
+
+   status = STATUS_STOPPING;
 
    if (sizeOfOpenPositions > 0) {
       double execution[] = {NULL};
       if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, execution))
          return(_false(SetLastError(stdlib_PeekLastError())));
+
+      sequenceStopTime  =                 execution[EXEC_TIME ] +0.1;         // (datetime)(double) datetime
+      sequenceStopPrice = NormalizeDouble(execution[EXEC_PRICE], Digits);
 
       for (i=0; i < sizeOfOpenPositions; i++) {
          int pos = SearchIntArray(orders.ticket, openPositions[i]);
@@ -1361,7 +1355,7 @@ bool StopSequence() {
       }
       grid.openStopValue = 0;
       /*
-      grid.floatingPL        = ...           // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte automatisch aktualisiert.
+      grid.floatingPL        = ...           // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte dort automatisch aktualisiert.
       grid.totalPL           = ...
       grid.maxProfitLoss     = ...
       grid.maxProfitLossTime = ...
@@ -1370,9 +1364,17 @@ bool StopSequence() {
       */
       ordersChanged = true;
    }
+   else {
+      double price = (Bid + Ask)/2;
+      if      (grid.direction==D_LONG  || LT(grid.base, price)) sequenceStopPrice = Bid;
+      else if (grid.direction==D_SHORT || GT(grid.base, price)) sequenceStopPrice = Ask;
+      else                                                      sequenceStopPrice = price;
+      sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);
+      sequenceStopTime  = TimeCurrent();
+   }
 
 
-   // (4) Pending-Orders streichen
+   // (3) Pending-Orders streichen
    int sizeOfPendingOrders = ArraySize(pendingOrders);
 
    for (i=0; i < sizeOfPendingOrders; i++) {
@@ -1380,10 +1382,10 @@ bool StopSequence() {
          return(false);
       ordersChanged = true;
    }
+
+
+   // (4) Daten aktualisieren und speichern
    status = STATUS_STOPPED;
-
-
-   // (5) Daten aktualisieren und speichern
    if (ordersChanged) {
       if (!UpdateStatus()) return(false);
       if (  !SaveStatus()) return(false);
