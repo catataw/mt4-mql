@@ -1295,7 +1295,7 @@ bool StopSequence() {
    if (IsLastError() || status==STATUS_DISABLED)          return(false);
    if (status==STATUS_STOPPING || status==STATUS_STOPPED) return(false);
 
-   if (firstTick) {                                                     // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                              // Sicherheitsabfrage beim Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", __SCRIPT__ +" - StopSequence()", MB_ICONQUESTION|MB_OKCANCEL);
@@ -1303,6 +1303,7 @@ bool StopSequence() {
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StopSequence(1)")));
       }
    }
+   firstTickConfirmed = true;
 
 
    // (1) PendingOrders und OpenPositions einlesen
