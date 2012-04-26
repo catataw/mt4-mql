@@ -3084,9 +3084,7 @@ bool SynchronizeStatus() {
    int    openLevels[]; ArrayResize(openLevels, 0);
    double events[][7];  ArrayResize(events, 0);
 
-   int size = ArraySize(orders.ticket);
-
-   for (i=0; i < size; i++) {
+   for (i=0; i < sizeOfTickets; i++) {
       pendingOrder   = orders.type[i] == OP_UNDEFINED;
       openPosition   = !pendingOrder && orders.closeTime[i]==0;
       closedPosition = !pendingOrder && !openPosition;
@@ -3115,8 +3113,8 @@ bool SynchronizeStatus() {
    }
 
    // GridBase-Änderungen zu den BreakevenEvents hinzufügen
-   size = ArraySize(grid.base.time);
-   for (i=0; i < size; i++) {
+   int sizeOfGridBase = ArraySize(grid.base.time);
+   for (i=0; i < sizeOfGridBase; i++) {
       Sync.PushBreakevenEvent(events, grid.base.time[i], EV_GRIDBASE_CHANGE, grid.base.value[i], 0, NULL, NULL, NULL);
    }
 
@@ -3144,11 +3142,12 @@ bool SynchronizeStatus() {
 
    // (4) Breakeven-Verlauf restaurieren und Indikator neu zeichnen
    int time, lastTime, minute, lastMinute, type, level;
-   size = ArrayRange(events, 0);
-   if (size > 0)
+   int sizeOfEvents = ArrayRange(events, 0);
+
+   if (sizeOfEvents > 0)
       ArraySort(events);                                                // Breakeven-Änderungen zeitlich sortieren
 
-   for (i=0; i < size; i++) {
+   for (i=0; i < sizeOfEvents; i++) {
       time = events[i][0] +0.1;                                         // (int) double
 
       // zwischen den BE-Events liegende BarOpen(M1)-Events simulieren
@@ -3161,10 +3160,11 @@ bool SynchronizeStatus() {
       }
       type                = events[i][1] +0.1;                          // (int) double
       grid.base           = events[i][2];
-      level               = events[i][3] + MathSign(events[i][2])*0.1;  // (int) double
+      level               = events[i][3] + MathSign(events[i][3])*0.1;  // (int) double
       grid.stopsPL       += events[i][4];
       grid.closedPL      += events[i][5];
       grid.openStopValue += events[i][6];
+      //debug("SynchronizeStatus()   event: "+ BreakevenEventToStr(type) +"   level="+ level);
 
       if (type != EV_POSITION_CLOSE)                                    // realizedPL = stopsPL + closedPL
          grid.valueAtRisk = grid.openStopValue - grid.stopsPL;          // ohne closedPL => ist während Laufzeit 0 und wird ab Stop nicht mehr berücksichtigt
