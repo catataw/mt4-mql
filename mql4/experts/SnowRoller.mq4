@@ -652,6 +652,7 @@ bool StartSequence() {
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __SCRIPT__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StartSequence(1)")));
+         RefreshRates();
       }
    }
    firstTickConfirmed = true;
@@ -849,6 +850,7 @@ bool Grid.AddOrder(int type, int level) {
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a new "+ OperationTypeDescription(type) +" order now?", __SCRIPT__ +" - Grid.AddOrder()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("Grid.AddOrder(1)")));
+         RefreshRates();
       }
    }
    firstTickConfirmed = true;
@@ -886,6 +888,7 @@ bool Grid.ModifyPendingOrder(int i) {
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to modify the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ orders.ticket[i] +" now?", __SCRIPT__ +" - Grid.ModifyPendingOrder()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("Grid.ModifyPendingOrder(4)")));
+         RefreshRates();
       }
    }
    firstTickConfirmed = true;
@@ -933,6 +936,7 @@ bool Grid.DeleteOrder(int ticket) {
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ ticket +" now?", __SCRIPT__ +" - Grid.DeleteOrder()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("Grid.DeleteOrder(2)")));
+         RefreshRates();
       }
    }
    firstTickConfirmed = true;
@@ -1301,6 +1305,7 @@ bool StopSequence() {
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", __SCRIPT__ +" - StopSequence()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK)
             return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StopSequence(1)")));
+         RefreshRates();
       }
    }
    firstTickConfirmed = true;
@@ -1365,12 +1370,11 @@ bool StopSequence() {
       ordersChanged = true;
    }
    else {
-      double price = (Bid + Ask)/2;
-      if      (grid.direction==D_LONG  || LT(grid.base, price)) sequenceStopPrice = Bid;
-      else if (grid.direction==D_SHORT || GT(grid.base, price)) sequenceStopPrice = Ask;
-      else                                                      sequenceStopPrice = price;
-      sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);
       sequenceStopTime  = TimeCurrent();
+      sequenceStopPrice = (Bid + Ask)/2;
+      if      (grid.base < sequenceStopPrice) sequenceStopPrice = Bid;
+      else if (grid.base > sequenceStopPrice) sequenceStopPrice = Ask;
+      sequenceStopPrice = NormalizeDouble(sequenceStopPrice, Digits);
    }
 
 
