@@ -51,6 +51,7 @@ int onTick() {
 
    double execution[] = {NULL};
 
+   /*
    if (!done1) {
       if (TimeCurrent() > startTime + 1*HOUR) {
          done1 = true;
@@ -128,7 +129,6 @@ int onTick() {
       }
    }
 
-   /*
    if (!done3) {
       if (TimeCurrent() > startTime + 3*HOURS) {
          done3 = true;
