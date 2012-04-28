@@ -8,11 +8,11 @@
  *  - StopCondition "@profit(value|%)" implementieren                                           *
  *  - Resume implementieren                                                                     *
  *  - automatisches Pause/Resume am Wochenende implementieren                                   *
+ *  - StartCondition "@time" implementieren                                                     *
+ *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                           *
  *  - beidseitig unidirektionales Grid implementieren                                           *
  *  - Änderungen der Gridbasis während Auszeit erkennen                                         *
  *  - PendingOrders nicht per Tick trailen                                                      *
- *  - StartCondition "@time" implementieren                                                     *
- *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                           *
  *
  *  - rt.grid.base: Separatoren in Statusdatei tauschen
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
@@ -62,7 +62,7 @@ extern               string GridDirection         = "Bidirectional* | Long | Sho
 extern               int    GridSize              = 20;
 extern               double LotSize               = 0.1;
 extern               string StartCondition        = "";
-extern               string StopCondition         = "";
+extern               string StopCondition         = "Limit(1.33)";               // Limit(1.33) || Profit(10%) || Profit(1234.00) || Time(2012.03.12 12:00)
 extern /*transient*/ string OrderDisplayMode      = "None";
 extern               string OrderDisplayMode.Help = "None* | Stops | Pyramid | All";
 extern /*transient*/ color  Breakeven.Color       = DodgerBlue;
@@ -76,6 +76,7 @@ string   last.GridDirection;                          // mit den Default-Werten 
 int      last.GridSize;                               // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
 double   last.LotSize;                                // in init() daraus restauriert.
 string   last.StartCondition;
+string   last.StopCondition;
 string   last.OrderDisplayMode;
 color    last.Breakeven.Color;
 int      last.Breakeven.Width;
@@ -93,17 +94,31 @@ datetime sequenceStartTime;                           // Daten bei Beginn des Tr
 double   sequenceStartPrice;
 double   sequenceStartEquity;
 
-datetime sequenceStopTime;                            // Daten bei Aufruf von StopSequence() oder STATUS_STOPPED (bei externem Stop)
+bool     start.criteria;                              // Start-Conditions: ob mindestens ein Kriterium aktiv ist
+bool     start.limit.enabled;
+double   start.limit.value;
+bool     start.time.enabled;
+datetime start.time.value;
+
+
+datetime sequenceStopTime;                            // Daten bei Sequenz-Stop/Pause (StopCondition erfüllt)
 double   sequenceStopPrice;
 
-double   entry.limit;
-double   entry.lastBid;
+bool     stop.criteria;                               // Stop-Conditions: ob mindestens ein Kriterium aktiv ist
+bool     stop.limit.enabled;
+double   stop.limit.value;
+bool     stop.time.enabled;
+datetime stop.time.value;
+bool     stop.profitAbs.enabled;
+double   stop.profitAbs.value;
+bool     stop.profitPercent.enabled;
+double   stop.profitPercent.value;
+
 
 int      grid.direction = D_BIDIR;
-
 double   grid.base;                                   // aktuelle Gridbasis
 datetime grid.base.time [];                           // Zeitpunkt einer Änderung der Gridbasis
-double   grid.base.value[];                           // Gridbasis zum Zeitpunkt
+double   grid.base.value[];                           // Gridbasis zum Änderungszeitpunkt
 
 int      grid.level;                                  // aktueller Grid-Level
 int      grid.maxLevelLong;                           // maximal erreichter Long-Level
@@ -156,7 +171,7 @@ double   orders.profit           [];
 
 string   str.testSequence        = "";                // Speichervariablen für schnellere Abarbeitung von ShowStatus()
 string   str.LotSize             = "";
-string   str.entry.limit         = "";
+string   str.start.limit         = "";
 string   str.grid.direction      = "";
 string   str.grid.base           = "";
 string   str.grid.maxLevel       = "";
@@ -275,6 +290,7 @@ int init() {
             // GridSize       = last.GridSize;
             // LotSize        = last.LotSize;
             // StartCondition = last.StartCondition;
+            // StopCondition  = last.StopCondition;
             SaveStatus();
          }
          */
@@ -294,6 +310,7 @@ int init() {
       GridSize         = last.GridSize;
       LotSize          = last.LotSize;
       StartCondition   = last.StartCondition;
+      StopCondition    = last.StopCondition;
       OrderDisplayMode = last.OrderDisplayMode;
       Breakeven.Color  = last.Breakeven.Color;
       Breakeven.Width  = last.Breakeven.Width;
@@ -338,6 +355,7 @@ int deinit() {
       last.GridSize         = GridSize;
       last.LotSize          = LotSize;
       last.StartCondition   = StartCondition;
+      last.StopCondition    = StopCondition;
       last.OrderDisplayMode = OrderDisplayMode;
       last.Breakeven.Color  = Breakeven.Color;
       last.Breakeven.Width  = Breakeven.Width;
@@ -601,53 +619,112 @@ bool IsOrderClosedByStop() {
 
 
 /**
- * Signalgeber für StartSequence(). Wurde kein Limit angegeben (StartCondition = 0 oder ""), gibt die Funktion immer TRUE zurück.
+ * Signalgeber für StartSequence(). Die einzelnen Bedingungen sind AND-verknüpft.
  *
- * @return bool - ob die konfigurierte StartCondition erfüllt ist
+ * @return bool - ob alle konfigurierten Startbedingungen erfüllt sind
  */
 bool IsStartSignal() {
-   // Das Limit ist erreicht, wenn der Bid-Preis es seit dem letzten Tick berührt oder gekreuzt hat.
-   if (EQ(entry.limit, 0))                                           // kein Limit definiert => immer TRUE
+   static bool isTriggered = false;
+   if (isTriggered)                                                  // einmal getriggert, immer getriggert
       return(true);
 
-   if (EQ(Bid, entry.limit) || EQ(entry.lastBid, entry.limit)) {     // Bid liegt oder lag beim letzten Tick exakt auf dem Limit
-      entry.lastBid = entry.limit;                                   // Tritt während der weiteren Verarbeitung des Ticks ein behandelbarer Fehler auf, wird durch
-      return(true);                                                  // entry.lastBid = entry.limit das Limit, einmal getriggert, nachfolgend immer wieder getriggert.
-   }
 
-   static bool lastBid.init = false;
+   if (start.criteria) {
+      // -- start.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ---------------------------------------
+      if (start.limit.enabled) {
+         static double lastBid;                                      // Kreuzen des Limits seit dem letzten Tick erkennen
+         static bool   lastBid_init = true;
 
-   if (EQ(entry.lastBid, 0)) {                                       // entry.lastBid muß initialisiert sein => ersten Aufruf überspringen und Status merken,
-      lastBid.init = true;                                           // um firstTick bei erstem tatsächlichen Test gegen entry.lastBid auf TRUE zurückzusetzen
-   }
-   else {
-      if (LT(entry.lastBid, entry.limit)) {
-         if (GT(Bid, entry.limit)) {                                 // Bid hat Limit von unten nach oben gekreuzt
-            entry.lastBid = entry.limit;
-            return(true);
+         bool result;
+
+         if (EQ(Bid, start.limit.value)) {                           // Bid liegt exakt auf dem Limit
+            result = true;
          }
+         else if (lastBid_init) {
+            lastBid_init = false;
+         }
+         else if (LT(lastBid, start.limit.value)) {
+            result = GT(Bid, start.limit.value);                     // Bid hat Limit von unten nach oben gekreuzt
+         }
+         else if (GT(lastBid, start.limit.value)) {
+            result = LT(Bid, start.limit.value);                     // Bid hat Limit von oben nach unten gekreuzt
+         }
+
+         lastBid = Bid;
+         if (!result)
+            return(false);
       }
-      else if (LT(Bid, entry.limit)) {                               // Bid hat Limit von oben nach unten gekreuzt
-         entry.lastBid = entry.limit;
-         return(true);
+
+
+      // -- start.time: zum angegebenen Zeitpunkt oder danach erfüllt ---------------------------------------------------
+      if (start.time.enabled) {
+         if (TimeCurrent() < start.time.value)
+            return(false);
       }
-      if (lastBid.init) {
-         lastBid.init = false;
-         firstTick    = true;                                        // firstTick nach erstem tatsächlichen Test gegen entry.lastBid auf TRUE zurückzusetzen
-      }
+
    }
 
-   entry.lastBid = Bid;
-   return(false);
+   isTriggered = true;
+   return(true);
 }
 
 
 /**
- * Signalgeber für StopSequence().
+ * Signalgeber für StopSequence(). Die einzelnen Bedingungen sind OR-verknüpft.
  *
- * @return bool - ob die konfigurierte StopCondition erfüllt ist
+ * @return bool - ob mindestens eine der konfigurierten Stopbedingungen erfüllt ist
  */
 bool IsStopSignal() {
+   static bool isTriggered = false;
+   if (isTriggered)                                                  // einmal getriggert, immer getriggert
+      return(true);
+
+
+   if (stop.criteria) {
+      // -- stop.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ----------------------------------------
+      if (stop.limit.enabled) {
+         static double lastBid;                                      // Kreuzen des Limits seit dem letzten Tick erkennen
+         static bool   lastBid_init = true;
+
+         bool result;
+
+         if (EQ(Bid, stop.limit.value)) {                            // Bid liegt exakt auf dem Limit
+            result = true;
+         }
+         else if (lastBid_init) {
+            lastBid_init = false;
+         }
+         else if (LT(lastBid, stop.limit.value)) {
+            result = GT(Bid, stop.limit.value);                      // Bid hat Limit von unten nach oben gekreuzt
+         }
+         else if (GT(lastBid, stop.limit.value)) {
+            result = LT(Bid, stop.limit.value);                      // Bid hat Limit von oben nach unten gekreuzt
+         }
+
+         lastBid = Bid;
+         if (result) {
+            isTriggered = true;
+            return(true);
+         }
+      }
+
+      // -- stop.time: zum angegebenen Zeitpunkt oder danach erfüllt ----------------------------------------------------
+      if (stop.time.enabled) {
+         if (stop.time.value <= TimeCurrent()) {
+            isTriggered = true;
+            return(true);
+         }
+      }
+
+      // -- stop.profitAbs: ---------------------------------------------------------------------------------------------
+      if (stop.profitAbs.enabled) {
+      }
+
+      // -- stop.profitPercent: -----------------------------------------------------------------------------------------
+      if (stop.profitPercent.enabled) {
+      }
+   }
+
    return(false);
 }
 
@@ -674,7 +751,7 @@ bool StartSequence() {
 
    // Startvariablen und Status setzen
    sequenceStartTime   = TimeCurrent();
-   sequenceStartPrice  = ifDouble(EQ(entry.limit, 0), NormalizeDouble((Bid + Ask)/2, Digits), entry.limit);
+   sequenceStartPrice  = ifDouble(start.limit.enabled, start.limit.value, NormalizeDouble((Bid + Ask)/2, Digits));
    sequenceStartEquity = AccountEquity()-AccountCredit();
 
    Grid.BaseReset(sequenceStartTime, sequenceStartPrice);
@@ -1449,7 +1526,7 @@ int ShowStatus(bool init=false) {
    switch (status) {
       case STATUS_WAITING:     msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " waiting");
                                if (StringLen(StartCondition) > 0)
-                                  msg = StringConcatenate(msg, " for crossing of ", str.entry.limit);                                                                    break;
+                                  msg = StringConcatenate(msg, " for crossing of ", str.start.limit);                                                                    break;
       case STATUS_PROGRESSING: msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " progressing at level ", grid.level, "  ", str.grid.maxLevel); break;
       case STATUS_STOPPING:    msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " stopping at level ", grid.level, "  ", str.grid.maxLevel);    break;
       case STATUS_STOPPED:     msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " stopped at level ", grid.level, "  ", str.grid.maxLevel);     break;
@@ -1521,13 +1598,18 @@ void SS.LotSize() {
 
 
 /**
- * ShowStatus(): Aktualisiert die String-Repräsentation von entry.limit.
+ * ShowStatus(): Aktualisiert die String-Repräsentation von start.limit.
  */
-void SS.Entry.Limit() {
+void SS.Start.Limit() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.entry.limit = NumberToStr(entry.limit, PriceFormat);
+   if (start.criteria && start.limit.enabled) {
+      str.start.limit = NumberToStr(start.limit.value, PriceFormat);
+   }
+   else {
+      str.start.limit = "";
+   }
 }
 
 
@@ -2207,16 +2289,19 @@ bool ValidateConfiguration(int reason=NULL) {
    if (reason==REASON_PARAMETERS) /*&&*/ if (StartCondition!=last.StartCondition)
       if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(13)  Cannot change parameter StartCondition of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   if (StringLen(StartCondition) == 0) {
-      entry.limit = 0;
+   start.criteria = false;
+   if (StringLen(StartCondition) != 0) {
+      if (StringIsNumeric(StartCondition)) {
+         start.limit.value = StrToDouble(StartCondition);
+         if (LT(start.limit.value, 0))      return(_false(catch("ValidateConfiguration(14)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         start.limit.enabled = NE(start.limit.value, 0);
+         start.criteria      = ifBool(start.limit.enabled, true, start.criteria);
+         SS.Start.Limit();
+      }
+      else                                  return(_false(catch("ValidateConfiguration(15)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
-   else if (StringIsNumeric(StartCondition)) {
-      entry.limit = StrToDouble(StartCondition); SS.Entry.Limit();
-      if (LT(entry.limit, 0))               return(_false(catch("ValidateConfiguration(14)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
-      if (EQ(entry.limit, 0))
-         StartCondition = "";
-   }
-   else                                     return(_false(catch("ValidateConfiguration(15)  Invalid input parameter StartCondition = \""+ StartCondition +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (!start.criteria)
+      StartCondition = "";
 
    // OrderDisplayMode
    string modes[] = {"None", "Stops", "Pyramid", "All"};
@@ -2277,7 +2362,7 @@ bool SaveStatus() {
    datetime sequenceStopTime;                // ja
    double   sequenceStopPrice;               // ja
 
-   double   entry.limit;                     // nein: wird aus StartCondition abgeleitet
+   bool     start.limit;                     // nein: wird aus StartCondition abgeleitet
 
    double   grid.base;                       // nein: wird aus Gridbase-History restauriert
    datetime grid.base.time [];               // ja

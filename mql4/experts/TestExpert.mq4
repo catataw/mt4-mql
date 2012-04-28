@@ -42,6 +42,17 @@ int onTick() {
       return(prev_error);
 
 
+   static bool boolWInit = false;
+   static bool boolWoInit;
+
+   debug("onTick()   boolWInit="+ BoolToStr(boolWInit) +"   boolWoInit="+ BoolToStr(boolWoInit));
+
+   boolWInit  = !boolWInit;
+   boolWoInit = !boolWoInit;
+
+   return(NO_ERROR);
+
+
    if (startTime == 0)
       startTime = TimeCurrent();
 
