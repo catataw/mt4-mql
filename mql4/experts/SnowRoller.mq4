@@ -4,8 +4,6 @@
  *
  *  TODO:
  *  -----
- *  - StopCondition "@limit" implementieren                                                     *
- *  - StopCondition "@profit(value|%)" implementieren                                           *
  *  - Resume implementieren                                                                     *
  *  - automatisches Pause/Resume am Wochenende implementieren                                   *
  *  - StartCondition "@time" implementieren                                                     *
@@ -61,8 +59,8 @@ extern /*transient*/ string Sequence.ID           = "";
 extern               string GridDirection         = "Bidirectional* | Long | Short | Long+Short";
 extern               int    GridSize              = 20;
 extern               double LotSize               = 0.1;
-extern               string StartConditions       = "";
-extern               string StopConditions        = "limit(1.33)";               // Limit(1.33) || Profit(10%) || Profit(1234.00) || Time(2012.03.12 12:00)
+extern               string StartConditions       = "";                       // @limit(1.33) || @profit(10%) || @profit(1234.00) || @time(2012.03.12 12:00)
+extern               string StopConditions        = "@profit(20%)";
 extern /*transient*/ string OrderDisplayMode      = "None";
 extern               string OrderDisplayMode.Help = "None* | Stops | Pyramid | All";
 extern /*transient*/ color  Breakeven.Color       = DodgerBlue;
@@ -716,10 +714,18 @@ bool IsStopSignal() {
 
       // -- stop.profitAbs: ---------------------------------------------------------------------------------------------
       if (stop.profitAbs.condition) {
+         if (GE(grid.totalPL, stop.profitAbs.value)) {
+            isTriggered = true;
+            return(true);
+         }
       }
 
       // -- stop.profitPercent: -----------------------------------------------------------------------------------------
       if (stop.profitPercent.condition) {
+         if (GE(grid.totalPL, stop.profitPercent.value/100 * sequenceStartEquity)) {
+            isTriggered = true;
+            return(true);
+         }
       }
    }
 
@@ -2238,9 +2244,10 @@ int CreateSequenceId() {
  * @return bool - ob die Konfiguration gültig ist
  */
 bool ValidateConfiguration(int reason=NULL) {
+
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
    if (reason == REASON_PARAMETERS)
-      if (Sequence.ID != last.Sequence.ID)  return(_false(catch("ValidateConfiguration(1)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (Sequence.ID != last.Sequence.ID)      return(_false(catch("ValidateConfiguration(1)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
 
    // GridDirection
    string directions[] = {"Bidirectional", "Long", "Short", "L+S"};
@@ -2254,52 +2261,128 @@ bool ValidateConfiguration(int reason=NULL) {
       case 's': grid.direction    = D_SHORT;      break;
       case 'b': grid.direction    = D_BIDIR;      break;                // default für leeren Input-Parameter
 
-      default:                              return(_false(catch("ValidateConfiguration(3)  Invalid input parameter GridDirection = \""+ GridDirection +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      default:                                  return(_false(catch("ValidateConfiguration(3)  Invalid input parameter GridDirection = \""+ GridDirection +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
    if (reason==REASON_PARAMETERS) /*&&*/ if (directions[grid.direction]!=last.GridDirection)
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(4)  Cannot change parameter GridDirection of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(4)  Cannot change parameter GridDirection of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    GridDirection = directions[grid.direction]; SS.Grid.Direction();
 
    // GridSize
    if (reason==REASON_PARAMETERS) /*&&*/ if (GridSize!=last.GridSize)
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(5)  Cannot change parameter GridSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(5)  Cannot change parameter GridSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   if (GridSize < 1)                        return(_false(catch("ValidateConfiguration(6)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
+   if (GridSize < 1)                            return(_false(catch("ValidateConfiguration(6)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // LotSize
    if (reason==REASON_PARAMETERS) /*&&*/ if (NE(LotSize, last.LotSize))
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(7)  Cannot change parameter LotSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(7)  Cannot change parameter LotSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   if (LE(LotSize, 0))                      return(_false(catch("ValidateConfiguration(8)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
+   if (LE(LotSize, 0))                          return(_false(catch("ValidateConfiguration(8)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT );
    double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT );
    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
    int error = GetLastError();
-   if (IsError(error))                      return(_false(catch("ValidateConfiguration(9)   symbol=\""+ Symbol() +"\"", error)));
-   if (LT(LotSize, minLot))                 return(_false(catch("ValidateConfiguration(10)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (GT(LotSize, maxLot))                 return(_false(catch("ValidateConfiguration(11)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
-   if (NE(MathModFix(LotSize, lotStep), 0)) return(_false(catch("ValidateConfiguration(12)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (IsError(error))                          return(_false(catch("ValidateConfiguration(9)   symbol=\""+ Symbol() +"\"", error)));
+   if (LT(LotSize, minLot))                     return(_false(catch("ValidateConfiguration(10)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (GT(LotSize, maxLot))                     return(_false(catch("ValidateConfiguration(11)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", ERR_INVALID_INPUT_PARAMVALUE)));
+   if (NE(MathModFix(LotSize, lotStep), 0))     return(_false(catch("ValidateConfiguration(12)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
    SS.LotSize();
 
+   // ---------------------------------------------------------
    // StartConditions
+   // ---------------------------------------------------------
    StartConditions = StringReplace(StartConditions, " ", "");
    if (reason==REASON_PARAMETERS) /*&&*/ if (StartConditions!=last.StartConditions)
-      if (status != STATUS_WAITING)         return(_false(catch("ValidateConfiguration(13)  Cannot change parameter StartConditions of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(13)  Cannot change parameter StartConditions of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    start.conditions = false;
    if (StringLen(StartConditions) != 0) {
       if (StringIsNumeric(StartConditions)) {
          start.limit.value = StrToDouble(StartConditions);
-         if (LT(start.limit.value, 0))      return(_false(catch("ValidateConfiguration(14)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         if (LT(start.limit.value, 0))          return(_false(catch("ValidateConfiguration(14)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
          start.limit.condition = NE(start.limit.value, 0);
          start.conditions      = ifBool(start.limit.condition, true, start.conditions);
          SS.Start.Limit();
       }
-      else                                  return(_false(catch("ValidateConfiguration(15)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      else                                      return(_false(catch("ValidateConfiguration(15)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
    if (!start.conditions)
       StartConditions = "";
+
+   // -------------------------------------------------------------------------------------------------------------
+   // StopConditions:           "@profit(20%) || @profit(10%e) || @profit(1234.00) || @limit(1.33) || @time(12:00)"
+   // -------------------------------------------------------------------------------------------------------------
+   //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
+   //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
+   //  @profit(1234.00)
+   //  @profit(20%)     oder  20%                                             // shortkey nicht implementiert
+   //  @profit(10%e)    oder  20%e           // noch nicht implementiert      // shortkey nicht implementiert
+   //debug("()   StopConditions = \""+ StopConditions +"\"");
+
+   // (1) StopConditions in einzelne Ausdrücke zerlegen
+   string expr, exprs[], elems[], key, value;
+   double dValue;
+   int time, size, sizeOfExprs=Explode(StopConditions, "||", exprs, NULL);
+
+   // (2) jeden Ausdruck parsen und validieren
+   for (int i=0; i < sizeOfExprs; i++) {
+      expr = StringToLower(StringTrim(exprs[i]));
+      if (StringLen(expr) == 0) {
+         if (sizeOfExprs > 1)                   return(_false(catch("ValidateConfiguration(16)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         break;
+      }
+      if (StringGetChar(expr, 0) != '@')        return(_false(catch("ValidateConfiguration(17)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (Explode(expr, "(", elems, NULL) != 2) return(_false(catch("ValidateConfiguration(18)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (!StringEndsWith(elems[1], ")"))       return(_false(catch("ValidateConfiguration(19)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      key   = StringTrim(elems[0]);
+      value = StringTrim(StringLeft(elems[1], -1));
+      if (StringLen(value) == 0)                return(_false(catch("ValidateConfiguration(20)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
+
+      if (key == "@limit") {
+         if (!StringIsNumeric(value))           return(_false(catch("ValidateConfiguration(21)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         dValue = StrToDouble(value);
+         if (LE(dValue, 0))                     return(_false(catch("ValidateConfiguration(22)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         stop.limit.condition = true;
+         stop.limit.value     = dValue;
+         exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
+      }
+      else if (key == "@time") {
+         time = StrToTime(value);
+         if (IsError(catch("ValidateConfiguration(23)  Invalid input parameter StopConditions = \""+ StopConditions +"\"")))
+            return(false);
+         if (time < TimeCurrent())              return(_false(catch("ValidateConfiguration(24)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         stop.time.condition = true;
+         stop.time.value     = time;
+         exprs[i] = key +"("+ TimeToStr(time) +")";
+      }
+      else if (key == "@profit") {
+         size = Explode(value, "%", elems, NULL);
+         if (size > 2)                          return(_false(catch("ValidateConfiguration(25)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         value = StringTrim(elems[0]);
+         if (StringLen(value) == 0)             return(_false(catch("ValidateConfiguration(26)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         if (!StringIsNumeric(value))           return(_false(catch("ValidateConfiguration(27)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         dValue = StrToDouble(value);
+         if (size == 1) {
+            if (LT(dValue, 0))                  return(_false(catch("ValidateConfiguration(28)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+            stop.profitAbs.condition = true;
+            stop.profitAbs.value     = dValue;
+            exprs[i] = key +"("+ NumberToStr(dValue, ".2") +")";
+         }
+         else {
+            if (LE(dValue, 0))                  return(_false(catch("ValidateConfiguration(29)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+            stop.profitPercent.condition = true;
+            stop.profitPercent.value     = dValue;
+            exprs[i] = key +"("+ NumberToStr(dValue, ".+") +"%)";
+         }
+      }
+      else                                      return(_false(catch("ValidateConfiguration(30)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      stop.conditions = true;
+   }
+   if (stop.conditions) StopConditions = JoinStrings(exprs, " || ");
+   else                 StopConditions = "";
+   //debug("()   StopConditions = \""+ StopConditions +"\"");
 
    // OrderDisplayMode
    string modes[] = {"None", "Stops", "Pyramid", "All"};
@@ -2308,7 +2391,7 @@ bool ValidateConfiguration(int reason=NULL) {
       case 'S': orderDisplayMode = DM_STOPS;   break;
       case 'P': orderDisplayMode = DM_PYRAMID; break;
       case 'A': orderDisplayMode = DM_ALL;     break;
-      default:                              return(_false(catch("ValidateConfiguration(16)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      default:                                  return(_false(catch("ValidateConfiguration(31)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
    OrderDisplayMode = modes[orderDisplayMode];
 
@@ -2316,14 +2399,14 @@ bool ValidateConfiguration(int reason=NULL) {
    if (Breakeven.Color == 0xFF000000)                                   // kann vom Terminal falsch gesetzt worden sein
       Breakeven.Color = CLR_NONE;
    if (Breakeven.Color < CLR_NONE || Breakeven.Color > C'255,255,255')  // kann über transienten Chartstatus falsch reinkommen
-                                            return(_false(catch("ValidateConfiguration(17)  Invalid input parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), ERR_INVALID_INPUT_PARAMVALUE)));
+                                                return(_false(catch("ValidateConfiguration(32)  Invalid input parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), ERR_INVALID_INPUT_PARAMVALUE)));
    // Breakeven.Width
    if (Breakeven.Width < 1 || Breakeven.Width > 5)                      // kann über transienten Chartstatus falsch reinkommen
-                                            return(_false(catch("ValidateConfiguration(18)  Invalid input parameter Breakeven.Width = "+ Breakeven.Width, ERR_INVALID_INPUT_PARAMVALUE)));
+                                                return(_false(catch("ValidateConfiguration(33)  Invalid input parameter Breakeven.Width = "+ Breakeven.Width, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // TODO: Parameter mit externer Konfiguration werden geändert, ohne vorher die Konfigurationsdatei zu laden.
 
-   return(IsNoError(catch("ValidateConfiguration(19)")));
+   return(IsNoError(catch("ValidateConfiguration(34)")));
 }
 
 
