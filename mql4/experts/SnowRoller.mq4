@@ -4,10 +4,12 @@
  *
  *  TODO:
  *  -----
+ *  - StartConditions vervollständigen                                                          *
+ *  - StopConditions vervollständigen                                                           *
+ *  - Start/Stop per Click implementieren                                                       *
  *  - Resume implementieren                                                                     *
  *  - automatisches Pause/Resume am Wochenende implementieren                                   *
- *  - StartCondition "@time" implementieren                                                     *
- *  - StartCondition "@limit w/level" implementieren (GBP/AUD 02.04.)                           *
+ *  - StartCondition "@level" implementieren (GBP/AUD 02.04.)                                   *
  *  - beidseitig unidirektionales Grid implementieren                                           *
  *  - Änderungen der Gridbasis während Auszeit erkennen                                         *
  *  - PendingOrders nicht per Tick trailen                                                      *
