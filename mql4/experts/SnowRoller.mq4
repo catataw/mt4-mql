@@ -28,18 +28,18 @@
 #include <win32api.mqh>
 
 
-int Strategy.Id = 103;                       // eindeutige ID der Strategie (Bereich 101-1023)
+int Strategy.Id = 103;                                // eindeutige ID der Strategie (Bereich 101-1023)
 
 
 // Grid-Directions
-#define D_BIDIR               0              // default
+#define D_BIDIR               0                       // default
 #define D_LONG                1
 #define D_SHORT               2
 #define D_LONG_SHORT          3
 
 
 // Sequenzstatus-Werte
-#define STATUS_WAITING        0              // default
+#define STATUS_WAITING        0                       // default
 #define STATUS_PROGRESSING    1
 #define STATUS_STOPPING       2
 #define STATUS_STOPPED        3
@@ -47,10 +47,10 @@ int Strategy.Id = 103;                       // eindeutige ID der Strategie (Ber
 
 
 // OrderDisplay-Modes
-#define DM_NONE               0              // - keine Anzeige -
-#define DM_STOPS              1              // Pending,       ClosedByStop
-#define DM_PYRAMID            2              // Pending, Open,               Closed (default)
-#define DM_ALL                3              // Pending, Open, ClosedByStop, Closed
+#define DM_NONE               0                       // - keine Anzeige -
+#define DM_STOPS              1                       // Pending,       ClosedByStop
+#define DM_PYRAMID            2                       // Pending, Open,               Closed (default)
+#define DM_ALL                3                       // Pending, Open, ClosedByStop, Closed
 
 
 //////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
@@ -60,7 +60,7 @@ extern               string GridDirection         = "Bidirectional* | Long | Sho
 extern               int    GridSize              = 20;
 extern               double LotSize               = 0.1;
 extern               string StartConditions       = "";                       // @limit(1.33) || @profit(10%) || @profit(1234.00) || @time(2012.03.12 12:00)
-extern               string StopConditions        = "@profit(20%)";
+extern               string StopConditions        = "@profit(20%)";           // dito
 extern /*transient*/ string OrderDisplayMode      = "None";
 extern               string OrderDisplayMode.Help = "None* | Stops | Pyramid | All";
 extern /*transient*/ color  Breakeven.Color       = DodgerBlue;
@@ -278,23 +278,13 @@ int init() {
 
    // (1.3) Parameteränderung ---------------------------------------------------------------------------------------------------------------------------------
    else if (UninitializeReason() == REASON_PARAMETERS) {             // alle internen Daten sind vorhanden
-      if (ValidateConfiguration(REASON_PARAMETERS)) {
-         /*
-         if (ConfigurationChanged()) {
-            // Sequence.ID    = last.Sequence.ID;                    // TODO: Sequence.ID kann geändert worden sein
-            // GridDirection  = last.GridDirection;
-            // GridSize       = last.GridSize;
-            // LotSize        = last.LotSize;
-            // StartCondition = last.StartCondition;
-            // StopCondition  = last.StopCondition;
-            SaveStatus();
-         }
-         */
-         if (OrderDisplayMode != last.OrderDisplayMode)
-            RedrawOrders();
-         if (Breakeven.Color!=last.Breakeven.Color || Breakeven.Width!=last.Breakeven.Width) {
-            RedrawStartStop();
-            RecolorBreakeven();
+      if (ConfigurationChanged()) {
+         if (ValidateConfiguration(REASON_PARAMETERS)) {             // TODO: Sequence.ID kann geändert worden sein
+            if (SaveStatus()) {
+               if      (OrderDisplayMode != last.OrderDisplayMode) { RedrawOrders();                                        }
+               if      ( Breakeven.Color != last.Breakeven.Color ) {                 RedrawStartStop(); RecolorBreakeven(); }
+               else if ( Breakeven.Width != last.Breakeven.Width ) {                                    RecolorBreakeven(); }
+            }
          }
       }
    }
@@ -1542,10 +1532,15 @@ int ShowStatus(bool init=false) {
    if (!IsLastError())
       str.stopValue = DoubleToStr(GridSize * PipValue(LotSize), 2);
 
+   string startStopConditions;
+   if (status == STATUS_WAITING) startStopConditions = StringConcatenate("Start:           ", StartConditions);
+   else                          startStopConditions = StringConcatenate("Stop:            ", StopConditions);
+
    msg = StringConcatenate(__SCRIPT__, msg,                                                          NL,
                                                                                                      NL,
                            "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction, NL,
                            "LotSize:         ", str.LotSize, " lot = ", str.stopValue, "/stop",      NL,
+                           startStopConditions,                                                      NL,
                            "Realized:       ", str.grid.stops, " ", str.grid.stopsPL,                NL,
                            "Breakeven:   ", str.grid.breakeven,                                      NL,
                            "Profit/Loss:    ", str.grid.totalPL, "  ", str.grid.plStatistics,        NL);
@@ -2236,6 +2231,25 @@ int CreateSequenceId() {
 
 
 /**
+ * Prüft, ob die Konfiguration geändert wurde.
+ *
+ * @return bool
+ */
+bool ConfigurationChanged() {
+   if (Sequence.ID      != last.Sequence.ID     ) return(true);      // string
+   if (GridDirection    != last.GridDirection   ) return(true);      // string
+   if (GridSize         != last.GridSize        ) return(true);      // int
+   if (NE(LotSize,         last.LotSize)        ) return(true);      // double
+   if (StartConditions  != last.StartConditions ) return(true);      // string
+   if (StopConditions   != last.StopConditions  ) return(true);      // string
+   if (OrderDisplayMode != last.OrderDisplayMode) return(true);      // string
+   if (Breakeven.Color  != last.Breakeven.Color ) return(true);      // color
+   if (Breakeven.Width  != last.Breakeven.Width ) return(true);      // int
+   return(false);
+}
+
+
+/**
  * Validiert die aktuelle Konfiguration.
  *
  * @param int reason - bei REASON_PARAMETERS darf eine laufende Sequenz nicht mit den angegebenen Parametern kollidieren
@@ -2244,7 +2258,6 @@ int CreateSequenceId() {
  * @return bool - ob die Konfiguration gültig ist
  */
 bool ValidateConfiguration(int reason=NULL) {
-
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
    if (reason == REASON_PARAMETERS)
       if (Sequence.ID != last.Sequence.ID)      return(_false(catch("ValidateConfiguration(1)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
@@ -2254,7 +2267,7 @@ bool ValidateConfiguration(int reason=NULL) {
    string strValue     = StringToLower(StringTrim(StringReplace(StringReplace(StringReplace(GridDirection, "+", ""), "&", ""), " ", "")) +"b");
    switch (StringGetChar(strValue, 0)) {
       case 'l': if (StringStartsWith(strValue, "longshort") || StringStartsWith(strValue, "ls")) {
-                   return(_false(catch("ValidateConfiguration(2)  Trade mode Long+Short not yet implemented", ERR_FUNCTION_NOT_IMPLEMENTED)));
+                   return(_false(catch("ValidateConfiguration(2)  grid mode Long+Short not yet implemented", ERR_FUNCTION_NOT_IMPLEMENTED)));
                    grid.direction = D_LONG_SHORT; break;
                 }
                 grid.direction    = D_LONG;       break;
@@ -2289,14 +2302,19 @@ bool ValidateConfiguration(int reason=NULL) {
    if (NE(MathModFix(LotSize, lotStep), 0))     return(_false(catch("ValidateConfiguration(12)   Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", ERR_INVALID_INPUT_PARAMVALUE)));
    SS.LotSize();
 
-   // ---------------------------------------------------------
-   // StartConditions
-   // ---------------------------------------------------------
+   // -------------------------------------------------------------------------------------------------------
+   // StartConditions:  "@limit(1.33) && @time(12:00)"
+   // -------------------------------------------------------------------------------------------------------
+   //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
+   //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
+   start.conditions      = false;
+   start.limit.condition = false;
+   start.time.condition  = false;
+
    StartConditions = StringReplace(StartConditions, " ", "");
    if (reason==REASON_PARAMETERS) /*&&*/ if (StartConditions!=last.StartConditions)
       if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(13)  Cannot change parameter StartConditions of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   start.conditions = false;
    if (StringLen(StartConditions) != 0) {
       if (StringIsNumeric(StartConditions)) {
          start.limit.value = StrToDouble(StartConditions);
@@ -2310,20 +2328,25 @@ bool ValidateConfiguration(int reason=NULL) {
    if (!start.conditions)
       StartConditions = "";
 
-   // -------------------------------------------------------------------------------------------------------------
-   // StopConditions:           "@profit(20%) || @profit(10%e) || @profit(1234.00) || @limit(1.33) || @time(12:00)"
-   // -------------------------------------------------------------------------------------------------------------
+   // -------------------------------------------------------------------------------------------------------
+   // StopConditions:  "@profit(20%) || @profit(10%e) || @profit(1234.00) || @limit(1.33) || @time(12:00)"
+   // -------------------------------------------------------------------------------------------------------
    //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
    //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
    //  @profit(1234.00)
    //  @profit(20%)     oder  20%                                             // shortkey nicht implementiert
    //  @profit(10%e)    oder  20%e           // noch nicht implementiert      // shortkey nicht implementiert
-   //debug("()   StopConditions = \""+ StopConditions +"\"");
+   stop.conditions              = false;
+   stop.limit.condition         = false;
+   stop.time.condition          = false;
+   stop.profitAbs.condition     = false;
+   stop.profitPercent.condition = false;
 
    // (1) StopConditions in einzelne Ausdrücke zerlegen
    string expr, exprs[], elems[], key, value;
    double dValue;
-   int time, size, sizeOfExprs=Explode(StopConditions, "||", exprs, NULL);
+   int    time, size, sizeOfExprs=Explode(StopConditions, "||", exprs, NULL);
+   //debug("()   StopConditions = \""+ StopConditions +"\"");
 
    // (2) jeden Ausdruck parsen und validieren
    for (int i=0; i < sizeOfExprs; i++) {
@@ -2443,7 +2466,8 @@ bool SaveStatus() {
    datetime sequenceStopTime;                // ja
    double   sequenceStopPrice;               // ja
 
-   bool     start.limit;                     // nein: wird aus StartCondition abgeleitet
+   bool     start.*.condition;               // nein: wird aus StartConditions abgeleitet
+   bool     stop.*.condition;                // nein: wird aus StopConditions abgeleitet
 
    double   grid.base;                       // nein: wird aus Gridbase-History restauriert
    datetime grid.base.time [];               // ja
@@ -2465,8 +2489,8 @@ bool SaveStatus() {
    datetime grid.maxProfitLossTime;          // ja
    double   grid.maxDrawdown;                // ja
    datetime grid.maxDrawdownTime;            // ja
-   double   grid.breakevenLong;              // nein: wird mit dem aktuellen TickValue als Näherung neuberechnet
-   double   grid.breakevenShort;             // nein: wird mit dem aktuellen TickValue als Näherung neuberechnet
+   double   grid.breakevenLong;              // nein: wird mit dem aktuellen TickValue als Näherung neu berechnet
+   double   grid.breakevenShort;             // nein: wird mit dem aktuellen TickValue als Näherung neu berechnet
 
    int      orders.ticket           [];      // ja
    int      orders.level            [];      // ja
@@ -2504,6 +2528,7 @@ bool SaveStatus() {
    ArrayPushString(lines, /*int   */   "GridSize="       +                                GridSize       );
    ArrayPushString(lines, /*double*/   "LotSize="        +                    NumberToStr(LotSize, ".+") );
    ArrayPushString(lines, /*string*/   "StartConditions="+                                StartConditions);
+   ArrayPushString(lines, /*string*/   "StopConditions=" +                                StopConditions );
 
    // (1.2) Laufzeit-Variablen
    ArrayPushString(lines, /*datetime*/ "rt.instanceStartTime="     +             instanceStartTime      + ifString(instanceStartTime     ==0, "", " ("+ TimeToStr(instanceStartTime     , TIME_FULL) +")"));
@@ -2682,7 +2707,7 @@ bool RestoreStatus() {
 
 
    // (3) notwendige Schlüssel definieren
-   string keys[] = { "Account", "Symbol", "Sequence.ID", "GridDirection", "GridSize", "LotSize", "StartConditions", "rt.instanceStartTime", "rt.instanceStartPrice", "rt.instanceStartEquity", "rt.sequenceStartTime", "rt.sequenceStartPrice", "rt.sequenceStartEquity", "rt.sequenceStopTime", "rt.sequenceStopPrice", "rt.grid.maxProfitLoss", "rt.grid.maxProfitLossTime", "rt.grid.maxDrawdown", "rt.grid.maxDrawdownTime", "rt.grid.base" };
+   string keys[] = { "Account", "Symbol", "Sequence.ID", "GridDirection", "GridSize", "LotSize", "StartConditions", "StopConditions", "rt.instanceStartTime", "rt.instanceStartPrice", "rt.instanceStartEquity", "rt.sequenceStartTime", "rt.sequenceStartPrice", "rt.sequenceStartEquity", "rt.sequenceStopTime", "rt.sequenceStopPrice", "rt.grid.maxProfitLoss", "rt.grid.maxProfitLossTime", "rt.grid.maxDrawdown", "rt.grid.maxDrawdownTime", "rt.grid.base" };
    /*                "Account"                  ,
                      "Symbol"                   ,                    // Der Compiler kommt mit den Zeilennummern durcheinander,
                      "Sequence.ID"              ,                    // wenn der Initializer nicht komplett in einer Zeile steht.
@@ -2690,6 +2715,7 @@ bool RestoreStatus() {
                      "GridSize"                 ,
                      "LotSize"                  ,
                      "StartConditions"          ,
+                     "StopConditions"           ,
                      "rt.instanceStartTime"     ,
                      "rt.instanceStartPrice"    ,
                      "rt.instanceStartEquity"   ,
@@ -2751,6 +2777,10 @@ bool RestoreStatus() {
       }
       else if (key == "StartConditions") {
          StartConditions = value;
+         ArrayDropString(keys, key);
+      }
+      else if (key == "StopConditions") {
+         StopConditions = value;
          ArrayDropString(keys, key);
       }
    }

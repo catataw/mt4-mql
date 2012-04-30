@@ -5,9 +5,6 @@
 #include <win32api.mqh>
 
 
-datetime startTime;
-
-
 /**
  * Initialisierung
  *
@@ -41,7 +38,7 @@ int onTick() {
    if (IsError(prev_error))
       return(prev_error);
 
-
+   /*
    static bool boolWInit = false;
    static bool boolWoInit;
 
@@ -53,6 +50,7 @@ int onTick() {
    return(NO_ERROR);
 
 
+   static datetime startTime;
    if (startTime == 0)
       startTime = TimeCurrent();
 
@@ -62,7 +60,7 @@ int onTick() {
 
    double execution[] = {NULL};
 
-   /*
+
    if (!done1) {
       if (TimeCurrent() > startTime + 1*HOUR) {
          done1 = true;
