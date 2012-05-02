@@ -5,13 +5,39 @@
 #include <win32api.mqh>
 
 
+#import "sample.dll"
+   int    GetIntValue(string value);
+   string GetStringValue(int address);
+#import
+
+
 /**
  * Initialisierung
  *
  * @return int - Fehlerstatus
  */
 int init() {
-   return(onInit(T_SCRIPT));
+   int error = onInit(T_SCRIPT);
+
+
+
+   int hProcess=GetCurrentProcess(), data[1], iNull[];
+   data[0] = 107795257;
+
+   string s1 = StringConcatenate("string ", "value");
+   int addr  = GetIntValue(s1);
+   string s2 = GetStringValue(addr);
+
+   if (!WriteProcessMemory(hProcess, addr, data, 4, iNull)) return(0);
+   debug("init()   s1->"+ s1 +"    s2->"+ s2);
+
+   data[0] = data[0]+2000;
+   if (!WriteProcessMemory(hProcess, addr, data, 4, iNull)) return(0);
+   debug("init()   s1->"+ s1 +"    s2->"+ s2);
+
+
+
+   return(catch("init()"));
 }
 
 
