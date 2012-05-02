@@ -3,12 +3,7 @@
  */
 #include <stdlib.mqh>
 #include <win32api.mqh>
-
-
-#import "sample.dll"
-   int    GetIntValue(string value);
-   string GetStringValue(int address);
-#import
+#include <sampledll.mqh>
 
 
 /**
