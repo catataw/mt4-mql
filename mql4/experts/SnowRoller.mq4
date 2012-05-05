@@ -198,8 +198,10 @@ bool     firstTickConfirmed = false;
  * @return int - Fehlerstatus
  */
 int init() {
-   if (IsError(onInit(T_EXPERT)))
-      return(ShowStatus(true));
+   if (IsError(onInit(T_EXPERT, IT_TICKVALUE))) {
+      ShowStatus(true);
+      return(last_error);
+   }
 
    /*
    Zuerst wird die aktuelle Sequenz-ID bestimmt und deren Konfiguration geladen und validiert. Dann wird der Laufzeitstatus der Sequenz restauriert.
@@ -317,10 +319,10 @@ int init() {
    // (3) ggf. EA's aktivieren
    int reasons1[] = { REASON_REMOVE, REASON_CHARTCLOSE, REASON_APPEXIT };
    if (IntInArray(reasons1, UninitializeReason())) /*&&*/ if (!IsExpertEnabled())
-      SwitchExperts(true);                                        // TODO: Bug, wenn mehrere EA's den EA-Modus gleichzeitig einschalten
+      SwitchExperts(true);                                           // TODO: Bug, wenn mehrere EA's den EA-Modus gleichzeitig einschalten
 
 
-   // (4) nicht auf den nächsten Tick warten (außer bei REASON_CHARTCHANGE oder REASON_ACCOUNT)
+   // (4) nicht auf den nächsten Tick warten (außer bei REASON_CHARTCHANGE und REASON_ACCOUNT)
    int reasons2[] = { REASON_REMOVE, REASON_CHARTCLOSE, REASON_APPEXIT, REASON_PARAMETERS, REASON_RECOMPILE };
    if (IntInArray(reasons2, UninitializeReason())) /*&&*/ if (!IsTesting())
       SendTick(false);
@@ -2309,29 +2311,64 @@ bool ValidateConfiguration(int reason=NULL) {
    // -------------------------------------------------------------------------------------------------------
    //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
    //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
+   if (reason==REASON_PARAMETERS) /*&&*/ if (StartConditions!=last.StartConditions)
+      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(13)  Cannot change parameter StartConditions of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
+
    start.conditions      = false;
    start.limit.condition = false;
    start.time.condition  = false;
 
-   StartConditions = StringReplace(StartConditions, " ", "");
-   if (reason==REASON_PARAMETERS) /*&&*/ if (StartConditions!=last.StartConditions)
-      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(13)  Cannot change parameter StartConditions of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
-      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   if (StringLen(StartConditions) != 0) {
-      if (StringIsNumeric(StartConditions)) {
-         start.limit.value = StrToDouble(StartConditions);
-         if (LT(start.limit.value, 0))          return(_false(catch("ValidateConfiguration(14)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
-         start.limit.condition = NE(start.limit.value, 0);
-         start.conditions      = ifBool(start.limit.condition, true, start.conditions);
+   // (1) StartConditions in einzelne Ausdrücke zerlegen
+   string exprs[], expr, elems[], key, value;
+   double dValue;
+   int    time, sizeOfElems, sizeOfExprs=Explode(StartConditions, "&&", exprs, NULL);
+
+   // (2) jeden Ausdruck parsen und validieren
+   for (int i=0; i < sizeOfExprs; i++) {
+      expr = StringToLower(StringTrim(exprs[i]));
+      if (StringLen(expr) == 0) {
+         if (sizeOfExprs > 1)                   return(_false(catch("ValidateConfiguration(14)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         break;
+      }
+      if (StringGetChar(expr, 0) != '@')        return(_false(catch("ValidateConfiguration(15)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (Explode(expr, "(", elems, NULL) != 2) return(_false(catch("ValidateConfiguration(16)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (!StringEndsWith(elems[1], ")"))       return(_false(catch("ValidateConfiguration(17)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      key   = StringTrim(elems[0]);
+      value = StringTrim(StringLeft(elems[1], -1));
+      if (StringLen(value) == 0)                return(_false(catch("ValidateConfiguration(18)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
+
+      if (key == "@limit") {
+         if (!StringIsNumeric(value))           return(_false(catch("ValidateConfiguration(19)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         dValue = StrToDouble(value);
+         if (LE(dValue, 0))                     return(_false(catch("ValidateConfiguration(20)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         start.limit.condition = true;
+         start.limit.value     = dValue;
+         exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
          SS.Start.Limit();
       }
-      else                                      return(_false(catch("ValidateConfiguration(15)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      else if (key == "@time") {
+         time = StrToTime(value);
+         if (IsError(catch("ValidateConfiguration(21)  Invalid input parameter StartConditions = \""+ StartConditions +"\"")))
+            return(false);
+         /*
+         TODO: Prüfung nur bei manueller Parameteränderung
+         if (time < TimeCurrent()) return(_false(catch("ValidateConfiguration(22)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         */
+         start.time.condition = true;
+         start.time.value     = time;
+         exprs[i] = key +"("+ TimeToStr(time) +")";
+      }
+      else                                      return(_false(catch("ValidateConfiguration(23)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      start.conditions = true;
    }
-   if (!start.conditions)
-      StartConditions = "";
+   if (start.conditions) StartConditions = JoinStrings(exprs, " && ");
+   else                  StartConditions = "";
+   //debug("()   StartConditions = \""+ StartConditions +"\"");
 
    // -------------------------------------------------------------------------------------------------------
-   // StopConditions:  "@profit(20%) || @profit(10%e) || @profit(1234.00) || @limit(1.33) || @time(12:00)"
+   // StopConditions:  "@limit(1.33) || @time(12:00) || @profit(1234.00) || @profit(20%) || @profit(10%e)"
    // -------------------------------------------------------------------------------------------------------
    //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
    //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
@@ -2345,64 +2382,64 @@ bool ValidateConfiguration(int reason=NULL) {
    stop.profitPercent.condition = false;
 
    // (1) StopConditions in einzelne Ausdrücke zerlegen
-   string expr, exprs[], elems[], key, value;
-   double dValue;
-   int    time, size, sizeOfExprs=Explode(StopConditions, "||", exprs, NULL);
-   //debug("()   StopConditions = \""+ StopConditions +"\"");
+   sizeOfExprs = Explode(StopConditions, "||", exprs, NULL);
 
    // (2) jeden Ausdruck parsen und validieren
-   for (int i=0; i < sizeOfExprs; i++) {
+   for (i=0; i < sizeOfExprs; i++) {
       expr = StringToLower(StringTrim(exprs[i]));
       if (StringLen(expr) == 0) {
-         if (sizeOfExprs > 1)                   return(_false(catch("ValidateConfiguration(16)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         if (sizeOfExprs > 1)                   return(_false(catch("ValidateConfiguration(24)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
          break;
       }
-      if (StringGetChar(expr, 0) != '@')        return(_false(catch("ValidateConfiguration(17)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
-      if (Explode(expr, "(", elems, NULL) != 2) return(_false(catch("ValidateConfiguration(18)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
-      if (!StringEndsWith(elems[1], ")"))       return(_false(catch("ValidateConfiguration(19)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (StringGetChar(expr, 0) != '@')        return(_false(catch("ValidateConfiguration(25)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (Explode(expr, "(", elems, NULL) != 2) return(_false(catch("ValidateConfiguration(26)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (!StringEndsWith(elems[1], ")"))       return(_false(catch("ValidateConfiguration(27)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
       key   = StringTrim(elems[0]);
       value = StringTrim(StringLeft(elems[1], -1));
-      if (StringLen(value) == 0)                return(_false(catch("ValidateConfiguration(20)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      if (StringLen(value) == 0)                return(_false(catch("ValidateConfiguration(28)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
       //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
 
       if (key == "@limit") {
-         if (!StringIsNumeric(value))           return(_false(catch("ValidateConfiguration(21)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         if (!StringIsNumeric(value))           return(_false(catch("ValidateConfiguration(29)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
          dValue = StrToDouble(value);
-         if (LE(dValue, 0))                     return(_false(catch("ValidateConfiguration(22)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         if (LE(dValue, 0))                     return(_false(catch("ValidateConfiguration(30)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
          stop.limit.condition = true;
          stop.limit.value     = dValue;
          exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
       }
       else if (key == "@time") {
          time = StrToTime(value);
-         if (IsError(catch("ValidateConfiguration(23)  Invalid input parameter StopConditions = \""+ StopConditions +"\"")))
+         if (IsError(catch("ValidateConfiguration(31)  Invalid input parameter StopConditions = \""+ StopConditions +"\"")))
             return(false);
-         if (time < TimeCurrent())              return(_false(catch("ValidateConfiguration(24)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         /*
+         TODO: Prüfung nur bei manueller Parameteränderung
+         if (time < TimeCurrent()) return(_false(catch("ValidateConfiguration(32)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         */
          stop.time.condition = true;
          stop.time.value     = time;
          exprs[i] = key +"("+ TimeToStr(time) +")";
       }
       else if (key == "@profit") {
-         size = Explode(value, "%", elems, NULL);
-         if (size > 2)                          return(_false(catch("ValidateConfiguration(25)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         sizeOfElems = Explode(value, "%", elems, NULL);
+         if (sizeOfElems > 2)                   return(_false(catch("ValidateConfiguration(33)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
          value = StringTrim(elems[0]);
-         if (StringLen(value) == 0)             return(_false(catch("ValidateConfiguration(26)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
-         if (!StringIsNumeric(value))           return(_false(catch("ValidateConfiguration(27)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         if (StringLen(value) == 0)             return(_false(catch("ValidateConfiguration(34)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         if (!StringIsNumeric(value))           return(_false(catch("ValidateConfiguration(35)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
          dValue = StrToDouble(value);
-         if (size == 1) {
-            if (LT(dValue, 0))                  return(_false(catch("ValidateConfiguration(28)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+         if (sizeOfElems == 1) {
+            if (LT(dValue, 0))                  return(_false(catch("ValidateConfiguration(36)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
             stop.profitAbs.condition = true;
             stop.profitAbs.value     = dValue;
             exprs[i] = key +"("+ NumberToStr(dValue, ".2") +")";
          }
          else {
-            if (LE(dValue, 0))                  return(_false(catch("ValidateConfiguration(29)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+            if (LE(dValue, 0))                  return(_false(catch("ValidateConfiguration(37)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
             stop.profitPercent.condition = true;
             stop.profitPercent.value     = dValue;
             exprs[i] = key +"("+ NumberToStr(dValue, ".+") +"%)";
          }
       }
-      else                                      return(_false(catch("ValidateConfiguration(30)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      else                                      return(_false(catch("ValidateConfiguration(38)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
       stop.conditions = true;
    }
    if (stop.conditions) StopConditions = JoinStrings(exprs, " || ");
@@ -2416,7 +2453,7 @@ bool ValidateConfiguration(int reason=NULL) {
       case 'S': orderDisplayMode = DM_STOPS;   break;
       case 'P': orderDisplayMode = DM_PYRAMID; break;
       case 'A': orderDisplayMode = DM_ALL;     break;
-      default:                                  return(_false(catch("ValidateConfiguration(31)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
+      default:                                  return(_false(catch("ValidateConfiguration(39)  Invalid input parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
    OrderDisplayMode = modes[orderDisplayMode];
 
@@ -2424,14 +2461,14 @@ bool ValidateConfiguration(int reason=NULL) {
    if (Breakeven.Color == 0xFF000000)                                   // kann vom Terminal falsch gesetzt worden sein
       Breakeven.Color = CLR_NONE;
    if (Breakeven.Color < CLR_NONE || Breakeven.Color > C'255,255,255')  // kann über transienten Chartstatus falsch reinkommen
-                                                return(_false(catch("ValidateConfiguration(32)  Invalid input parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), ERR_INVALID_INPUT_PARAMVALUE)));
+                                                return(_false(catch("ValidateConfiguration(40)  Invalid input parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), ERR_INVALID_INPUT_PARAMVALUE)));
    // Breakeven.Width
    if (Breakeven.Width < 1 || Breakeven.Width > 5)                      // kann über transienten Chartstatus falsch reinkommen
-                                                return(_false(catch("ValidateConfiguration(33)  Invalid input parameter Breakeven.Width = "+ Breakeven.Width, ERR_INVALID_INPUT_PARAMVALUE)));
+                                                return(_false(catch("ValidateConfiguration(41)  Invalid input parameter Breakeven.Width = "+ Breakeven.Width, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // TODO: Parameter mit externer Konfiguration werden geändert, ohne vorher die Konfigurationsdatei zu laden.
 
-   return(IsNoError(catch("ValidateConfiguration(34)")));
+   return(IsNoError(catch("ValidateConfiguration(42)")));
 }
 
 
@@ -2792,7 +2829,7 @@ bool RestoreStatus() {
    // Account: Wenn die AccountCompany (= Zeitzone) übereinstimmt, kann ein Test in einem anderen Account visualisiert werden.
    if (accountValue != ShortAccountCompany()+":"+GetAccountNumber()) {
       if (IsTesting() || !IsTest() || !StringIStartsWith(accountValue, ShortAccountCompany()+":"))
-                                                         return(_false(catch("RestoreStatus(11)   account mis-match \""+ accountValue +"\"/\""+ ShortAccountCompany() +":"+ GetAccountNumber() +"\" in status file \""+ fileName +"\" (line \""+ lines[accountLine] +"\")", ERR_RUNTIME_ERROR)));
+                                                         return(_false(catch("RestoreStatus(11)   account mis-match \""+ ShortAccountCompany() +":"+ GetAccountNumber() +"\"/\""+ accountValue +"\" in status file \""+ fileName +"\" (line \""+ lines[accountLine] +"\")", ERR_RUNTIME_ERROR)));
    }
 
 
@@ -3303,6 +3340,7 @@ bool SynchronizeStatus() {
    #define EV_POSITION_OPEN      2
    #define EV_POSITION_STOPOUT   3
    #define EV_POSITION_CLOSE     4
+
 
    bool   pendingOrder, openPosition, closedPosition;
    double gridBase, profitLoss, pipValue=PipValue(LotSize);
