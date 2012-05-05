@@ -61,8 +61,8 @@ extern /*transient*/ string Sequence.ID           = "";
 extern               string GridDirection         = "Bidirectional* | Long | Short | Long+Short";
 extern               int    GridSize              = 20;
 extern               double LotSize               = 0.1;
-extern               string StartConditions       = "";                       // @limit(1.33) || @profit(10%) || @profit(1234.00) || @time(2012.03.12 12:00)
-extern               string StopConditions        = "@profit(20%)";           // dito
+extern               string StartConditions       = "";                       // @limit(1.33) && @time(2012.03.12 12:00)
+extern               string StopConditions        = "@profit(20%)";           // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%) || @profit(10%E)
 extern /*transient*/ string OrderDisplayMode      = "None";
 extern               string OrderDisplayMode.Help = "None* | Stops | Pyramid | All";
 extern /*transient*/ color  Breakeven.Color       = DodgerBlue;
@@ -198,10 +198,8 @@ bool     firstTickConfirmed = false;
  * @return int - Fehlerstatus
  */
 int init() {
-   if (IsError(onInit(T_EXPERT, IT_TICKVALUE))) {
-      ShowStatus(true);
-      return(last_error);
-   }
+   if (IsError(onInit(T_EXPERT, IT_TICKVALUE)))
+      return(ShowStatus(true));
 
    /*
    Zuerst wird die aktuelle Sequenz-ID bestimmt und deren Konfiguration geladen und validiert. Dann wird der Laufzeitstatus der Sequenz restauriert.
@@ -1512,14 +1510,11 @@ int ShowStatus(bool init=false) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(last_error);
 
-   int error = last_error;                                           // bei Funktionseintritt bereits existierenden Fehler zwischenspeichern
+   int    error = last_error;                                        // bei Funktionseintritt bereits existierenden Fehler zwischenspeichern
+   string msg, str.stopValue;
 
-   static string msg, str.stopValue, str.error;
-
-   if (IsLastError()) {
-      status    = STATUS_DISABLED;
-      str.error = StringConcatenate("  [", ErrorDescription(last_error), "]");
-   }
+   if (IsLastError()) /*&&*/ if (last_error!=ERR_TERMINAL_NOT_YET_READY)
+      status = STATUS_DISABLED;
 
    switch (status) {
       case STATUS_WAITING:     msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " waiting");
@@ -1528,13 +1523,17 @@ int ShowStatus(bool init=false) {
       case STATUS_PROGRESSING: msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " progressing at level ", grid.level, "  ", str.grid.maxLevel); break;
       case STATUS_STOPPING:    msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " stopping at level ", grid.level, "  ", str.grid.maxLevel);    break;
       case STATUS_STOPPED:     msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " stopped at level ", grid.level, "  ", str.grid.maxLevel);     break;
-      case STATUS_DISABLED:    msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " disabled", str.error);                                        break;
+      case STATUS_DISABLED:    msg = StringConcatenate(":  ", str.testSequence, "sequence ", sequenceId, " disabled");                                                   break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
-   if (!IsLastError())
+   if (IsLastError()) {
+      msg = StringConcatenate(msg, "  [", ErrorDescription(last_error), "]");
+   }
+   else {
       str.stopValue = DoubleToStr(GridSize * PipValue(LotSize), 2);
+   }
 
    string startStopConditions;
    if (status == STATUS_WAITING) startStopConditions = StringConcatenate("Start:           ", StartConditions);
