@@ -55,7 +55,7 @@ int Strategy.Id = 103;                                // eindeutige ID der Strat
 #define DM_ALL                3                       // Pending, Open, ClosedByStop, Closed
 
 
-//////////////////////////////////////////////////////////////// Externe Parameter ////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////// externe Parameter ////////////////////////////////////////////////////////////////
 
 extern /*transient*/ string Sequence.ID           = "";
 extern               string GridDirection         = "Bidirectional* | Long | Short | Long+Short";
