@@ -34,11 +34,12 @@ int deinit() {
  */
 int onTick() {
 
-   int build = GetTerminalBuild();
-   debug("onTick()   build = "+ build);
-   return(NO_ERROR);
+   if (IndicatorCounted() == 0) {
+      debug("onTick()   IndicatorCounted = 0");
+   }
 
 
+   /*
    // Ermittlung von OHLC der letzten Session
    // ---------------------------------------
 
@@ -65,7 +66,6 @@ int onTick() {
 
 
    // (4) OHLC-Werte ermitteln
-   /*
    Open  = iOpen (NULL, period, BeginBar);
    High  = iHigh (NULL, period, iHighest(NULL, period, MODE_HIGH, BeginBar-EndBar+1, EndBar));
    Low   = iLow  (NULL, period, iLowest (NULL, period, MODE_LOW,  BeginBar-EndBar+1, EndBar));
