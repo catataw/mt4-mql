@@ -2479,8 +2479,10 @@ bool ValidateConfiguration(int reason=NULL) {
  */
 bool SaveStatus() {
    if (IsLastError() || status==STATUS_DISABLED) return( false);
-   if (IsTest()) /*&&*/ if (!IsTesting())        return( false);
    if (sequenceId == 0)                          return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+
+   if (IsTest()) /*&&*/ if (!IsTesting())
+      return(true);
 
    static int counter;
    if (IsTesting()) /*&&*/ if (counter!=0) /*&&*/ if (status!=STATUS_STOPPED)    // im Tester Ausführung nur bei Start und Stop
