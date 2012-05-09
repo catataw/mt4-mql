@@ -51,22 +51,7 @@ int deinit() {
  */
 int onStart() {
 
-   ExpertProperties();
+   LaunchExpertPropertiesDlg();
 
    return(catch("onStart()"));
-}
-
-
-/**
- * Ruft den Input-Dialog des EA's im aktuellen Chart auf.
- *
- * @return int - Fehlerstatus bzw. -1, wenn der Tester läuft und WindowHandle() nicht benutzt werden kann
- */
-int ExpertProperties() {
-   int hWnd = WindowHandle(Symbol(), Period());
-   if (hWnd == 0)
-      return(catch("ExpertProperties() ->WindowHandle() = "+ hWnd, ERR_RUNTIME_ERROR));
-
-   PostMessageA(hWnd, WM_COMMAND, WM_MT4_EXPERT_PROPERTIES, 0);
-   return(NO_ERROR);
 }
