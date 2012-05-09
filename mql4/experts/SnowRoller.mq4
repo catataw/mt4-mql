@@ -14,6 +14,7 @@
  *  - Änderungen der Gridbasis während Auszeit erkennen                                         *
  *  - PendingOrders nicht per Tick trailen                                                      *
  *
+ *  - nach Parameterfehleingaben Input-Dialog neu aufrufen
  *  - rt.grid.base: Separatoren in Statusdatei tauschen
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops
@@ -1491,8 +1492,8 @@ int CreateMagicNumber(int level) {
 
    // Für bessere Obfuscation ist die Reihenfolge der Werte [ea,level,sequence] und nicht [ea,sequence,level]. Dies wären aufeinander folgende Werte.
    int ea       = Strategy.Id & 0x3FF << 22;                         // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
-   level        = MathAbs(level) +0.1;                               // (int) double: Wert in MagicNumber ist immer positiv
-   level        = level & 0xFF << 14;                                //  8 bit (Bits größer 8 löschen und auf 22 Bit erweitern)  | in MagicNumber: Bits 15-22
+       level    = MathAbs(level) +0.1;                               // (int) double: Wert in MagicNumber ist immer positiv
+       level    = level & 0xFF << 14;                                //  8 bit (Bits größer 8 löschen und auf 22 Bit erweitern)  | in MagicNumber: Bits 15-22
    int sequence = sequenceId  & 0x3FFF;                              // 14 bit (Bits größer 14 löschen                           | in MagicNumber: Bits  1-14
 
    return(ea + level + sequence);
@@ -2467,6 +2468,10 @@ bool ValidateConfiguration(int reason=NULL) {
 
    // TODO: Parameter mit externer Konfiguration werden geändert, ohne vorher die Konfigurationsdatei zu laden.
 
+   ArrayResize(directions, 0);
+   ArrayResize(exprs,      0);
+   ArrayResize(elems,      0);
+   ArrayResize(modes,      0);
    return(IsNoError(catch("ValidateConfiguration(42)")));
 }
 
@@ -2586,10 +2591,10 @@ bool SaveStatus() {
       string values[]; ArrayResize(values, 0);
       int size = ArraySize(grid.base.time);
       for (int i=0; i < size; i++)
-         ArrayPushString(values, StringConcatenate(grid.base.time[i], ",", NumberToStr(grid.base.value[i], ".+")));
+         ArrayPushString(values, StringConcatenate(grid.base.time[i], "|", NumberToStr(grid.base.value[i], ".+")));
       if (size == 0)
-         ArrayPushString(values, "0,0");
-   ArrayPushString(lines, /*string*/   "rt.grid.base="+ JoinStrings(values, "|"));
+         ArrayPushString(values, "0|0");
+   ArrayPushString(lines, /*string*/   "rt.grid.base="+ JoinStrings(values, ","));
 
    size = ArraySize(orders.ticket);
    for (i=0; i < size; i++) {
@@ -2647,6 +2652,9 @@ bool SaveStatus() {
    if (IsError(error))
       return(false);
    */
+
+   ArrayResize(lines,  0);
+   ArrayResize(values, 0);
    return(IsNoError(catch("SaveStatus(4)")));
 }
 
@@ -2686,6 +2694,7 @@ int UploadStatus(string company, int account, string symbol, string filename) {
    if (error < 32)
       return(catch("UploadStatus(2) ->kernel32::WinExec(cmdLine=\""+ cmdLine +"\"), error="+ error +" ("+ ShellExecuteErrorToStr(error) +")", ERR_WIN32_ERROR));
 
+   ArrayResize(parts, 0);
    return(catch("UploadStatus(3)"));
 }
 
@@ -2853,7 +2862,9 @@ bool RestoreStatus() {
    if (IntInArray(orders.ticket, 0))                     return(_false(catch("RestoreStatus(14)   one or more order entries missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
 
 
-
+   ArrayResize(lines, 0);
+   ArrayResize(keys,  0);
+   ArrayResize(parts, 0);
    return(IsNoError(catch("RestoreStatus(15)")));
 }
 
@@ -2885,7 +2896,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
    datetime rt.grid.maxProfitLossTime=1328701713
    double   rt.grid.maxDrawdown=-127.80
    datetime rt.grid.maxDrawdownTime=1328691713
-   string   rt.grid.base=1331710960,1.56743|1331711010,1.56714
+   string   rt.grid.base=1331710960|1.56743,1331711010|1.56714
    string   rt.order.0=62544847,1,1.32067,4,1330932525,1330932525,1.32067,0,0,1330936196,1.32067,0,0,0,1330938698,1.31897,1.31897,17,1,0,0,0,0,0,-17
       int      ticket            = values[ 0];
       int      level             = values[ 1];
@@ -3002,10 +3013,10 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       ArrayDropString(keys, key);
    }
    else if (key == "rt.grid.base") {
-      // rt.grid.base=1331710960,1.56743|1331711010,1.56714
-      int sizeOfValues = Explode(value, "|", values, NULL);
+      // rt.grid.base=1331710960|1.56743,1331711010|1.56714
+      int sizeOfValues = Explode(value, ",", values, NULL);
       for (int i=0; i < sizeOfValues; i++) {
-         if (Explode(values[i], ",", data, NULL) != 2)                          return(_false(catch("RestoreStatus.Runtime(29)   illegal number of grid.base["+ i +"] details (\""+ values[i] +"\": "+ ArraySize(data) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (Explode(values[i], "|", data, NULL) != 2)                          return(_false(catch("RestoreStatus.Runtime(29)   illegal number of grid.base["+ i +"] details (\""+ values[i] +"\": "+ ArraySize(data) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
          value = data[0];           // GridBase-Zeitpunkt
          if (!StringIsDigit(value))                                             return(_false(catch("RestoreStatus.Runtime(30)   illegal grid.base.time["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -3256,6 +3267,10 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
 
       //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  gridBase="+ NumberToStr(gridBase, PriceFormat) +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime='"+ TimeToStr(pendingTime, TIME_FULL) +"'  pendingModifyTime='"+ TimeToStr(pendingModifyTime, TIME_FULL) +"'  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  pendingExecution="+ DoubleToStr(pendingExecution, 1) +"  type="+ OperationTypeToStr(type) +"  openTime='"+ TimeToStr(openTime, TIME_FULL) +"'  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  openSlippage="+ DoubleToStr(openSlippage, Digits-PipDigits) +"  openExecution="+ DoubleToStr(openExecution, 1) +"  openRequotes="+ openRequotes +"  closeTime='"+ TimeToStr(closeTime, TIME_FULL) +"'  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  stopValue="+ DoubleToStr(stopValue, 2) +"  closedByStop="+ BoolToStr(closedByStop) +"  closeSlippage="+ DoubleToStr(closeSlippage, Digits-PipDigits) +"  closeExecution="+ DoubleToStr(closeExecution, 1) +"  closeRequotes="+ closeRequotes +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
    }
+
+
+   ArrayResize(values, 0);
+   ArrayResize(data,   0);
    return(IsNoError(catch("RestoreStatus.Runtime(109)")));
 }
 
@@ -3448,6 +3463,9 @@ bool SynchronizeStatus() {
    SS.Grid.TotalPL();
    SS.Grid.ValueAtRisk();
 
+   ArrayResize(execution,  0);
+   ArrayResize(openLevels, 0);
+   ArrayResize(events,     0);
    return(IsNoError(catch("SynchronizeStatus(7)")));
 }
 
