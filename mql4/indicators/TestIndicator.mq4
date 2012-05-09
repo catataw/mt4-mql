@@ -34,10 +34,7 @@ int deinit() {
  */
 int onTick() {
 
-   if (IndicatorCounted() == 0) {
-      debug("onTick()   IndicatorCounted = 0");
-   }
-
+   debug("onTick()");
 
    /*
    // Ermittlung von OHLC der letzten Session

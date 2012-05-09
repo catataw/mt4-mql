@@ -37,5 +37,8 @@ int deinit() {
 int onTick() {
    if (IsError(prev_error))
       return(prev_error);
+
+   debug("onTick()");
+
    return(catch("onTick()"));
 }

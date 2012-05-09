@@ -4,18 +4,18 @@
  *
  *  TODO:
  *  -----
- *  - StartConditions vervollständigen                                                          *
- *  - StopConditions vervollständigen                                                           *
- *  - Start/Stop per Click implementieren                                                       *
- *  - Resume implementieren                                                                     *
- *  - automatisches Pause/Resume am Wochenende implementieren                                   *
- *  - StartCondition "@level" implementieren (GBP/AUD 02.04.)                                   *
- *  - beidseitig unidirektionales Grid implementieren                                           *
- *  - Änderungen der Gridbasis während Auszeit erkennen                                         *
- *  - PendingOrders nicht per Tick trailen                                                      *
+ *  - StartConditions vervollständigen                                                                   *
+ *  - StopConditions vervollständigen                                                                    *
+ *  - Start/Stop per Click implementieren                                                                *
+ *  - Resume implementieren                                                                              *
+ *  - automatisches Pause/Resume am Wochenende implementieren                                            *
+ *  - StartCondition "@level" implementieren (GBP/AUD 02.04.)                                            *
+ *  - beidseitig unidirektionales Grid implementieren                                                    *
+ *  - StartSequence: bei @level(1) zurück auf @price(@level(0.5)) gehen (Stop 1 liegt sehr ungünstig)    *
+ *  - Änderungen der Gridbasis während Auszeit erkennen                                                  *
+ *  - PendingOrders nicht per Tick trailen                                                               *
  *
  *  - nach Parameterfehleingaben Input-Dialog neu aufrufen
- *  - rt.grid.base: Separatoren in Statusdatei tauschen
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
@@ -269,9 +269,13 @@ int init() {
                sequenceId          = CreateSequenceId(); SS.SequenceId();
                testSequence        = IsTesting(); SS.TestSequence();
                RedrawStartStop();
-
                if (StartConditions != "")                            // Ohne StartCondition erfolgt sofortiger Sequenzstart, in diesem Fall wird der
                   SaveStatus();                                      // Status erst nach Sicherheitsabfrage in StartSequence() gespeichert.
+            }
+            else if (last_error == ERR_INVALID_INPUT_PARAMVALUE) {   // Fehlermeldung und Input-Dialog neu aufrufen
+               //ForceSound("chord.wav");
+               //if (ForceMessageBox("ERR_INVALID_INPUT_PARAMVALUE", __SCRIPT__, MB_ICONERROR|MB_RETRYCANCEL) == IDRETRY) {
+               //}
             }
          }
 
@@ -288,6 +292,11 @@ int init() {
                if      ( Breakeven.Color != last.Breakeven.Color ) {                 RedrawStartStop(); RecolorBreakeven(); }
                else if ( Breakeven.Width != last.Breakeven.Width ) {                                    RecolorBreakeven(); }
             }
+         }
+         else if (last_error == ERR_INVALID_INPUT_PARAMVALUE) {      // Fehlermeldung und Input-Dialog neu aufrufen
+            //ForceSound("chord.wav");
+            //if (ForceMessageBox("ERR_INVALID_INPUT_PARAMVALUE", __SCRIPT__, MB_ICONERROR|MB_RETRYCANCEL) == IDRETRY) {
+            //}
          }
       }
    }
@@ -967,7 +976,7 @@ bool Grid.AddOrder(int type, int level) {
  */
 bool Grid.ModifyPendingOrder(int i) {
    if (IsLastError() || status==STATUS_DISABLED) return( false);
-   if (i < 0 || ArraySize(orders.ticket) < i+1)  return(_false(catch("Grid.ModifyPendingOrder(1)   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (i < 0 || ArraySize(orders.ticket) < i+1)  return(_false(catch("Grid.ModifyPendingOrder(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    if (orders.type[i] != OP_UNDEFINED)           return(_false(catch("Grid.ModifyPendingOrder(2)   cannot modify open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
    if (orders.closeTime[i] != 0)                 return(_false(catch("Grid.ModifyPendingOrder(3)   cannot modify cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
@@ -1333,12 +1342,12 @@ int PendingStopOrder(int type, int level, double& execution[]) {
       return(-1);
 
    if (type == OP_BUYSTOP) {
-      if (level <= 0) return(_int(-1, catch("PendingStopOrder(1)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (level <= 0) return(_int(-1, catch("PendingStopOrder(1)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
    }
    else if (type == OP_SELLSTOP) {
-      if (level >= 0) return(_int(-1, catch("PendingStopOrder(2)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (level >= 0) return(_int(-1, catch("PendingStopOrder(2)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
    }
-   else               return(_int(-1, catch("PendingStopOrder(3)   illegal parameter type = "+ type, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   else               return(_int(-1, catch("PendingStopOrder(3)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    if (ArraySize(execution) < 1)
       ArrayResize(execution, 1);
@@ -1488,7 +1497,7 @@ bool StopSequence() {
  */
 int CreateMagicNumber(int level) {
    if (sequenceId < 1000) return(_int(-1, catch("CreateMagicNumber(1)   illegal sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
-   if (level == 0)        return(_int(-1, catch("CreateMagicNumber(2)   illegal parameter level = "+ level, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (level == 0)        return(_int(-1, catch("CreateMagicNumber(2)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    // Für bessere Obfuscation ist die Reihenfolge der Werte [ea,level,sequence] und nicht [ea,sequence,level]. Dies wären aufeinander folgende Werte.
    int ea       = Strategy.Id & 0x3FF << 22;                         // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
@@ -2264,14 +2273,14 @@ bool ConfigurationChanged() {
 bool ValidateConfiguration(int reason=NULL) {
    // Sequence.ID: falls gesetzt, wurde sie schon in RestoreInputSequenceId() validiert
    if (reason == REASON_PARAMETERS)
-      if (Sequence.ID != last.Sequence.ID)      return(_false(catch("ValidateConfiguration(1)  Cannot change parameter Sequence.ID", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (Sequence.ID != last.Sequence.ID)      return(_false(catch("ValidateConfiguration(1)  Cannot change parameter Sequence.ID", ERR_INVALID_INPUT_PARAMVALUE)));
 
    // GridDirection
    string directions[] = {"Bidirectional", "Long", "Short", "L+S"};
    string strValue     = StringToLower(StringTrim(StringReplace(StringReplace(StringReplace(GridDirection, "+", ""), "&", ""), " ", "")) +"b");
    switch (StringGetChar(strValue, 0)) {
       case 'l': if (StringStartsWith(strValue, "longshort") || StringStartsWith(strValue, "ls")) {
-                   return(_false(catch("ValidateConfiguration(2)  grid mode Long+Short not yet implemented", ERR_FUNCTION_NOT_IMPLEMENTED)));
+                   return(_false(catch("ValidateConfiguration(2)  grid mode Long+Short not yet implemented", ERR_INVALID_INPUT_PARAMVALUE)));
                    grid.direction = D_LONG_SHORT; break;
                 }
                 grid.direction    = D_LONG;       break;
@@ -2281,19 +2290,19 @@ bool ValidateConfiguration(int reason=NULL) {
       default:                                  return(_false(catch("ValidateConfiguration(3)  Invalid input parameter GridDirection = \""+ GridDirection +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
    }
    if (reason==REASON_PARAMETERS) /*&&*/ if (directions[grid.direction]!=last.GridDirection)
-      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(4)  Cannot change parameter GridDirection of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(4)  Cannot change parameter GridDirection of running sequence", ERR_INVALID_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    GridDirection = directions[grid.direction]; SS.Grid.Direction();
 
    // GridSize
    if (reason==REASON_PARAMETERS) /*&&*/ if (GridSize!=last.GridSize)
-      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(5)  Cannot change parameter GridSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(5)  Cannot change parameter GridSize of running sequence", ERR_INVALID_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    if (GridSize < 1)                            return(_false(catch("ValidateConfiguration(6)  Invalid input parameter GridSize = "+ GridSize, ERR_INVALID_INPUT_PARAMVALUE)));
 
    // LotSize
    if (reason==REASON_PARAMETERS) /*&&*/ if (NE(LotSize, last.LotSize))
-      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(7)  Cannot change parameter LotSize of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(7)  Cannot change parameter LotSize of running sequence", ERR_INVALID_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    if (LE(LotSize, 0))                          return(_false(catch("ValidateConfiguration(8)  Invalid input parameter LotSize = "+ NumberToStr(LotSize, ".+"), ERR_INVALID_INPUT_PARAMVALUE)));
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT );
@@ -2312,7 +2321,7 @@ bool ValidateConfiguration(int reason=NULL) {
    //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
    //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
    if (reason==REASON_PARAMETERS) /*&&*/ if (StartConditions!=last.StartConditions)
-      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(13)  Cannot change parameter StartConditions of running sequence", ERR_ILLEGAL_INPUT_PARAMVALUE)));
+      if (status != STATUS_WAITING)             return(_false(catch("ValidateConfiguration(13)  Cannot change parameter StartConditions of running sequence", ERR_INVALID_INPUT_PARAMVALUE)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
 
    start.conditions      = false;
@@ -2350,8 +2359,8 @@ bool ValidateConfiguration(int reason=NULL) {
       }
       else if (key == "@time") {
          time = StrToTime(value);
-         if (IsError(catch("ValidateConfiguration(21)  Invalid input parameter StartConditions = \""+ StartConditions +"\"")))
-            return(false);
+         error = GetLastError();
+         if (IsError(error))                    return(_false(catch("ValidateConfiguration(21)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", error), SetLastError(ERR_INVALID_INPUT_PARAMVALUE)));
          /*
          TODO: Prüfung nur bei manueller Parameteränderung
          if (time < TimeCurrent()) return(_false(catch("ValidateConfiguration(22)  Invalid input parameter StartConditions = \""+ StartConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
@@ -2409,8 +2418,8 @@ bool ValidateConfiguration(int reason=NULL) {
       }
       else if (key == "@time") {
          time = StrToTime(value);
-         if (IsError(catch("ValidateConfiguration(31)  Invalid input parameter StopConditions = \""+ StopConditions +"\"")))
-            return(false);
+         error = GetLastError();
+         if (IsError(error))                    return(_false(catch("ValidateConfiguration(31)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", error), SetLastError(ERR_INVALID_INPUT_PARAMVALUE)));
          /*
          TODO: Prüfung nur bei manueller Parameteränderung
          if (time < TimeCurrent()) return(_false(catch("ValidateConfiguration(32)  Invalid input parameter StopConditions = \""+ StopConditions +"\"", ERR_INVALID_INPUT_PARAMVALUE)));
@@ -3644,7 +3653,7 @@ void RedrawOrders() {
  */
 bool ChartMarker.OrderSent(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
@@ -3679,7 +3688,7 @@ bool ChartMarker.OrderSent(int i) {
  */
 bool ChartMarker.OrderFilled(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
@@ -3707,7 +3716,7 @@ bool ChartMarker.OrderFilled(int i) {
  */
 bool ChartMarker.PositionClosed(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define DM_NONE      0     // - keine Anzeige -
    #define DM_STOPS     1     // Pending,       ClosedByStop
@@ -3876,7 +3885,7 @@ string BreakevenEventToStr(int type) {
       case EV_POSITION_STOPOUT: return("EV_POSITION_STOPOUT");
       case EV_POSITION_CLOSE  : return("EV_POSITION_CLOSE"  );
    }
-   return(_empty(catch("BreakevenEventToStr()  illegal parameter type = "+ type, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   return(_empty(catch("BreakevenEventToStr()  illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -3894,7 +3903,7 @@ string GridDirectionToStr(int direction) {
       case D_SHORT     : return("D_SHORT"     );
       case D_LONG_SHORT: return("D_LONG_SHORT");
    }
-   return(_empty(catch("GridDirectionToStr()  illegal parameter direction = "+ direction, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   return(_empty(catch("GridDirectionToStr()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -3912,5 +3921,5 @@ string GridDirectionDescription(int direction) {
       case D_SHORT     : return("short"        );
       case D_LONG_SHORT: return("long + short" );
    }
-   return(_empty(catch("GridDirectionDescription()  illegal parameter direction = "+ direction, ERR_ILLEGAL_INPUT_PARAMVALUE)));
+   return(_empty(catch("GridDirectionDescription()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
