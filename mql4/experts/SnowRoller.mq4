@@ -175,7 +175,8 @@ double   orders.profit           [];
 
 string   str.test                = "";                // Speichervariablen für schnellere Abarbeitung von ShowStatus()
 string   str.LotSize             = "";
-string   str.startStopConditions = "";
+string   str.startConditions     = "";
+string   str.stopConditions      = "";
 string   str.grid.direction      = "";
 string   str.grid.base           = "";
 string   str.grid.maxLevel       = "";
@@ -567,7 +568,7 @@ bool StartSequence() {
    if (__STATUS__CANCELLED || IsLastError())
       return(false);
 
-   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __NAME__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
@@ -767,7 +768,7 @@ bool Grid.AddOrder(int type, int level) {
    if (__STATUS__CANCELLED || IsLastError())
       return(false);
 
-   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a new "+ OperationTypeDescription(type) +" order now?", __NAME__ +" - Grid.AddOrder()", MB_ICONQUESTION|MB_OKCANCEL);
@@ -807,7 +808,7 @@ bool Grid.ModifyPendingOrder(int i) {
    if (orders.type[i] != OP_UNDEFINED)          return(_false(catch("Grid.ModifyPendingOrder(2)   cannot modify open position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
    if (orders.closeTime[i] != 0)                return(_false(catch("Grid.ModifyPendingOrder(3)   cannot modify cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
-   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to modify the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ orders.ticket[i] +" now?", __NAME__ +" - Grid.ModifyPendingOrder()", MB_ICONQUESTION|MB_OKCANCEL);
@@ -857,7 +858,7 @@ bool Grid.DeleteOrder(int ticket) {
    if (i == -1)
       return(_false(catch("Grid.DeleteOrder(1)   #"+ ticket +" not found in grid arrays", ERR_RUNTIME_ERROR)));
 
-   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ ticket +" now?", __NAME__ +" - Grid.DeleteOrder()", MB_ICONQUESTION|MB_OKCANCEL);
@@ -1221,7 +1222,7 @@ bool StopSequence() {
    if (__STATUS__CANCELLED || IsLastError())              return(false);
    if (status==STATUS_STOPPING || status==STATUS_STOPPED) return(false);
 
-   if (firstTick && !firstTickConfirmed) {                              // Sicherheitsabfrage beim Aufruf beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                              // Sicherheitsabfrage bei Aufruf beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", __NAME__ +" - StopSequence()", MB_ICONQUESTION|MB_OKCANCEL);
@@ -1388,7 +1389,8 @@ int ShowStatus(bool init=false) {
                                                                                                      NL,
                            "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction, NL,
                            "LotSize:         ", str.LotSize, " lot = ", str.stopValue, "/stop",      NL,
-                           str.startStopConditions,                                                      // enthält NL (wenn gesetzt)
+                           str.startConditions,                                                             // enthält NL, wenn gesetzt
+                           str.stopConditions,                                                              // enthält NL, wenn gesetzt
                            "Realized:       ", str.grid.stops, " ", str.grid.stopsPL,                NL,
                            "Breakeven:   ", str.grid.breakeven,                                      NL,
                            "Profit/Loss:    ", str.grid.totalPL, "  ", str.grid.plStatistics,        NL);
@@ -1503,12 +1505,14 @@ void SS.StartStopConditions() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.startStopConditions = "";
+   str.startConditions = "";
+   str.stopConditions  = "";
 
-   if (status == STATUS_WAITING) {
-      if  (start.conditions) str.startStopConditions = StringConcatenate("Start:           ", StartConditions, NL);
-   }
-   else if (stop.conditions) str.startStopConditions = StringConcatenate("Stop:            ", StopConditions,  NL);
+   if (start.conditions) /*&&*/ if (ArraySize(orders.ticket)==0)
+      str.startConditions = StringConcatenate("Start:           ", StartConditions, NL);
+
+   if (stop.conditions)
+      str.stopConditions  = StringConcatenate("Stop:            ", StopConditions,  NL);
 }
 
 
