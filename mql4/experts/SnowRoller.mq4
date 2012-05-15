@@ -1,5 +1,5 @@
 /**
- * SnowRoller - Pyramiding Anti-Martingale Strategy
+ * SnowRoller - Pyramiding anti-martingale Trade Manager
  *
  *
  *  TODO:
@@ -198,21 +198,6 @@ bool     firstTick          = true;
 bool     firstTickConfirmed = false;
 
 
-/**
- * Initialisierung
- *
- * @return int - Fehlerstatus
- */
-int afterInit() {
-   SS.All();
-   ShowStatus(true);
-
-   if (IsLastError())
-      status = STATUS_DISABLED;
-   return(last_error);
-}
-
-
 #include <SnowRoller/init.mqh>
 #include <SnowRoller/deinit.mqh>
 
@@ -249,11 +234,6 @@ int onTick() {
 
    // (3) Status anzeigen
    ShowStatus();
-
-
-   catch("onTick()");
-   if (IsLastError())
-      status = STATUS_DISABLED;
    return(last_error);
 }
 
@@ -1418,7 +1398,12 @@ int ShowStatus(bool init=false) {
    if (init)
       WindowRedraw();
 
-   return(catch("ShowStatus(2)"));
+
+   if (IsError(catch("ShowStatus(2)"))) {
+      status = STATUS_DISABLED;
+      return(last_error);
+   }
+   return(NO_ERROR);
 }
 
 

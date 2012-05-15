@@ -176,3 +176,18 @@ int onInitChartChange() {
    Breakeven.Width  = last.Breakeven.Width;
    return(NO_ERROR);
 }
+
+
+/**
+ * Initialisierung
+ *
+ * @return int - Fehlerstatus
+ */
+int afterInit() {
+   SS.All();
+   ShowStatus(true);
+
+   if (IsLastError())
+      status = STATUS_DISABLED;
+   return(last_error);
+}
