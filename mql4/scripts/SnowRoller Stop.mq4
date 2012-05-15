@@ -1,30 +1,14 @@
 /**
- * SnowRoller Stop
+ * SnowRoller Pause
  */
+#include <types.mqh>
+#define     __TYPE__    T_SCRIPT
+int   __INIT_FLAGS__[];
+int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 
 
 #property show_inputs
-
-
-/**
- * Initialisierung
- *
- * @return int - Fehlerstatus
- */
-int init() {
-   return(onInit(T_SCRIPT));
-}
-
-
-/**
- * Deinitialisierung
- *
- * @return int - Fehlerstatus
- */
-int deinit() {
-   return(catch("deinit()"));
-}
 
 
 /**
