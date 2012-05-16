@@ -11,16 +11,6 @@ int __DEINIT_FLAGS__[];
 
 
 /**
- * Initialisierung
- *
- * @return int - Fehlerstatus
- */
-int onInit() {
-   return(catch("onInit()"));
-}
-
-
-/**
  * Main-Funktion
  *
  * @return int - Fehlerstatus

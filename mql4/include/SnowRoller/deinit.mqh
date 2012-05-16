@@ -4,14 +4,14 @@
  *
  * @return int - Fehlerstatus
  */
-int onDeinitChartOpen() {
+int onDeinitUndefined() {
    // Tester
    if (IsTesting()) {
       if (StopSequence())                                            // ruft intern UpdateStatus() und SaveStatus() auf
          ShowStatus();
       return(-1);
    }
-   return(catch("onDeinitChartOpen()", ERR_RUNTIME_ERROR));          // mal schaun, wann hier jemand reinlatscht
+   return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wann hier jemand reinlatscht
 }
 
 
@@ -27,7 +27,7 @@ int onDeinitChartOpen() {
 int onDeinitChartClose() {
    // Tester
    if (IsTesting()) {
-      // Statusfile löschen und Titelzeile des Testers zurücksetzen
+      // TODO: Statusfile löschen und Titelzeile des Testers zurücksetzen
       return(-1);
    }
 

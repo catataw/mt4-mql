@@ -189,7 +189,6 @@ string   str.grid.maxDrawdown    = "0.00";
 string   str.grid.valueAtRisk    = "0.00";
 string   str.grid.plStatistics   = "";
 
-
 color    CLR_LONG  = Blue;
 color    CLR_SHORT = Red;
 color    CLR_CLOSE = Orange;
@@ -1349,11 +1348,11 @@ int CreateMagicNumber(int level) {
 /**
  * Zeigt den aktuellen Status der Sequenz an.
  *
- * @param  bool init - ob der Aufruf innerhalb der vom Terminal aufgerufenen init()-Funktion erfolgt (default: nein)
+ * @param  bool initByTerminal - ob der Aufruf innerhalb der vom Terminal aufgerufenen init()-Funktion erfolgt (default: nein)
  *
  * @return int - Fehlerstatus
  */
-int ShowStatus(bool init=false) {
+int ShowStatus(bool initByTerminal=false) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
@@ -1397,7 +1396,7 @@ int ShowStatus(bool init=false) {
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
-   if (init)
+   if (initByTerminal)
       WindowRedraw();
 
 

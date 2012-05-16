@@ -1,12 +1,13 @@
 
 /**
- * Kein UninitializeReason gesetzt:
+ * Kein UninitializeReason gesetzt
+ *
  * - nach Terminal-Neustart, neues Chartfenster, wenn alter EA, dann kein Input-Dialog
  * - File ->New ->Chart, neues Chartfenster, neuer EA, Input-Dialog
  *
  * @return int - Fehlerstatus
  */
-int onInitChartOpen() {
+int onInitUndefined() {
    last_error = NO_ERROR;
 
    // Prüfen, ob im Chart Statusdaten existieren
@@ -181,11 +182,13 @@ int onInitChartChange() {
 /**
  * Initialisierung
  *
+ * @param  bool userCall - ob der Aufruf der zugrunde liegenden init()-Funktion durch das Terminal oder durch Userland-Code erfolgte
+ *
  * @return int - Fehlerstatus
  */
-int afterInit() {
+int afterInit(bool userCall) {
    SS.All();
-   ShowStatus(true);
+   ShowStatus(!userCall);
 
    if (IsLastError())
       status = STATUS_DISABLED;
