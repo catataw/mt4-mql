@@ -4,16 +4,16 @@
  *
  *  TODO:
  *  -----
+ *  - Start/Stop per Click implementieren                                                                *
  *  - StartConditions vervollständigen                                                                   *
  *  - StopConditions vervollständigen                                                                    *
- *  - Start/Stop per Click implementieren                                                                *
  *  - Resume implementieren                                                                              *
  *  - automatisches Pause/Resume am Wochenende implementieren                                            *
  *  - StartCondition "@level" implementieren (GBP/AUD 02.04.)                                            *
  *  - beidseitig unidirektionales Grid implementieren                                                    *
  *  - StartSequence: bei @level(1) zurück auf @price(@level(0.5)) gehen (Stop 1 liegt sehr ungünstig)    *
  *  - Änderungen der Gridbasis während Auszeit erkennen                                                  *
- *  - PendingOrders nicht per Tick trailen                                                               *
+ *  - PendingOrders nicht per Tick trailen (wiederholte Trade-Timeouts von exakt 200 sec.)               *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops
@@ -29,7 +29,6 @@
  *  - alle Trade-Operationen loggen
  *  - Slippage immer loggen
  *  - bei Traderequest-Fehlern alle Infos vollständig loggen
- *  - wiederholte Trade-Timeouts von exakt 200 sec.
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
