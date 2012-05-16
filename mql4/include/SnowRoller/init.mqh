@@ -182,15 +182,67 @@ int onInitChartChange() {
 /**
  * Initialisierung
  *
- * @param  bool userCall - ob der Aufruf der zugrunde liegenden init()-Funktion durch das Terminal oder durch Userland-Code erfolgte
+ * @param  bool userCall - ob der Aufruf der zugrunde liegenden init()-Funktion durch das Terminal oder durch User-Code erfolgte
  *
  * @return int - Fehlerstatus
  */
 int afterInit(bool userCall) {
+   CreateStatusBox();
    SS.All();
    ShowStatus(!userCall);
 
    if (IsLastError())
       status = STATUS_DISABLED;
    return(last_error);
+}
+
+
+/**
+ * @return int - Fehlerstatus
+ */
+int CreateStatusBox() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return(NO_ERROR);
+                                                                     // Chart-Background: C'248,248,248'
+   color color.Background = C'248,248,248';                          // hellblau:         C'136,225,223'
+                                                                     // Standard-Dialog:  C'212,208,200'
+   // (1)
+   string label = StringConcatenate(__NAME__, ".statusbox.1");
+   if (ObjectFind(label) != 0) {
+      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+         return(catch("CreateStatusBox(1)"));
+      //PushChartObject(label);
+   }
+   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
+   ObjectSet(label, OBJPROP_XDISTANCE,  0);
+   ObjectSet(label, OBJPROP_YDISTANCE, 23);
+   ObjectSetText(label, "g", 73, "Webdings", color.Background);
+
+
+   // (2)
+   label = StringConcatenate(__NAME__, ".statusbox.2");
+   if (ObjectFind(label) != 0) {
+      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+         return(catch("CreateStatusBox(2)"));
+      //PushChartObject(label);
+   }
+   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
+   ObjectSet(label, OBJPROP_XDISTANCE, 97);
+   ObjectSet(label, OBJPROP_YDISTANCE, 23);
+   ObjectSetText(label, "g", 73, "Webdings", color.Background);
+
+
+   // (3)
+   label = StringConcatenate(__NAME__, ".statusbox.3");
+   if (ObjectFind(label) != 0) {
+      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+         return(catch("CreateStatusBox(3)"));
+      //PushChartObject(label);
+   }
+   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
+   ObjectSet(label, OBJPROP_XDISTANCE, 152);
+   ObjectSet(label, OBJPROP_YDISTANCE,  23);
+   ObjectSetText(label, "g", 73, "Webdings", color.Background);
+
+   return(catch("CreateStatusBox(4)"));
 }

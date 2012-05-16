@@ -26,6 +26,10 @@
  *  - Logging im Tester reduzieren
  *  - Upload der Statusdatei implementieren
  *  - Aufruf von MessageBoxen loggen
+ *  - alle Trade-Operationen loggen
+ *  - Slippage immer loggen
+ *  - bei Traderequest-Fehlern alle Infos vollständig loggen
+ *  - wiederholte Trade-Timeouts von exakt 200 sec.
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
@@ -90,7 +94,7 @@ int      last.Breakeven.Width;
 int      status = STATUS_UNINITIALIZED;
 
 int      sequenceId;
-bool     test = false;                                // ob diese Sequenz ein Backtest ist oder war (*nicht*, ob der Test gerade läuft)
+bool     test = false;                                // ob diese Sequenz ein Test ist oder war (*nicht*, ob der Test gerade läuft)
 
 datetime instanceStartTime;                           // Daten beim Start des EA's
 double   instanceStartPrice;
