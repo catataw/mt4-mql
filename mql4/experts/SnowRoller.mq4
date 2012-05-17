@@ -13,7 +13,7 @@
  *  - beidseitig unidirektionales Grid implementieren                                                    *
  *  - StartSequence: bei @level(1) zurück auf @price(@level(0.5)) gehen (Stop 1 liegt sehr ungünstig)    *
  *  - Änderungen der Gridbasis während Auszeit erkennen                                                  *
- *  - PendingOrders nicht per Tick trailen (wiederholte Trade-Timeouts von exakt 200 sec.)               *
+ *  - PendingOrders nicht per Tick trailen                                                               *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops
@@ -29,6 +29,8 @@
  *  - alle Trade-Operationen loggen
  *  - Slippage immer loggen
  *  - bei Traderequest-Fehlern alle Infos vollständig loggen
+ *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
+ *  - Alpari: Stop-Order-Slippage EUR/USD bis zu 3.3 pip, GBP/AUD bis zu 6 pip
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
@@ -36,32 +38,7 @@ int   __INIT_FLAGS__[] = {INIT_TICKVALUE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 #include <win32api.mqh>
-
-
-int Strategy.Id = 103;                                // eindeutige ID der Strategie (Bereich 101-1023)
-
-
-// Grid-Directions
-#define D_BIDIR                  0                    // default
-#define D_LONG                   1
-#define D_SHORT                  2
-#define D_LONG_SHORT             3
-
-
-// Sequenzstatus-Werte
-#define STATUS_UNINITIALIZED     0                    // default
-#define STATUS_WAITING           1
-#define STATUS_PROGRESSING       2
-#define STATUS_STOPPING          3
-#define STATUS_STOPPED           4
-#define STATUS_DISABLED          5
-
-
-// OrderDisplay-Modes
-#define DM_NONE                  0                    // - keine Anzeige -
-#define DM_STOPS                 1                    // Pending,       ClosedByStop
-#define DM_PYRAMID               2                    // Pending, Open,               Closed (default)
-#define DM_ALL                   3                    // Pending, Open, ClosedByStop, Closed
+#include <SnowRoller/define.mqh>
 
 
 //////////////////////////////////////////////////////////////// externe Parameter ////////////////////////////////////////////////////////////////
@@ -191,10 +168,6 @@ string   str.grid.maxProfitLoss  = "0.00";
 string   str.grid.maxDrawdown    = "0.00";
 string   str.grid.valueAtRisk    = "0.00";
 string   str.grid.plStatistics   = "";
-
-color    CLR_LONG  = Blue;
-color    CLR_SHORT = Red;
-color    CLR_CLOSE = Orange;
 
 int      orderDisplayMode;
 bool     firstTick          = true;
@@ -1339,7 +1312,7 @@ int CreateMagicNumber(int level) {
    if (level == 0)        return(_int(-1, catch("CreateMagicNumber(2)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    // Für bessere Obfuscation ist die Reihenfolge der Werte [ea,level,sequence] und nicht [ea,sequence,level]. Dies wären aufeinander folgende Werte.
-   int ea       = Strategy.Id & 0x3FF << 22;                         // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
+   int ea       = STRATEGY_ID & 0x3FF << 22;                         // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern) | in MagicNumber: Bits 23-32
        level    = MathAbs(level) +0.1;                               // (int) double: Wert in MagicNumber ist immer positiv
        level    = level & 0xFF << 14;                                //  8 bit (Bits größer 8 löschen und auf 22 Bit erweitern)  | in MagicNumber: Bits 15-22
    int sequence = sequenceId  & 0x3FFF;                              // 14 bit (Bits größer 14 löschen                           | in MagicNumber: Bits  1-14
@@ -1403,7 +1376,30 @@ int ShowStatus(bool initByTerminal=false) {
       WindowRedraw();
 
 
-   if (IsError(catch("ShowStatus(2)"))) {
+
+   // für Fernbedienung mit Pause/Resume-Scripten unsichtbaren Status im Chart speichern
+   string label = StringConcatenate(__NAME__, ".status");
+   if (ObjectFind(label) != 0) {
+      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+         return(catch("ShowStatus(2)"));
+      //PushChartObject(label);
+   }
+   ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                            // hidden on all timeframes
+   ObjectSetText(label, StringConcatenate(Sequence.ID, "|", status), 1);
+
+   /*
+   ObjectSet(label, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
+   ObjectSet(label, OBJPROP_XDISTANCE, 400);
+   ObjectSet(label, OBJPROP_YDISTANCE,  23);
+   string text      = StringConcatenate(Sequence.ID, "|", status);
+   int    fontSize  = 20;
+   string fontName  = "Tahoma";
+   color  fontColor = Blue;
+   ObjectSetText(label, text, fontSize, fontName, fontColor);
+   */
+
+   if (IsError(catch("ShowStatus(3)"))) {
       status = STATUS_DISABLED;
       return(last_error);
    }
@@ -2042,7 +2038,7 @@ int ClearTransientStatus() {
 /**
  * Ermittelt die aktuell laufenden Sequenzen.
  *
- * @param  int ids[] - Array zur Aufnahme der gefunden Sequenz-IDs
+ * @param  int ids[] - Array zur Aufnahme der gefundenen Sequenz-IDs
  *
  * @return bool - ob mindestens eine laufende Sequenz gefunden wurde
  */
@@ -2077,7 +2073,7 @@ bool GetRunningSequences(int ids[]) {
  */
 bool IsMyOrder(int sequenceId = NULL) {
    if (OrderSymbol() == Symbol()) {
-      if (OrderMagicNumber() >> 22 == Strategy.Id) {
+      if (OrderMagicNumber() >> 22 == STRATEGY_ID) {
          if (sequenceId == NULL)
             return(true);
          return(sequenceId == OrderMagicNumber() & 0x3FFF);          // 14 Bits (Bits 1-14) => sequenceId
@@ -2393,23 +2389,32 @@ bool ValidateConfiguration(bool interactive) {
 
 
 /**
+ * "Exception-Handler" für ungültige Input-Parameter. Je nach Laufzeitumgebung wird der Fehler weitergereicht oder eine interaktive Korrektur angeboten.
  *
- * @return void - als int deklariert, um Verwendung als Funktionsargument zu ermöglichen
+ * @param  string location  - Ort, an dem der Fehler auftrat
+ * @param  string msg       - Fehlermeldung
+ * @param  bool interactive - ob der Fehler interaktiv behandelt werden kann
+ *
+ * @return int - der resultierende Fehlerstatus
  */
 int HandleConfigError(string location, string msg, bool interactive) {
-   if (interactive) {
-      __STATUS__INVALID_INPUT = true;
-      log(location +"   "+ msg, ERR_INVALID_INPUT);
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      interactive = false;
+   if (!interactive)
+      return(catch(location +"   "+ msg, ERR_INVALID_CONFIG_PARAMVALUE));
 
-      ForceSound("chord.wav");
-      int button = ForceMessageBox(msg, __NAME__ +" - ValidateConfiguration()", MB_ICONERROR|MB_RETRYCANCEL);
 
-      if (button == IDRETRY)
-         __STATUS__RELAUNCH_INPUT = true;
-   }
-   else {
-      catch(location +"   "+ msg, ERR_INVALID_CONFIG_PARAMVALUE);
-   }
+   log(location +"   "+ msg, ERR_INVALID_INPUT);
+
+   ForceSound("chord.wav");
+   int button = ForceMessageBox(msg, __NAME__ +" - ValidateConfiguration()", MB_ICONERROR|MB_RETRYCANCEL);
+
+   __STATUS__INVALID_INPUT = true;
+
+   if (button == IDRETRY)
+      __STATUS__RELAUNCH_INPUT = true;
+
+   return(NO_ERROR);
 }
 
 

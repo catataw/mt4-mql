@@ -85,8 +85,8 @@ int onInitChartClose() {
       Sequence.ID         = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status              = STATUS_WAITING;
 
-      if (start.conditions)                                          // Ohne StartConditions erfolgt sofortiger Sequenzstart, der Status automatisch speichert.
-         SaveStatus();
+      if (start.conditions)                                          // Ohne StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
+         SaveStatus();                                               // wird erst danach gespeichert.
       RedrawStartStop();
    }
    return(last_error);
@@ -160,7 +160,7 @@ int onInitParameterChange() {
 
 
 /**
- * altes Chartfenster, alter EA, kein Input-Dialog
+ * Symbol- oder Timeframe-Wehsel: altes Chartfenster, alter EA, kein Input-Dialog
  *
  * @return int - Fehlerstatus
  */
@@ -175,6 +175,7 @@ int onInitChartChange() {
    OrderDisplayMode = last.OrderDisplayMode;
    Breakeven.Color  = last.Breakeven.Color;
    Breakeven.Width  = last.Breakeven.Width;
+   // TODO: Symbolwechsel behandeln
    return(NO_ERROR);
 }
 
