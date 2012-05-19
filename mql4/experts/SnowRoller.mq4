@@ -185,22 +185,27 @@ bool     firstTickConfirmed = false;
  * @return int - Fehlerstatus
  */
 int onTick() {
-   if (status==STATUS_UNINITIALIZED || status==STATUS_STOPPED || status==STATUS_DISABLED)
+   if (status==STATUS_UNINITIALIZED || status==STATUS_DISABLED)
       return(NO_ERROR);
 
+
+   // (1) Commands verarbeiten
    HandleEvent(EVENT_CHART_CMD);
+
+   if (status==STATUS_STOPPED)
+      return(last_error);
 
 
    static int    last.grid.level;
    static double last.grid.base;
 
 
-   // (1) Sequenz wartet entweder auf Startsignal...
+   // (2) Sequenz wartet entweder auf Startsignal...
    if (status == STATUS_WAITING) {
       if (IsStartSignal())                    StartSequence();
    }
 
-   // (2) ...oder läuft: Daten und Orders aktualisieren
+   // (3) ...oder läuft: Daten und Orders aktualisieren
    else if (UpdateStatus()) {
       if      (IsStopSignal())                StopSequence();
       else if (grid.level != last.grid.level) UpdatePendingOrders();
@@ -212,9 +217,48 @@ int onTick() {
    firstTick       = false;
 
 
-   // (3) Status anzeigen
+   // (4) Status anzeigen
    ShowStatus();
    return(last_error);
+}
+
+
+/**
+ * Handler für ChartCommand-Events.
+ *
+ * @param  string commands[] - die übermittelten Kommandos
+ *
+ * @return int - Fehlerstatus
+ */
+int onChartCommand(string commands[]) {
+   if (ArraySize(commands) == 0)
+      return(catch("onChartCommand(1)   illegal parameter commands = "+ StringsToStr(commands, NULL), ERR_INVALID_FUNCTION_PARAMVALUE));
+
+   string cmd = commands[0];
+
+   if (cmd == "start") {
+      switch (status) {
+         case STATUS_WAITING:
+            StartSequence();
+            break;
+         case STATUS_STOPPED:
+            debug("onChartCommand()   \""+ cmd +"\" of stopped sequence not yet implemented");
+            break;
+      }
+      return(last_error);
+   }
+   else if (cmd == "stop") {
+      switch (status) {
+         case STATUS_WAITING:
+         case STATUS_PROGRESSING:
+            if (UpdateStatus())
+               StopSequence();
+            ShowStatus();
+      }
+      return(last_error);
+   }
+
+   return(catch("onChartCommand(2)   unknow command = \""+ cmd +"\"", ERR_INVALID_FUNCTION_PARAMVALUE));
 }
 
 
@@ -228,48 +272,6 @@ int onTick() {
 int onBarOpen(int timeframes[]) {
    Grid.DrawBreakeven();
    return(catch("onBarOpen()"));
-}
-
-
-/**
- * Prüft, ob seit dem letzten Aufruf ein ChartCommand-Event aufgetreten ist.
- *
- * @param  string commands[] - Array zur Aufnahme der aufgetretenen Kommandos
- * @param  int    flags      - zusätzliche eventspezifische Flags (default: keine)
- *
- * @return bool - Ergebnis
- */
-bool EventListener.ChartCommand(string commands[], int flags=NULL) {
-   if (ArraySize(commands) > 0)
-      ArrayResize(commands, 0);
-
-   static string label;
-   static int    sid;
-
-   if (sequenceId != sid) {                                          // Label wird nur modifiziert, wenn es sich tatsächlich ändert
-      label = StringConcatenate(__NAME__, ".", Sequence.ID, ".command");
-      sid   = sequenceId;
-   }
-
-   if (ObjectFind(label) == 0) {
-      ArrayPushString(commands, ObjectDescription(label));
-      ObjectDelete(label);
-      return(true);
-   }
-   return(false);
-}
-
-
-/**
- * Eventhandler für Chart-Commands
- *
- * @param  string commands[] - die übermittelten Kommandos
- *
- * @return int - Fehlerstatus
- */
-int onChartCommand(string commands[]) {
-   debug("onChartCommand() "+ StringsToStr(commands, NULL));
-   return(NO_ERROR);
 }
 
 
@@ -422,6 +424,38 @@ bool UpdateStatus() {
    }
 
    return(!IsLastError() && IsNoError(catch("UpdateStatus(2)")));
+}
+
+
+/**
+ * Prüft, ob seit dem letzten Aufruf ein ChartCommand-Event aufgetreten ist.
+ *
+ * @param  string commands[] - Array zur Aufnahme der aufgetretenen Kommandos
+ * @param  int    flags      - zusätzliche eventspezifische Flags (default: keine)
+ *
+ * @return bool - Ergebnis
+ */
+bool EventListener.ChartCommand(string commands[], int flags=NULL) {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return(false);
+
+   if (ArraySize(commands) > 0)
+      ArrayResize(commands, 0);
+
+   static string label;
+   static int    sid;
+
+   if (sequenceId != sid) {                                          // Label wird nur modifiziert, wenn es sich tatsächlich ändert
+      label = StringConcatenate(__NAME__, ".", Sequence.ID, ".command");
+      sid   = sequenceId;
+   }
+
+   if (ObjectFind(label) == 0) {
+      ArrayPushString(commands, ObjectDescription(label));
+      ObjectDelete(label);
+      return(true);
+   }
+   return(false);
 }
 
 
