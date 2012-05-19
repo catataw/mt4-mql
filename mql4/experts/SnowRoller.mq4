@@ -14,7 +14,7 @@
  *  - StartSequence: bei @level(1) zurück auf @price(@level(0.5)) gehen (Stop 1 liegt sehr ungünstig)    *
  *  - Änderungen der Gridbasis während Auszeit erkennen                                                  *
  *  - PendingOrders nicht per Tick trailen                                                               *
- *  - entweder der Broker (Alpari) kann das Terminal stoppen oder Build 419 silently crashes             *
+ *  - Build 419 silently crashes                                                                         *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops
@@ -188,6 +188,9 @@ int onTick() {
    if (status==STATUS_UNINITIALIZED || status==STATUS_STOPPED || status==STATUS_DISABLED)
       return(NO_ERROR);
 
+   HandleEvent(EVENT_CHART_CMD);
+
+
    static int    last.grid.level;
    static double last.grid.base;
 
@@ -212,6 +215,61 @@ int onTick() {
    // (3) Status anzeigen
    ShowStatus();
    return(last_error);
+}
+
+
+/**
+ * Handler für BarOpen-Events.
+ *
+ * @param int timeframes[] - IDs der Timeframes, in denen das BarOpen-Event aufgetreten ist
+ *
+ * @return int - Fehlerstatus
+ */
+int onBarOpen(int timeframes[]) {
+   Grid.DrawBreakeven();
+   return(catch("onBarOpen()"));
+}
+
+
+/**
+ * Prüft, ob seit dem letzten Aufruf ein ChartCommand-Event aufgetreten ist.
+ *
+ * @param  string commands[] - Array zur Aufnahme der aufgetretenen Kommandos
+ * @param  int    flags      - zusätzliche eventspezifische Flags (default: keine)
+ *
+ * @return bool - Ergebnis
+ */
+bool EventListener.ChartCommand(string commands[], int flags=NULL) {
+   if (ArraySize(commands) > 0)
+      ArrayResize(commands, 0);
+
+   static string label;
+   static int    sid;
+
+   if (sequenceId != sid) {                                          // Label wird nur modifiziert, wenn es sich tatsächlich ändert
+      label = StringConcatenate(__NAME__, ".", Sequence.ID, ".command");
+      sid   = sequenceId;
+   }
+
+   if (ObjectFind(label) == 0) {
+      ArrayPushString(commands, ObjectDescription(label));
+      ObjectDelete(label);
+      return(true);
+   }
+   return(false);
+}
+
+
+/**
+ * Eventhandler für Chart-Commands
+ *
+ * @param  string commands[] - die übermittelten Kommandos
+ *
+ * @return int - Fehlerstatus
+ */
+int onChartCommand(string commands[]) {
+   debug("onChartCommand() "+ StringsToStr(commands, NULL));
+   return(NO_ERROR);
 }
 
 
@@ -364,19 +422,6 @@ bool UpdateStatus() {
    }
 
    return(!IsLastError() && IsNoError(catch("UpdateStatus(2)")));
-}
-
-
-/**
- * Handler für BarOpen-Events.
- *
- * @param int timeframes[] - IDs der Timeframes, in denen das BarOpen-Event aufgetreten ist
- *
- * @return int - Fehlerstatus
- */
-int onBarOpen(int timeframes[]) {
-   Grid.DrawBreakeven();
-   return(catch("onBarOpen()"));
 }
 
 
