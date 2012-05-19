@@ -20,6 +20,7 @@ int onStart() {
    string ids [];
    int  status[], sizeOfIds;
 
+
    // (1) aktive Sequenzen ermitteln
    if (GetActiveSequences(ids, status)) {
       sizeOfIds = ArraySize(ids);
@@ -29,11 +30,12 @@ int onStart() {
             case STATUS_WAITING    : break;
             case STATUS_PROGRESSING: break;
             default:
-               ArraySpliceString(ids, i, 1);                         // nicht zu stoppende entfernen
-               ArraySpliceInt(status, i, 1);
+               ArraySpliceStrings(ids, i, 1);                        // nicht zu stoppende Sequenzen entfernen
+               ArraySpliceInts(status, i, 1);
                sizeOfIds--;
          }
       }
+
 
       // (2) Bestätigung einholen
       for (i=0; i < sizeOfIds; i++) {
@@ -44,10 +46,20 @@ int onStart() {
          if (button == IDNO)
             continue;
 
+
          // (3) Command setzen
+         string label = StringConcatenate("SnowRoller.", ids[i], ".command");
+         if (ObjectFind(label) != 0) {
+            if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+               return(catch("onStart(1)"));
+            ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);             // hidden on all timeframes
+         }
+         ObjectSetText(label, "stop", 1);
+
 
          // (4) Tick senden
-         return(catch("onStart(1)"));
+         SendTick(false);
+         return(catch("onStart(2)"));                                // regular exit
       }
    }
 
@@ -56,7 +68,7 @@ int onStart() {
          ForceSound("chord.wav");
          ForceMessageBox("No sequence to pause found.", __NAME__, MB_ICONEXCLAMATION|MB_OK);
       }
-      catch("onStart(2)");
+      catch("onStart(3)");
    }
    return(last_error);
 }

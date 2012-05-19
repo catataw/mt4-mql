@@ -14,6 +14,7 @@
  *  - StartSequence: bei @level(1) zurück auf @price(@level(0.5)) gehen (Stop 1 liegt sehr ungünstig)    *
  *  - Änderungen der Gridbasis während Auszeit erkennen                                                  *
  *  - PendingOrders nicht per Tick trailen                                                               *
+ *  - entweder der Broker (Alpari) kann das Terminal stoppen oder Build 419 silently crashes             *
  *
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei PendingOrders + Stops
@@ -30,7 +31,7 @@
  *  - Slippage immer loggen
  *  - bei Traderequest-Fehlern alle Infos vollständig loggen
  *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
- *  - Alpari: Stop-Order-Slippage EUR/USD bis zu 3.3 pip, GBP/AUD bis zu 6 pip
+ *  - Alpari: Stop-Order-Slippage EUR/USD bis zu 3.9 pip, GBP/AUD bis zu 6 pip
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
@@ -1101,35 +1102,35 @@ bool Grid.DropTicket(int ticket) {
       return(_false(catch("Grid.DropTicket(1)   #"+ ticket +" not found in grid arrays", ERR_RUNTIME_ERROR)));
 
    // Einträge entfernen
-   ArraySpliceInt   (orders.ticket,            i, 1);
-   ArraySpliceInt   (orders.level,             i, 1);
-   ArraySpliceDouble(orders.gridBase,          i, 1);
+   ArraySpliceInts   (orders.ticket,            i, 1);
+   ArraySpliceInts   (orders.level,             i, 1);
+   ArraySpliceDoubles(orders.gridBase,          i, 1);
 
-   ArraySpliceInt   (orders.pendingType,       i, 1);
-   ArraySpliceInt   (orders.pendingTime,       i, 1);
-   ArraySpliceInt   (orders.pendingModifyTime, i, 1);
-   ArraySpliceDouble(orders.pendingPrice,      i, 1);
-   ArraySpliceDouble(orders.pendingExecution,  i, 1);
+   ArraySpliceInts   (orders.pendingType,       i, 1);
+   ArraySpliceInts   (orders.pendingTime,       i, 1);
+   ArraySpliceInts   (orders.pendingModifyTime, i, 1);
+   ArraySpliceDoubles(orders.pendingPrice,      i, 1);
+   ArraySpliceDoubles(orders.pendingExecution,  i, 1);
 
-   ArraySpliceInt   (orders.type,              i, 1);
-   ArraySpliceInt   (orders.openTime,          i, 1);
-   ArraySpliceDouble(orders.openPrice,         i, 1);
-   ArraySpliceDouble(orders.openSlippage,      i, 1);
-   ArraySpliceDouble(orders.openExecution,     i, 1);
-   ArraySpliceInt   (orders.openRequotes,      i, 1);
+   ArraySpliceInts   (orders.type,              i, 1);
+   ArraySpliceInts   (orders.openTime,          i, 1);
+   ArraySpliceDoubles(orders.openPrice,         i, 1);
+   ArraySpliceDoubles(orders.openSlippage,      i, 1);
+   ArraySpliceDoubles(orders.openExecution,     i, 1);
+   ArraySpliceInts   (orders.openRequotes,      i, 1);
 
-   ArraySpliceInt   (orders.closeTime,         i, 1);
-   ArraySpliceDouble(orders.closePrice,        i, 1);
-   ArraySpliceDouble(orders.stopLoss,          i, 1);
-   ArraySpliceDouble(orders.stopValue,         i, 1);
-   ArraySpliceBool  (orders.closedByStop,      i, 1);
-   ArraySpliceDouble(orders.closeSlippage,     i, 1);
-   ArraySpliceDouble(orders.closeExecution,    i, 1);
-   ArraySpliceInt   (orders.closeRequotes,     i, 1);
+   ArraySpliceInts   (orders.closeTime,         i, 1);
+   ArraySpliceDoubles(orders.closePrice,        i, 1);
+   ArraySpliceDoubles(orders.stopLoss,          i, 1);
+   ArraySpliceDoubles(orders.stopValue,         i, 1);
+   ArraySpliceBools  (orders.closedByStop,      i, 1);
+   ArraySpliceDoubles(orders.closeSlippage,     i, 1);
+   ArraySpliceDoubles(orders.closeExecution,    i, 1);
+   ArraySpliceInts   (orders.closeRequotes,     i, 1);
 
-   ArraySpliceDouble(orders.swap,              i, 1);
-   ArraySpliceDouble(orders.commission,        i, 1);
-   ArraySpliceDouble(orders.profit,            i, 1);
+   ArraySpliceDoubles(orders.swap,              i, 1);
+   ArraySpliceDoubles(orders.commission,        i, 1);
+   ArraySpliceDoubles(orders.profit,            i, 1);
 
    return(IsNoError(catch("Grid.DropTicket(2)")));
 }
@@ -1376,28 +1377,15 @@ int ShowStatus(bool initByTerminal=false) {
       WindowRedraw();
 
 
-
-   // für Fernbedienung mit Pause/Resume-Scripten unsichtbaren Status im Chart speichern
+   // für Fernbedienung unsichtbaren Status im Chart speichern
    string label = StringConcatenate(__NAME__, ".status");
    if (ObjectFind(label) != 0) {
       if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
          return(catch("ShowStatus(2)"));
-      //PushChartObject(label);
+      ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                   // hidden on all timeframes
    }
-   ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                            // hidden on all timeframes
    ObjectSetText(label, StringConcatenate(Sequence.ID, "|", status), 1);
 
-   /*
-   ObjectSet(label, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
-   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
-   ObjectSet(label, OBJPROP_XDISTANCE, 400);
-   ObjectSet(label, OBJPROP_YDISTANCE,  23);
-   string text      = StringConcatenate(Sequence.ID, "|", status);
-   int    fontSize  = 20;
-   string fontName  = "Tahoma";
-   color  fontColor = Blue;
-   ObjectSetText(label, text, fontSize, fontName, fontColor);
-   */
 
    if (IsError(catch("ShowStatus(3)"))) {
       status = STATUS_DISABLED;
