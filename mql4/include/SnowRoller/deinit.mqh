@@ -6,8 +6,9 @@
  */
 int onDeinitUndefined() {
    if (IsTesting()) {
-      if (StopSequence())                                            // ruft intern UpdateStatus() und SaveStatus() auf
-         ShowStatus();
+      if (status==STATUS_WAITING || status==STATUS_PROGRESSING)
+         if (StopSequence())                                         // ruft intern UpdateStatus() und SaveStatus() auf
+            ShowStatus();
       return(last_error);
    }
    return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wann hier jemand reinlatscht
@@ -23,9 +24,10 @@ int onDeinitUndefined() {
  * @return int - Fehlerstatus
  */
 int onDeinitChartClose() {
-   if (IsTesting()) {                                                // TODO: !!! statt StopSequence() Statusfile löschen und Titelzeile des Testers zurücksetzen
-      if (StopSequence())                                            // ruft intern UpdateStatus() und SaveStatus() auf
-         ShowStatus();
+   if (IsTesting()) {
+      if (status==STATUS_WAITING || status==STATUS_PROGRESSING)      // TODO: !!! statt StopSequence() Statusfile löschen und Titelzeile des Testers zurücksetzen
+         if (StopSequence())                                         // ruft intern UpdateStatus() und SaveStatus() auf
+            ShowStatus();
       return(last_error);
    }
 

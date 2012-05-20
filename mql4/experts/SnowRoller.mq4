@@ -241,7 +241,7 @@ int onChartCommand(string commands[]) {
             StartSequence();
             break;
          case STATUS_STOPPED:
-            debug("onChartCommand()   \""+ cmd +"\" of stopped sequence not yet implemented");
+            ResumeSequence();
             break;
       }
       return(last_error);
@@ -614,13 +614,13 @@ bool IsStopSignal() {
 
 
 /**
- * Beginnt eine neue Trade-Sequenz.
+ * Startet eine neue Trade-Sequenz.
  *
  * @return bool - Erfolgsstatus
  */
 bool StartSequence() {
-   if (__STATUS__CANCELLED || IsLastError())
-      return(false);
+   if (__STATUS__CANCELLED || IsLastError()) return( false);
+   if (status != STATUS_WAITING)             return(_false(catch("StartSequence(1)   cannot start "+ StatusDescription(status) +" trade sequence", ERR_RUNTIME_ERROR)));
 
    if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
       if (!IsTesting()) {
@@ -628,7 +628,7 @@ bool StartSequence() {
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __NAME__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
-            return(_false(catch("StartSequence(1)")));
+            return(_false(catch("StartSequence(2)")));
          }
          RefreshRates();
       }
@@ -637,7 +637,7 @@ bool StartSequence() {
 
    // Startvariablen und Status setzen
    sequenceStartTime   = TimeCurrent();
-   sequenceStartPrice  = ifDouble(start.limit.condition, start.limit.value, NormalizeDouble((Bid + Ask)/2, Digits));
+   sequenceStartPrice  = NormalizeDouble((Bid + Ask)/2, Digits);
    sequenceStartEquity = AccountEquity()-AccountCredit();
 
    Grid.BaseReset(sequenceStartTime, sequenceStartPrice);
@@ -648,7 +648,35 @@ bool StartSequence() {
       return(false);
 
    RedrawStartStop();
-   return(IsNoError(catch("StartSequence(2)")));
+   return(IsNoError(catch("StartSequence(3)")));
+}
+
+
+/**
+ * Setzt ein gestoppte Trade-Sequenz fort.
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool ResumeSequence() {
+   if (__STATUS__CANCELLED || IsLastError()) return( false);
+   if (status != STATUS_STOPPED)             return(_false(catch("ResumeSequence(1)   cannot resume "+ StatusDescription(status) +" trade sequence", ERR_RUNTIME_ERROR)));
+
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
+      if (!IsTesting()) {
+         ForceSound("notify.wav");
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to resume the sequence now?", __NAME__ +" - ResumeSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+         if (button != IDOK) {
+            __STATUS__CANCELLED = true;
+            return(_false(catch("ResumeSequence(2)")));
+         }
+         RefreshRates();
+      }
+   }
+   firstTickConfirmed = true;
+
+   debug("ResumeSequence()   not yet implemented");
+
+   return(IsNoError(catch("ResumeSequence(3)")));
 }
 
 
@@ -1270,11 +1298,11 @@ int PendingStopOrder(int type, int level, double& execution[]) {
 /**
  * Schlieﬂt alle PendingOrders und offenen Positionen der Sequenz.
  *
- * @return bool - Erfolgsstatus: ob die Sequenz erfolgreich gestoppt wurde (FALSE, wenn sie bereits gestoppt war)
+ * @return bool - Erfolgsstatus: ob die Sequenz erfolgreich gestoppt wurde
  */
 bool StopSequence() {
-   if (__STATUS__CANCELLED || IsLastError())              return(false);
-   if (status==STATUS_STOPPING || status==STATUS_STOPPED) return(false);
+   if (__STATUS__CANCELLED || IsLastError())                 return( false);
+   if (status!=STATUS_WAITING && status!=STATUS_PROGRESSING) return(_false(catch("StopSequence(1)   cannot stop "+ StatusDescription(status) +" trade sequence", ERR_RUNTIME_ERROR)));
 
    if (firstTick && !firstTickConfirmed) {                              // Sicherheitsabfrage bei Aufruf beim ersten Tick
       if (!IsTesting()) {
@@ -1282,7 +1310,7 @@ bool StopSequence() {
          int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", __NAME__ +" - StopSequence()", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
-            return(_false(catch("StopSequence(1)")));
+            return(_false(catch("StopSequence(2)")));
          }
          RefreshRates();
       }
@@ -1297,7 +1325,7 @@ bool StopSequence() {
 
    for (int i=0; i < sizeOfTickets; i++) {
       if (orders.closeTime[i] == 0) {                                   // Ticket pr¸fen, wenn es beim letzten Aufruf noch offen war
-         if (!OrderSelectByTicket(orders.ticket[i], "StopSequence(2)"))
+         if (!OrderSelectByTicket(orders.ticket[i], "StopSequence(3)"))
             return(false);
          if (OrderCloseTime() == 0) {                                   // offene Tickets je nach Typ zwischenspeichern
             if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendingOrders, orders.ticket[i]);
@@ -1375,7 +1403,7 @@ bool StopSequence() {
    }
    RedrawStartStop();
 
-   return(IsNoError(catch("StopSequence(3)")));
+   return(IsNoError(catch("StopSequence(4)")));
 }
 
 
@@ -2606,7 +2634,7 @@ bool SaveStatus() {
       return(true);
 
    static int counter;
-   if (IsTesting()) /*&&*/ if (counter!=0) /*&&*/ if (status!=STATUS_STOPPED)    // im Tester Ausf¸hrung nur bei Start und Stop
+   if (IsTesting()) /*&&*/ if (counter!=0) /*&&*/ if (status!=STATUS_STOPPED)    // im Tester Ausf¸hrung nur beim ersten Aufruf und nach Stop
       return(true);
    counter++;
 
@@ -2692,13 +2720,13 @@ bool SaveStatus() {
    ArrayPushString(lines, /*string*/   "StopConditions=" +                                StopConditions );
 
    // (1.2) Laufzeit-Variablen
-   ArrayPushString(lines, /*datetime*/ "rt.instanceStartTime="     +             instanceStartTime      + ifString(instanceStartTime     ==0, "", " ("+ TimeToStr(instanceStartTime     , TIME_FULL) +")"));
+   ArrayPushString(lines, /*datetime*/ "rt.instanceStartTime="     +             instanceStartTime         );
    ArrayPushString(lines, /*double*/   "rt.instanceStartPrice="    + NumberToStr(instanceStartPrice, ".+") );
    ArrayPushString(lines, /*double*/   "rt.instanceStartEquity="   + NumberToStr(instanceStartEquity, ".+"));
-   ArrayPushString(lines, /*datetime*/ "rt.sequenceStartTime="     +             sequenceStartTime      + ifString(sequenceStartTime     ==0, "", " ("+ TimeToStr(sequenceStartTime     , TIME_FULL) +")"));
+   ArrayPushString(lines, /*datetime*/ "rt.sequenceStartTime="     +             sequenceStartTime         );
    ArrayPushString(lines, /*double*/   "rt.sequenceStartPrice="    + NumberToStr(sequenceStartPrice, ".+") );
    ArrayPushString(lines, /*double*/   "rt.sequenceStartEquity="   + NumberToStr(sequenceStartEquity, ".+"));
-   ArrayPushString(lines, /*datetime*/ "rt.sequenceStopTime="      +             sequenceStopTime       + ifString(sequenceStopTime      ==0, "", " ("+ TimeToStr(sequenceStopTime      , TIME_FULL) +")"));
+   ArrayPushString(lines, /*datetime*/ "rt.sequenceStopTime="      +             sequenceStopTime          );
    ArrayPushString(lines, /*double*/   "rt.sequenceStopPrice="     + NumberToStr(sequenceStopPrice, ".+")  );
    ArrayPushString(lines, /*double*/   "rt.grid.maxProfitLoss="    + NumberToStr(grid.maxProfitLoss, ".+") );
    ArrayPushString(lines, /*datetime*/ "rt.grid.maxProfitLossTime="+             grid.maxProfitLossTime + ifString(grid.maxProfitLossTime==0, "", " ("+ TimeToStr(grid.maxProfitLossTime, TIME_FULL) +")"));
