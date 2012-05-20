@@ -82,13 +82,12 @@ int onInitChartClose() {
 
    // (3) zum Schluﬂ neue Sequenz anlegen.
    if (ValidateConfiguration(true)) {
-      instanceStartTime   = TimeCurrent();
-      instanceStartPrice  = NormalizeDouble((Bid + Ask)/2, Digits);
-      instanceStartEquity = AccountEquity()-AccountCredit();
-      test                = IsTesting(); SS.Test();
-      sequenceId          = CreateSequenceId();
-      Sequence.ID         = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
-      status              = STATUS_WAITING;
+      instanceStartTime  = TimeCurrent();
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+      test               = IsTesting(); SS.Test();
+      sequenceId         = CreateSequenceId();
+      Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
+      status             = STATUS_WAITING;
 
       if (start.conditions)                                          // Ohne StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
          SaveStatus();                                               // wird erst danach gespeichert.
@@ -148,13 +147,12 @@ int onInitParameterChange() {
 
    if (status == STATUS_UNINITIALIZED) {
       // neue Sequenz anlegen
-      instanceStartTime   = TimeCurrent();
-      instanceStartPrice  = NormalizeDouble((Bid + Ask)/2, Digits);
-      instanceStartEquity = AccountEquity()-AccountCredit();
-      test                = IsTesting(); SS.Test();
-      sequenceId          = CreateSequenceId();
-      Sequence.ID         = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
-      status              = STATUS_WAITING;
+      instanceStartTime  = TimeCurrent();
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+      test               = IsTesting(); SS.Test();
+      sequenceId         = CreateSequenceId();
+      Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
+      status             = STATUS_WAITING;
 
       if (start.conditions)                                          // Ohne StartConditions erfolgt sofortiger Sequenzstart, der Status automatisch speichert.
          SaveStatus();
