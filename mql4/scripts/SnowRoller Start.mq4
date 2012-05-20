@@ -27,10 +27,12 @@ int onStart() {
 
       for (int i=sizeOfIds-1; i >= 0; i--) {
          switch (status[i]) {
+            case STATUS_WAITING:
             case STATUS_STOPPED:
-               break;
+               if (StringGetChar(ids[i], 0)!='T' || ScriptIsTesting())  // solange es keine Testsequenz auﬂerhalb des Testers ist
+                  break;
             default:
-               ArraySpliceStrings(ids, i, 1);                        // nicht zu startende Sequenzen entfernen
+               ArraySpliceStrings(ids, i, 1);                           // nicht (wieder) zu startende Sequenzen entfernen
                ArraySpliceInts(status, i, 1);
                sizeOfIds--;
          }
@@ -40,7 +42,7 @@ int onStart() {
       // (2) Best‰tigung einholen
       for (i=0; i < sizeOfIds; i++) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start sequence "+ ids[i] +"?", __NAME__, MB_ICONQUESTION|ifInt(sizeOfIds==1, MB_OKCANCEL, MB_YESNOCANCEL));
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to "+ ifString(status[i]==STATUS_WAITING, "start", "resume") +" sequence "+ ids[i] +"?", __NAME__, MB_ICONQUESTION|ifInt(sizeOfIds==1, MB_OKCANCEL, MB_YESNOCANCEL));
          if (button == IDCANCEL)
             break;
          if (button == IDNO)
@@ -52,14 +54,14 @@ int onStart() {
          if (ObjectFind(label) != 0) {
             if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
                return(catch("onStart(1)"));
-            ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);             // hidden on all timeframes
+            ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                // hidden on all timeframes
          }
          ObjectSetText(label, "start", 1);
 
 
          // (4) Tick senden
          SendTick(false);
-         return(catch("onStart(2)"));                                // regular exit
+         return(catch("onStart(2)"));                                   // regular exit
       }
    }
 

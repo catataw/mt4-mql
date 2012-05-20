@@ -4,11 +4,10 @@
  *
  *  TODO:
  *  -----
- *  - Start/Stop per Click implementieren                                                                *
- *  - StartConditions vervollständigen                                                                   *
- *  - StopConditions vervollständigen                                                                    *
  *  - Resume implementieren                                                                              *
  *  - automatisches Pause/Resume am Wochenende implementieren                                            *
+ *  - StartConditions vervollständigen                                                                   *
+ *  - StopConditions vervollständigen                                                                    *
  *  - StartCondition "@level" implementieren (GBP/AUD 02.04.)                                            *
  *  - beidseitig unidirektionales Grid implementieren                                                    *
  *  - StartSequence: bei @level(1) zurück auf @price(@level(0.5)) gehen (Stop 1 liegt sehr ungünstig)    *

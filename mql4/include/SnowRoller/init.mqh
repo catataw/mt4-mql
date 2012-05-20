@@ -8,6 +8,8 @@
  * @return int - Fehlerstatus
  */
 int onInitUndefined() {
+   if (__STATUS__CANCELLED)
+      return(NO_ERROR);
    last_error = NO_ERROR;
 
    // Prüfen, ob im Chart Statusdaten existieren
@@ -28,6 +30,9 @@ int onInitUndefined() {
  * @return int - Fehlerstatus
  */
 int onInitChartClose() {
+   if (__STATUS__CANCELLED)
+      return(NO_ERROR);
+
    // (1) Zuerst eine angegebene Sequenz restaurieren
    if (ValidateConfiguration.ID(true)) {
       status = STATUS_WAITING;
@@ -99,6 +104,8 @@ int onInitChartClose() {
  * @return int - Fehlerstatus
  */
 int onInitRemove() {
+   if (__STATUS__CANCELLED)
+      return(NO_ERROR);
    return(onInitChartClose());                                       // Funktionalität entspricht onInitChartClose()
 }
 
@@ -109,6 +116,9 @@ int onInitRemove() {
  * @return int - Fehlerstatus
  */
 int onInitRecompile() {
+   if (__STATUS__CANCELLED)
+      return(NO_ERROR);
+
    // im Chart gespeicherte Sequenz restaurieren
    if (RestoreTransientStatus()) {
       if (RestoreStatus())
@@ -126,6 +136,9 @@ int onInitRecompile() {
  * @return int - Fehlerstatus
  */
 int onInitParameterChange() {
+   if (__STATUS__CANCELLED)
+      return(NO_ERROR);
+
    SaveConfiguration();
 
    if (!ValidateConfiguration(true)) {
@@ -165,6 +178,9 @@ int onInitParameterChange() {
  * @return int - Fehlerstatus
  */
 int onInitChartChange() {
+   if (__STATUS__CANCELLED)
+      return(NO_ERROR);
+
    // nur die nicht-statischen Input-Parameter restaurieren
    Sequence.ID      = last.Sequence.ID;
    GridDirection    = last.GridDirection;

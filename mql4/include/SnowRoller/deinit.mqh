@@ -5,17 +5,15 @@
  * @return int - Fehlerstatus
  */
 int onDeinitUndefined() {
-   // Tester
    if (IsTesting()) {
       if (StopSequence())                                            // ruft intern UpdateStatus() und SaveStatus() auf
          ShowStatus();
-      return(-1);
+      return(last_error);
    }
    return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wann hier jemand reinlatscht
 }
 
 
-// !!! TODO: Tester-Funktionalität implementieren !!!
 /**
  * - Chart geschlossen
  * - Template wird neu geladen
@@ -25,10 +23,10 @@ int onDeinitUndefined() {
  * @return int - Fehlerstatus
  */
 int onDeinitChartClose() {
-   // Tester
-   if (IsTesting()) {
-      // TODO: Statusfile löschen und Titelzeile des Testers zurücksetzen
-      return(-1);
+   if (IsTesting()) {                                                // TODO: !!! statt StopSequence() Statusfile löschen und Titelzeile des Testers zurücksetzen
+      if (StopSequence())                                            // ruft intern UpdateStatus() und SaveStatus() auf
+         ShowStatus();
+      return(last_error);
    }
 
    // der Status kann sich seit dem letzten Tick geändert haben
@@ -37,7 +35,7 @@ int onDeinitChartClose() {
       SaveStatus();
    }
    StoreTransientStatus();                                           // für evt. Terminal-Restart
-   return(-1);
+   return(last_error);
 }
 
 
@@ -52,7 +50,7 @@ int onDeinitRemove() {
       UpdateStatus();
       SaveStatus();
    }
-   return(NO_ERROR);
+   return(last_error);
 }
 
 
