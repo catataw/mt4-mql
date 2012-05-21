@@ -74,7 +74,7 @@ bool     test = false;                                // ob diese Sequenz ein Te
 
 datetime instanceStartTime;                           // Start des EA's
 double   instanceStartPrice;
-double   sequenceStartEquity;                         // erster Start der Sequenz
+double   sequenceStartEquity;                         // Equity bei Start der ersten Subsequenz
 
 datetime sequenceStartTimes [];                       // Start/Resume-Daten
 double   sequenceStartPrices[];
@@ -102,26 +102,26 @@ int      grid.direction = D_BIDIR;
 
 datetime grid.base.time [];                           // Gridbasis-Daten
 double   grid.base.value[];
-double   grid.base;                                   // aktueller Gridbasis-Value
+double   grid.base;                                   // aktuelle Gridbasis                                                         SS Grid:       Feld 2
 
-int      grid.level;                                  // aktueller Grid-Level
-int      grid.maxLevelLong;                           // maximal erreichter Long-Level
-int      grid.maxLevelShort;                          // maximal erreichter Short-Level
+int      grid.level;                                  // aktueller Grid-Level                                                       SS Header:     Feld 2
+int      grid.maxLevelLong;                           // maximal erreichter Long-Level                                              SS Header:     Feld 3
+int      grid.maxLevelShort;                          // maximal erreichter Short-Level                                             SS Header:     Feld 4
 
-int      grid.stops;                                  // Anzahl der bisher getriggerten Stops
-double   grid.stopsPL;                                // P/L der getriggerten Stops (0 oder negativ)
+int      grid.stops;                                  // Anzahl der bisher getriggerten Stops                                       SS Realized:   Feld 1
+double   grid.stopsPL;                                // P/L der getriggerten Stops (0 oder negativ)                                SS Realized:   Feld 2
 double   grid.closedPL;                               // P/L sonstiger geschlossener Positionen (realizedPL = stopsPL + closedPL)
 double   grid.floatingPL;                             // P/L offener Positionen
-double   grid.totalPL;                                // Gesamt-P/L der Sequenz:  realizedPL + floatingPL
+double   grid.totalPL;                                // Gesamt-P/L der Sequenz:  realizedPL + floatingPL                           SS ProfitLoss: Feld 1
 double   grid.openStopValue;                          // Stoploss-Betrag aller offenen Positionen (0 oder positiv)
-double   grid.valueAtRisk;                            // aktuelles Maximalrisiko: -realizedPL + openStopValue (0 oder positiv)
+double   grid.valueAtRisk;                            // aktuelles Maximalrisiko: -realizedPL + openStopValue (0 oder positiv)      SS ProfitLoss: Feld 4
 
-double   grid.maxProfitLoss;                          // maximal erreichter Gesamtprofit (0 oder positiv)
+double   grid.maxProfitLoss;                          // maximal erreichter Gesamtprofit (0 oder positiv)                           SS ProfitLoss: Feld 2
 datetime grid.maxProfitLossTime;                      // Zeitpunkt von grid.maxProfitLoss
-double   grid.maxDrawdown;                            // maximal erreichter Drawdown (0 oder negativ)
+double   grid.maxDrawdown;                            // maximal erreichter Drawdown (0 oder negativ)                               SS ProfitLoss: Feld 3
 datetime grid.maxDrawdownTime;                        // Zeitpunkt von grid.maxDrawdown
-double   grid.breakevenLong;
-double   grid.breakevenShort;
+double   grid.breakevenLong;                          //                                                                            SS Breakeven:  Feld 1
+double   grid.breakevenShort;                         //                                                                            SS Breakeven:  Feld 2
 
 int      orders.ticket           [];
 int      orders.level            [];                  // Gridlevel der Order
@@ -184,15 +184,19 @@ bool     firstTickConfirmed = false;
  * @return int - Fehlerstatus
  */
 int onTick() {
-   if (status==STATUS_UNINITIALIZED || status==STATUS_DISABLED)
+   if (status==STATUS_UNINITIALIZED || status==STATUS_DISABLED) {
+      firstTick = false;
       return(NO_ERROR);
+   }
 
 
    // (1) Commands verarbeiten
    HandleEvent(EVENT_CHART_CMD);
 
-   if (status==STATUS_STOPPED)
+   if (status == STATUS_STOPPED) {
+      firstTick = false;
       return(last_error);
+   }
 
 
    static int    last.grid.level;
@@ -271,6 +275,251 @@ int onChartCommand(string commands[]) {
 int onBarOpen(int timeframes[]) {
    Grid.DrawBreakeven();
    return(catch("onBarOpen()"));
+}
+
+
+/**
+ * Startet eine neue Trade-Sequenz.
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool StartSequence() {
+   if (__STATUS__CANCELLED || IsLastError()) return( false);
+   if (status != STATUS_WAITING)             return(_false(catch("StartSequence(1)   cannot start "+ StatusDescription(status) +" trade sequence", ERR_RUNTIME_ERROR)));
+
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
+      if (!IsTesting()) {
+         ForceSound("notify.wav");
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __NAME__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+         if (button != IDOK) {
+            __STATUS__CANCELLED = true;
+            return(_false(catch("StartSequence(2)")));
+         }
+         RefreshRates();
+      }
+   }
+   firstTickConfirmed = true;
+
+
+   // Startvariablen und Status setzen
+   sequenceStartEquity = AccountEquity()-AccountCredit();
+
+   datetime startTime  = TimeCurrent();
+   double   startPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+   Grid.BaseReset(startTime, startPrice);
+
+   ArrayPushInt   (sequenceStartTimes,  startTime );
+   ArrayPushDouble(sequenceStartPrices, startPrice);
+   ArrayPushInt   (sequenceStopTimes,   0);                          // Größe von sequenceStarts und -Stops synchron halten
+   ArrayPushDouble(sequenceStopPrices,  0);
+
+   status = STATUS_PROGRESSING;
+
+
+   // Stop-Orders in den Markt legen
+   if (!UpdatePendingOrders())
+      return(false);
+
+   RedrawStartStop();
+   return(IsNoError(catch("StartSequence(3)")));
+}
+
+
+/**
+ * Schließt alle PendingOrders und offenen Positionen der Sequenz.
+ *
+ * @return bool - Erfolgsstatus: ob die Sequenz erfolgreich gestoppt wurde
+ */
+bool StopSequence() {
+   if (__STATUS__CANCELLED || IsLastError())                 return( false);
+   if (status!=STATUS_WAITING && status!=STATUS_PROGRESSING) return(_false(catch("StopSequence(1)   cannot stop "+ StatusDescription(status) +" trade sequence", ERR_RUNTIME_ERROR)));
+
+   if (firstTick && !firstTickConfirmed) {                              // Sicherheitsabfrage bei Aufruf beim ersten Tick
+      if (!IsTesting()) {
+         ForceSound("notify.wav");
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", __NAME__ +" - StopSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+         if (button != IDOK) {
+            __STATUS__CANCELLED = true;
+            return(_false(catch("StopSequence(2)")));
+         }
+         RefreshRates();
+      }
+   }
+   firstTickConfirmed = true;
+
+
+   // (1) PendingOrders und OpenPositions einlesen
+   int pendingOrders[], openPositions[], sizeOfTickets=ArraySize(orders.ticket);
+   ArrayResize(pendingOrders, 0);
+   ArrayResize(openPositions, 0);
+
+   for (int i=0; i < sizeOfTickets; i++) {
+      if (orders.closeTime[i] == 0) {                                   // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
+         if (!OrderSelectByTicket(orders.ticket[i], "StopSequence(3)"))
+            return(false);
+         if (OrderCloseTime() == 0) {                                   // offene Tickets je nach Typ zwischenspeichern
+            if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendingOrders, orders.ticket[i]);
+            else                                      ArrayPushInt(openPositions, orders.ticket[i]);
+         }
+      }
+   }
+
+   debug("StopSequence(0.1)   grid.base="         + NumberToStr(grid.base, PriceFormat)
+                          +"  grid.level="        + grid.level
+                          +"  grid.maxLevel="     + grid.maxLevelLong +"/"+grid.maxLevelShort
+                          +"  grid.stops="        + grid.stops
+                          +"  grid.stopsPL="      + NumberToStr(grid.stopsPL,       ".2")
+                          +"  grid.closedPL="     + NumberToStr(grid.closedPL,      ".2")
+                          +"  grid.floatingPL="   + NumberToStr(grid.floatingPL,    ".2")
+                          +"  grid.totalPL="      + NumberToStr(grid.totalPL,       ".2")
+                          +"  grid.openStopValue="+ NumberToStr(grid.openStopValue, ".2")
+                          +"  grid.valueAtRisk="  + NumberToStr(grid.valueAtRisk,   ".2"));
+
+
+   // (2) offene Positionen schließen
+   bool ordersChanged;
+   int  sizeOfOpenPositions = ArraySize(openPositions);
+   int  n = ArraySize(sequenceStopTimes) - 1;
+
+   status = STATUS_STOPPING;
+
+   if (sizeOfOpenPositions > 0) {
+      double execution[] = {NULL};
+      if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, execution))
+         return(_false(SetLastError(stdlib_PeekLastError())));
+
+      sequenceStopTimes [n] =                 execution[EXEC_TIME ] +0.1;     // (datetime)(double) datetime
+      sequenceStopPrices[n] = NormalizeDouble(execution[EXEC_PRICE], Digits);
+
+      for (i=0; i < sizeOfOpenPositions; i++) {
+         int pos = SearchIntArray(orders.ticket, openPositions[i]);
+
+         orders.closeTime     [pos] = execution[9*i+EXEC_TIME      ] +0.1;    // (datetime)(double) datetime
+         orders.closePrice    [pos] = execution[9*i+EXEC_PRICE     ];
+         orders.closeSlippage [pos] = execution[9*i+EXEC_SLIPPAGE  ];
+         orders.closeExecution[pos] = execution[9*i+EXEC_DURATION  ];
+         orders.closeRequotes [pos] = execution[9*i+EXEC_REQUOTES  ] +0.1;    // (int)(double) int
+         orders.closedByStop  [pos] = false;
+
+         orders.swap          [pos] = execution[9*i+EXEC_SWAP      ];
+         orders.commission    [pos] = execution[9*i+EXEC_COMMISSION];
+         orders.profit        [pos] = execution[9*i+EXEC_PROFIT    ];
+
+         grid.closedPL += orders.swap[pos] + orders.commission[pos] + orders.profit[pos];
+      }
+      grid.openStopValue = 0;
+      grid.floatingPL    = 0;
+      /*
+      grid.floatingPL        = ...           // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte dort automatisch aktualisiert.
+      grid.totalPL           = ...
+      grid.maxProfitLoss     = ...
+      grid.maxProfitLossTime = ...
+      grid.maxDrawdown       = ...
+      grid.maxDrawdownTime   = ...
+      */
+      ordersChanged = true;
+   }
+   else {
+      sequenceStopTimes [n] = TimeCurrent();
+      sequenceStopPrices[n] = (Bid + Ask)/2;
+      if      (grid.base < sequenceStopPrices[n]) sequenceStopPrices[n] = Bid;
+      else if (grid.base > sequenceStopPrices[n]) sequenceStopPrices[n] = Ask;
+      sequenceStopPrices[n] = NormalizeDouble(sequenceStopPrices[n], Digits);
+   }
+
+
+   // (3) Pending-Orders streichen
+   int sizeOfPendingOrders = ArraySize(pendingOrders);
+
+   for (i=0; i < sizeOfPendingOrders; i++) {
+      if (!Grid.DeleteOrder(pendingOrders[i]))
+         return(false);
+      ordersChanged = true;
+   }
+
+
+   debug("StopSequence(0.2)   grid.base="         + NumberToStr(grid.base, PriceFormat)
+                          +"  grid.level="        + grid.level
+                          +"  grid.maxLevel="     + grid.maxLevelLong +"/"+grid.maxLevelShort
+                          +"  grid.stops="        + grid.stops
+                          +"  grid.stopsPL="      + NumberToStr(grid.stopsPL,       ".2")
+                          +"  grid.closedPL="     + NumberToStr(grid.closedPL,      ".2")
+                          +"  grid.floatingPL="   + NumberToStr(grid.floatingPL,    ".2")
+                          +"  grid.totalPL="      + NumberToStr(grid.totalPL,       ".2")
+                          +"  grid.openStopValue="+ NumberToStr(grid.openStopValue, ".2")
+                          +"  grid.valueAtRisk="  + NumberToStr(grid.valueAtRisk,   ".2"));
+
+
+   // (4) Daten aktualisieren und speichern
+   status = STATUS_STOPPED;
+   if (ordersChanged) {
+      if (!UpdateStatus()) return(false);
+      if (  !SaveStatus()) return(false);
+   }
+   RedrawStartStop();
+
+   return(IsNoError(catch("StopSequence(4)")));
+}
+
+
+/**
+ * Setzt ein vorher gestoppte Sequenz fort.
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool ResumeSequence() {
+   if (__STATUS__CANCELLED || IsLastError()) return( false);
+   if (status != STATUS_STOPPED)             return(_false(catch("ResumeSequence(1)   cannot resume "+ StatusDescription(status) +" trade sequence", ERR_RUNTIME_ERROR)));
+
+   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
+      if (!IsTesting()) {
+         ForceSound("notify.wav");
+         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to resume the sequence now?", __NAME__ +" - ResumeSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+         if (button != IDOK) {
+            __STATUS__CANCELLED = true;
+            return(_false(catch("ResumeSequence(2)")));
+         }
+         RefreshRates();
+      }
+   }
+   firstTickConfirmed = true;
+   return(_true(debug("ResumeSequence()   not yet implemented")));
+
+
+   // (1) neue Gridbasis bestimmen und Startvariablen setzen
+   datetime startTime  = TimeCurrent();
+   double   startPrice = (Bid + Ask)/2;
+   double   stopPrice  = sequenceStopPrices[ArraySize(sequenceStopPrices)-1];
+   if      (grid.base < stopPrice) startPrice = Ask;
+   else if (grid.base > stopPrice) startPrice = Bid;
+   startPrice = NormalizeDouble(startPrice, Digits);
+
+   Grid.BaseChange(startTime, grid.base + startPrice - stopPrice);
+
+   ArrayPushInt   (sequenceStartTimes,  startTime );
+   ArrayPushDouble(sequenceStartPrices, startPrice);
+   ArrayPushInt   (sequenceStopTimes,   0);                          // Größe von sequenceStarts und -Stops synchron halten
+   ArrayPushDouble(sequenceStopPrices,  0);
+
+   debug("ResumeSequence()   grid.base="+ NumberToStr(grid.base, PriceFormat) +"   stopPrice="+ NumberToStr(stopPrice, PriceFormat) +"   startPrice="+ NumberToStr(startPrice, PriceFormat));
+
+
+   return(IsNoError(catch("ResumeSequence(3)")));
+
+
+   /*
+   // (2) vorherige offene Positionen wieder in den Markt legen
+   status = STATUS_PROGRESSING;
+
+
+
+   // (3) Stop-Orders vervollständigen
+   if (!UpdatePendingOrders())
+      return(false);
+   */
+
+   RedrawStartStop();
+   return(IsNoError(catch("ResumeSequence(3)")));
 }
 
 
@@ -615,83 +864,6 @@ bool IsStopSignal() {
 
 
 /**
- * Startet eine neue Trade-Sequenz.
- *
- * @return bool - Erfolgsstatus
- */
-bool StartSequence() {
-   if (__STATUS__CANCELLED || IsLastError()) return( false);
-   if (status != STATUS_WAITING)             return(_false(catch("StartSequence(1)   cannot start "+ StatusDescription(status) +" trade sequence", ERR_RUNTIME_ERROR)));
-
-   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new trade sequence now?", __NAME__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("StartSequence(2)")));
-         }
-         RefreshRates();
-      }
-   }
-   firstTickConfirmed = true;
-
-
-   // Startvariablen und Status setzen
-   sequenceStartEquity = AccountEquity()-AccountCredit();
-
-   datetime startTime  = TimeCurrent();
-   double   startPrice = NormalizeDouble((Bid + Ask)/2, Digits);
-   Grid.BaseReset(startTime, startPrice);
-
-   ArrayPushInt   (sequenceStartTimes,  startTime );
-   ArrayPushDouble(sequenceStartPrices, startPrice);
-   ArrayPushInt   (sequenceStopTimes,   0);                          // Größe von Start- und StopTimes synchron halten
-   ArrayPushDouble(sequenceStopPrices,  0);
-
-   status = STATUS_PROGRESSING;
-
-
-   // Stop-Orders in den Markt legen
-   if (!UpdatePendingOrders())
-      return(false);
-
-   RedrawStartStop();
-   return(IsNoError(catch("StartSequence(3)")));
-}
-
-
-/**
- * Setzt ein gestoppte Trade-Sequenz fort.
- *
- * @return bool - Erfolgsstatus
- */
-bool ResumeSequence() {
-   if (__STATUS__CANCELLED || IsLastError()) return( false);
-   if (status != STATUS_STOPPED)             return(_false(catch("ResumeSequence(1)   cannot resume "+ StatusDescription(status) +" trade sequence", ERR_RUNTIME_ERROR)));
-
-   if (firstTick && !firstTickConfirmed) {                           // Sicherheitsabfrage bei Aufruf beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to resume the sequence now?", __NAME__ +" - ResumeSequence()", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("ResumeSequence(2)")));
-         }
-         RefreshRates();
-      }
-   }
-   firstTickConfirmed = true;
-
-   debug("ResumeSequence()   not yet implemented");
-   return(IsNoError(catch("ResumeSequence(3)")));
-
-
-
-}
-
-
-/**
  * Aktualisiert vorhandene, setzt fehlende und löscht unnötige PendingOrders.
  *
  * @return bool - Erfolgsstatus
@@ -803,7 +975,7 @@ bool UpdatePendingOrders() {
  * @param  datetime time  - Zeitpunkt
  * @param  double   value - neue Gridbasis
  *
- * @return double - neue Gridbasis (for method chaining)
+ * @return double - die neue Gridbasis
  */
 double Grid.BaseReset(datetime time, double value) {
    ArrayResize(grid.base.time,  0);
@@ -819,9 +991,11 @@ double Grid.BaseReset(datetime time, double value) {
  * @param  datetime time  - Zeitpunkt der Änderung
  * @param  double   value - neue Gridbasis
  *
- * @return double - neue Gridbasis (for method chaining)
+ * @return double - die neue Gridbasis
  */
 double Grid.BaseChange(datetime time, double value) {
+   value = NormalizeDouble(value, Digits);
+
    if (grid.maxLevelLong-grid.maxLevelShort == 0) {                  // vor dem ersten ausgeführten Trade werden vorhandene Werte überschrieben
       ArrayResize(grid.base.time,  0);
       ArrayResize(grid.base.value, 0);
@@ -1305,119 +1479,6 @@ int PendingStopOrder(int type, int level, double& execution[]) {
    if (IsError(catch("PendingStopOrder(4)")))
       return(-1);
    return(ticket);
-}
-
-
-/**
- * Schließt alle PendingOrders und offenen Positionen der Sequenz.
- *
- * @return bool - Erfolgsstatus: ob die Sequenz erfolgreich gestoppt wurde
- */
-bool StopSequence() {
-   if (__STATUS__CANCELLED || IsLastError())                 return( false);
-   if (status!=STATUS_WAITING && status!=STATUS_PROGRESSING) return(_false(catch("StopSequence(1)   cannot stop "+ StatusDescription(status) +" trade sequence", ERR_RUNTIME_ERROR)));
-
-   if (firstTick && !firstTickConfirmed) {                              // Sicherheitsabfrage bei Aufruf beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", __NAME__ +" - StopSequence()", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("StopSequence(2)")));
-         }
-         RefreshRates();
-      }
-   }
-   firstTickConfirmed = true;
-
-
-   // (1) PendingOrders und OpenPositions einlesen
-   int pendingOrders[], openPositions[], sizeOfTickets=ArraySize(orders.ticket);
-   ArrayResize(pendingOrders, 0);
-   ArrayResize(openPositions, 0);
-
-   for (int i=0; i < sizeOfTickets; i++) {
-      if (orders.closeTime[i] == 0) {                                   // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
-         if (!OrderSelectByTicket(orders.ticket[i], "StopSequence(3)"))
-            return(false);
-         if (OrderCloseTime() == 0) {                                   // offene Tickets je nach Typ zwischenspeichern
-            if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendingOrders, orders.ticket[i]);
-            else                                      ArrayPushInt(openPositions, orders.ticket[i]);
-         }
-      }
-   }
-
-
-   // (2) offene Positionen schließen
-   bool ordersChanged;
-   int  sizeOfOpenPositions = ArraySize(openPositions);
-   int  n = ArraySize(sequenceStopTimes) - 1;
-
-   status = STATUS_STOPPING;
-
-   if (sizeOfOpenPositions > 0) {
-      double execution[] = {NULL};
-      if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, execution))
-         return(_false(SetLastError(stdlib_PeekLastError())));
-
-      sequenceStopTimes[n]  =                 execution[EXEC_TIME ] +0.1;     // (datetime)(double) datetime
-      sequenceStopPrices[n] = NormalizeDouble(execution[EXEC_PRICE], Digits);
-
-      for (i=0; i < sizeOfOpenPositions; i++) {
-         int pos = SearchIntArray(orders.ticket, openPositions[i]);
-
-         orders.closeTime     [pos] = execution[9*i+EXEC_TIME      ] +0.1;    // (datetime)(double) datetime
-         orders.closePrice    [pos] = execution[9*i+EXEC_PRICE     ];
-         orders.closeSlippage [pos] = execution[9*i+EXEC_SLIPPAGE  ];
-         orders.closeExecution[pos] = execution[9*i+EXEC_DURATION  ];
-         orders.closeRequotes [pos] = execution[9*i+EXEC_REQUOTES  ] +0.1;    // (int)(double) int
-         orders.closedByStop  [pos] = false;
-
-         orders.swap          [pos] = execution[9*i+EXEC_SWAP      ];
-         orders.commission    [pos] = execution[9*i+EXEC_COMMISSION];
-         orders.profit        [pos] = execution[9*i+EXEC_PROFIT    ];
-
-         grid.closedPL += orders.swap[pos] + orders.commission[pos] + orders.profit[pos];
-      }
-      grid.openStopValue = 0;
-      /*
-      grid.floatingPL        = ...           // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte dort automatisch aktualisiert.
-      grid.totalPL           = ...
-      grid.maxProfitLoss     = ...
-      grid.maxProfitLossTime = ...
-      grid.maxDrawdown       = ...
-      grid.maxDrawdownTime   = ...
-      */
-      ordersChanged = true;
-   }
-   else {
-      sequenceStopTimes [n] = TimeCurrent();
-      sequenceStopPrices[n] = (Bid + Ask)/2;
-      if      (grid.base < sequenceStopPrices[n]) sequenceStopPrices[n] = Bid;
-      else if (grid.base > sequenceStopPrices[n]) sequenceStopPrices[n] = Ask;
-      sequenceStopPrices[n] = NormalizeDouble(sequenceStopPrices[n], Digits);
-   }
-
-
-   // (3) Pending-Orders streichen
-   int sizeOfPendingOrders = ArraySize(pendingOrders);
-
-   for (i=0; i < sizeOfPendingOrders; i++) {
-      if (!Grid.DeleteOrder(pendingOrders[i]))
-         return(false);
-      ordersChanged = true;
-   }
-
-
-   // (4) Daten aktualisieren und speichern
-   status = STATUS_STOPPED;
-   if (ordersChanged) {
-      if (!UpdateStatus()) return(false);
-      if (  !SaveStatus()) return(false);
-   }
-   RedrawStartStop();
-
-   return(IsNoError(catch("StopSequence(4)")));
 }
 
 
@@ -3650,6 +3711,19 @@ bool SynchronizeStatus() {
 
    grid.totalPL = grid.stopsPL + grid.closedPL + grid.floatingPL;
    SS.All();
+
+
+   debug("SynchronizeStatus() grid.base="         + NumberToStr(grid.base, PriceFormat)
+                          +"  grid.level="        + grid.level
+                          +"  grid.maxLevel="     + grid.maxLevelLong +"/"+grid.maxLevelShort
+                          +"  grid.stops="        + grid.stops
+                          +"  grid.stopsPL="      + NumberToStr(grid.stopsPL,       ".2")
+                          +"  grid.closedPL="     + NumberToStr(grid.closedPL,      ".2")
+                          +"  grid.floatingPL="   + NumberToStr(grid.floatingPL,    ".2")
+                          +"  grid.totalPL="      + NumberToStr(grid.totalPL,       ".2")
+                          +"  grid.openStopValue="+ NumberToStr(grid.openStopValue, ".2")
+                          +"  grid.valueAtRisk="  + NumberToStr(grid.valueAtRisk,   ".2"));
+
 
    ArrayResize(execution,  0);
    ArrayResize(openLevels, 0);
