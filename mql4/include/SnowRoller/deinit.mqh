@@ -25,6 +25,7 @@ int onDeinitUndefined() {
  */
 int onDeinitChartClose() {
    if (IsTesting()) {
+      //debug("onDeinitChartClose()   "+ StatusToStr(status));
       if (status==STATUS_WAITING || status==STATUS_PROGRESSING)      // TODO: !!! statt StopSequence() Statusfile löschen und Titelzeile des Testers zurücksetzen
          if (StopSequence())                                         // ruft intern UpdateStatus() und SaveStatus() auf
             ShowStatus();

@@ -2,8 +2,8 @@
  * TestExpert
  */
 #include <types.mqh>
-#define     __TYPE__      T_EXPERT
-int   __INIT_FLAGS__[] = {INIT_TIMEZONE, INIT_TICKVALUE};
+#define     __TYPE__    T_EXPERT
+int   __INIT_FLAGS__[];
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 
