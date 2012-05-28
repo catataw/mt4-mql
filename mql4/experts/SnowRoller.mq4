@@ -26,11 +26,11 @@
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
- *  - STATUS_MONITORING implementieren
  *  - Client-Side-Limits implementieren
- *  - Heartbeat implementieren
  *  - Logging im Tester reduzieren
  *  - Upload der Statusdatei implementieren
+ *  - Heartbeat implementieren
+ *  - STATUS_MONITORING implementieren
  *  - Aufruf von MessageBoxen loggen
  *  - alle Trade-Operationen loggen
  *  - Slippage immer loggen
@@ -154,21 +154,21 @@ double   orders.swap             [];
 double   orders.commission       [];
 double   orders.profit           [];
 
-string   str.test                = "";                // Speichervariablen für schnellere Abarbeitung von ShowStatus()
-string   str.LotSize             = "";
-string   str.startConditions     = "";
-string   str.stopConditions      = "";
-string   str.grid.direction      = "";
-string   str.grid.base           = "";
-string   str.grid.maxLevel       = "";
-string   str.grid.stops          = "0 stops";
-string   str.grid.stopsPL        = "";
-string   str.grid.breakeven      = "";
-string   str.grid.totalPL        = "-";
-string   str.grid.maxProfit      = "0.00";
-string   str.grid.maxDrawdown    = "0.00";
-string   str.grid.valueAtRisk    = "0.00";
-string   str.grid.plStatistics   = "";
+string   str.test              = "";                  // Speichervariablen für schnellere Abarbeitung von ShowStatus()
+string   str.LotSize           = "";
+string   str.startConditions   = "";
+string   str.stopConditions    = "";
+string   str.grid.direction    = "";
+string   str.grid.base         = "";
+string   str.grid.maxLevel     = "";
+string   str.grid.stops        = "0 stops";
+string   str.grid.stopsPL      = "";
+string   str.grid.breakeven    = "";
+string   str.grid.totalPL      = "-";
+string   str.grid.maxProfit    = "0.00";
+string   str.grid.maxDrawdown  = "0.00";
+string   str.grid.valueAtRisk  = "0.00";
+string   str.grid.plStatistics = "";
 
 int      orderDisplayMode;
 bool     firstTick          = true;
