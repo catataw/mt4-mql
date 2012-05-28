@@ -25,17 +25,14 @@
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
- *  - Client-Side-Limits implementieren
+ *  - Logging: alle Trade-Operationen und Trade-Request-Fehler, Slippage, Aufruf von MessageBoxen
  *  - Logging im Tester reduzieren
  *  - Upload der Statusdatei implementieren
  *  - Heartbeat implementieren
  *  - STATUS_MONITORING implementieren
- *  - Aufruf von MessageBoxen loggen
- *  - alle Trade-Operationen loggen
- *  - Slippage immer loggen
- *  - bei Traderequest-Fehlern alle Infos vollständig loggen
+ *  - Client-Side-Limits implementieren
  *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
- *  - Alpari: Stop-Order-Slippage EUR/USD bis zu 3.9 pip, GBP/AUD bis zu 6 pip
+ *  - Alpari: StopOrder-Slippage EUR/USD bis zu 3.9 pip, GBP/AUD bis zu 6 pip
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
@@ -114,17 +111,17 @@ int      grid.maxLevelLong;                           // maximal erreichter Long
 int      grid.maxLevelShort;                          // maximal erreichter Short-Level                                             SS Header:      Feld 4
 
 int      grid.stops;                                  // Anzahl der bisher getriggerten Stops                                       SS Realized:    Feld 1
-double   grid.stopsPL;                                // P/L der getriggerten Stops (0 oder negativ)                                SS Realized:    Feld 2
-double   grid.closedPL;                               // P/L sonstiger geschlossener Positionen (realizedPL = stopsPL + closedPL)
+double   grid.stopsPL;                                // P/L der ausgestoppten Positionen (0 oder negativ)                          SS Realized:    Feld 2
+double   grid.closedPL;                               // P/L bei StopSequence() geschlossener Positionen (realizedPL = stopsPL + closedPL)
 double   grid.floatingPL;                             // P/L offener Positionen
 double   grid.totalPL;                                // Gesamt-P/L der Sequenz:  realizedPL + floatingPL                           SS Profit/Loss: Feld 1
 double   grid.activeRisk;                             // aktuelles Risiko der aktiven Level (0 oder positiv)
-double   grid.valueAtRisk;                            // aktuelles Gesamtrisiko: -stopsPL + activeRisk (0 oder positiv)             SS Profit/Loss: Feld 4
+double   grid.valueAtRisk;                            // aktuelles Gesamtrisiko:  -stopsPL + activeRisk (0 oder positiv)            SS Profit/Loss: Feld 4
 
 double   grid.maxProfit;                              // maximal erreichter Gesamtprofit (0 oder positiv)                           SS Profit/Loss: Feld 2
-datetime grid.maxProfitTime;                          // Zeitpunkt von grid.maxProfit
+datetime grid.maxProfitTime;
 double   grid.maxDrawdown;                            // maximal erreichter Drawdown (0 oder negativ)                               SS Profit/Loss: Feld 3
-datetime grid.maxDrawdownTime;                        // Zeitpunkt von grid.maxDrawdown
+datetime grid.maxDrawdownTime;
 double   grid.breakevenLong;                          //                                                                            SS Breakeven:   Feld 1
 double   grid.breakevenShort;                         //                                                                            SS Breakeven:   Feld 2
 
@@ -145,14 +142,14 @@ double   orders.openSlippage     [];                  // zur Berechnung von orde
 datetime orders.closeTime        [];
 double   orders.closePrice       [];
 double   orders.stopLoss         [];
-double   orders.risk             [];                  // Risiko der offenen Position (0, solange pending, danach positiv)
+double   orders.risk             [];                  // Risiko des Levels (0, solange Order pending, danach positiv)
 bool     orders.closedByStop     [];
 
 double   orders.swap             [];
 double   orders.commission       [];
 double   orders.profit           [];
 
-string   str.test              = "";                  // Speichervariablen für schnellere Abarbeitung von ShowStatus()
+string   str.test              = "";                  // Zwischenspeicher für schnellere Abarbeitung von ShowStatus()
 string   str.LotSize           = "";
 string   str.startConditions   = "";
 string   str.stopConditions    = "";
@@ -1419,60 +1416,62 @@ bool Grid.SetData(int position, int ticket, int level, double gridBase, int pend
 
 
 /**
- * Aktualisiert die Arraydaten eines im Grid als *offen* markierten Tickets mit den Online-Daten.
+ * Aktualisiert die Daten der lokal als *offen* markierten Order mit den Online-Daten.
  *
- * @param  int ticket - Orderticket
+ * @param  int i - Orderindex
  *
  * @return bool - Erfolgsstatus
+ *
+ *
+ *  NOTE: Wird nur in SynchronizeStatus() verwendet.
+ *  -----
  */
-bool Grid.UpdateTicket(int ticket) {
-   // Position in Datenarrays bestimmen
-   int i = SearchIntArray(orders.ticket, ticket);
-   if (i == -1)                  return(_false(catch("Grid.UpdateTicket(1)   #"+ ticket +" not found in grid arrays", ERR_RUNTIME_ERROR)));
-   if (orders.closeTime[i] != 0) return(_false(catch("Grid.UpdateTicket(2)   cannot update #"+ ticket +" (marked as closed in grid arrays)", ERR_RUNTIME_ERROR)));
+bool Grid.UpdateOrder(int i) {
+   if (i < 0 || i > ArraySize(orders.ticket)-1) return(_false(catch("Grid.UpdateOrder(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (orders.closeTime[i] != 0)                return(_false(catch("Grid.UpdateOrder(2)   cannot update #"+ orders.ticket[i] +" (marked as closed in grid arrays)", ERR_RUNTIME_ERROR)));
 
+   // das Ticket ist bereits selektiert
    bool wasPending = orders.type[i] == OP_UNDEFINED;
    bool wasOpen    = !wasPending;
    bool isPending  = IsPendingTradeOperation(OrderType());
    bool isClosed   = OrderCloseTime() != 0;
    bool isOpen     = !isPending && !isClosed;
 
-   double value;
 
-   orders.ticket           [i] = OrderTicket();
-   orders.level            [i] = ifInt(IsLongTradeOperation(OrderType()), 1, -1) * OrderMagicNumber()>>14 & 0xFF;             // 8 Bits (Bits 15-22) => grid.level
-      if (NE(OrderStopLoss(), 0))                    value = OrderStopLoss() - (orders.level[i]-MathSign(orders.level[i])) * GridSize * Pips;
-      else if (IsPendingTradeOperation(OrderType())) value = OrderOpenPrice() - orders.level[i] * GridSize * Pips;
-      else if (NE(orders.gridBase[i], 0))            value = orders.gridBase[i];                                              // vorhandene Daten bewahren
-      else return(_false(catch("Grid.UpdateTicket(3)   #"+ orders.ticket[i] +" cannot calculate gridBase, both pending openPrice and stopLoss data are missing", ERR_RUNTIME_ERROR)));
-   orders.gridBase         [i] = NormalizeDouble(value, Digits);
+   // (1) Ticketdaten aktualisieren
+    //orders.ticket           [i]                                    // unverändert
+    //orders.level            [i]                                    // unverändert
+    //orders.gridBase         [i]                                    // unverändert
 
-   orders.pendingType      [i] = ifInt   ( IsPendingTradeOperation(OrderType()), OrderType(),      orders.pendingType [i]);   // vorhandene Daten bewahren
-   orders.pendingTime      [i] = ifInt   ( IsPendingTradeOperation(OrderType()), OrderOpenTime(),  orders.pendingTime [i]);   // vorhandene Daten bewahren
- //orders.pendingModifyTime[i];                                                                                               // vorhandene Daten bewahren
-   orders.pendingPrice     [i] = ifDouble( IsPendingTradeOperation(OrderType()), OrderOpenPrice(), orders.pendingPrice[i]);   // vorhandene Daten bewahren
+   if (isPending) {
+    //orders.pendingType      [i]                                    // unverändert
+    //orders.pendingTime      [i]                                    // unverändert
+    //orders.pendingModifyTime[i]                                    // n.a.
+      orders.pendingPrice     [i] = OrderOpenPrice();                // kann sich bei EA-Ausfall im Moment von OrderModify() geändert haben
+   }
+   else if (wasPending) {
+      orders.type             [i] = OrderType();
+      orders.openTime         [i] = OrderOpenTime();
+      orders.openPrice        [i] = OrderOpenPrice();                // TODO: Fehler nach ResumeSequence()
+      orders.openSlippage     [i] = GetOpenPriceSlippage(i);         // TODO: Fehler nach ResumeSequence() oder Änderung der Gridbase
+      orders.risk             [i] = NormalizeDouble((GridSize + orders.openSlippage[i]) * PipValue(LotSize), 2);
+   }
 
-   orders.type             [i] = ifInt   (!IsPendingTradeOperation(OrderType()), OrderType(), OP_UNDEFINED);
-   orders.openTime         [i] = ifInt   (!IsPendingTradeOperation(OrderType()), OrderOpenTime(),        0);
-   orders.openPrice        [i] = ifDouble(!IsPendingTradeOperation(OrderType()), OrderOpenPrice(),       0);
-   orders.openSlippage     [i] = GetOpenPriceSlippage(i);
+   if (isClosed) {
+      orders.closeTime        [i] = OrderCloseTime();
+      orders.closePrice       [i] = OrderClosePrice();
+      orders.stopLoss         [i] = OrderStopLoss();                 // kann sich bei EA-Ausfall im Moment von OrderModify() geändert haben
+      orders.closedByStop     [i] = IsOrderClosedByStop();
+   }
 
-   orders.closeTime        [i] = OrderCloseTime();
-   orders.closePrice       [i] = OrderClosePrice();
-      if (NE(OrderStopLoss(), 0)) value = OrderStopLoss();
-      else                        value = orders.gridBase[i] + (orders.level[i]-MathSign(orders.level[i])) * GridSize * Pips;
-   orders.stopLoss         [i] = NormalizeDouble(value, Digits);
-      if (IsPendingTradeOperation(OrderType())) value = 0;
-      else if (EQ(orders.risk[i], 0))           value = (GridSize + orders.openSlippage[i]) * PipValue(LotSize);
-      else                                      value = orders.risk[i];                                                       // vorhandene Daten bewahren
-   orders.risk             [i] = NormalizeDouble(value, 2);
-   orders.closedByStop     [i] = IsOrderClosedByStop();
-
-   orders.swap             [i] = OrderSwap();
-   orders.commission       [i] = OrderCommission();
-   orders.profit           [i] = OrderProfit();
+   if (!isPending) {
+      orders.swap             [i] = OrderSwap();
+      orders.commission       [i] = OrderCommission();
+      orders.profit           [i] = OrderProfit();
+   }
 
 
+   // (2) Sequenzdaten aktualisieren (für theoretischen Fall, das Sequenz außerhalb geschlossen wird)
    if (isClosed && !orders.closedByStop[i]) {
       int n = ArraySize(sequenceStartTimes) - 1;
       if (sequenceStopTimes[n]==0 || orders.closeTime[i] < sequenceStopTimes[n]) {
@@ -1481,68 +1480,7 @@ bool Grid.UpdateTicket(int ticket) {
       }
    }
 
-   return(!IsLastError() && IsNoError(catch("Grid.UpdateTicket(3)")));
-
-   _Grid.UpdateTicket(NULL);
-}
-
-
-/**
- * Aktualisiert die Arraydaten des angegebenen *offenen* Tickets mit den Online-Daten.  Wird nur aus SynchronizeStatus() heraus für den Fall aufgerufen,
- * daß sich der Status eines offenen Tickets während eines Ausfalls des EA's geändert haben kann.  Nur die Daten werden aktualisiert, die sich *beim Broker*
- * ändern können.  In den Arrays bereits als geschlossen markierte Tickets werden nicht aktualisiert.
- *
- * @param  int ticket - Orderticket
- *
- * @return bool - Erfolgsstatus
- */
-bool _Grid.UpdateTicket(int ticket) {
-   // Position in Datenarrays bestimmen
-   int i = SearchIntArray(orders.ticket, ticket);
-   if (i == -1)                  return(_false(catch("Grid.UpdateTicket(1)   #"+ ticket +" not found in grid arrays", ERR_RUNTIME_ERROR)));
-   if (orders.closeTime[i] != 0) return(_false(catch("Grid.UpdateTicket(2)   cannot update #"+ ticket +" (marked as closed in grid arrays)", ERR_RUNTIME_ERROR)));
-
-   /*
-   // Nur die Daten werden aktualisiert, die sich *beim Broker* geändert haben können (Ticket ist bereits selektiert).
-   bool wasPending = (orders.type[i] == OP_UNDEFINED);
-   bool wasOpen    = !wasPending;
-   bool isPending  = IsPendingTradeOperation(OrderType());
-   bool isClosed   = (OrderCloseTime() != 0);
-   bool isOpen     = !isPending && !isClosed;
-
-   //orders.ticket           [i];                              // kann sich nicht ändern
-   //orders.level            [i];                              // kann sich nicht ändern
-   //orders.gridBase         [i];                              // kann sich lokal, jedoch nicht beim Broker ändern
-
-   //orders.pendingType      [i];                              // kann sich nicht ändern
-   //orders.pendingTime      [i];                              // kann sich nicht ändern
-   //orders.pendingModifyTime[i];                              // n.a.
-   //orders.pendingPrice     [i];                              // kann sich lokal, jedoch nicht beim Broker ändern
-
-   if (wasPending && !isPending) {
-      orders.type            [i] = OrderType();
-      orders.openTime        [i] = OrderOpenTime();
-      orders.openPrice       [i] = OrderOpenPrice();
-      orders.openSlippage    [i] = GetOpenPriceSlippage(i);    // kann nach Änderung der Gridbase falsch sein
-   }
-
-   if (isClosed) {
-      orders.closeTime       [i] = OrderCloseTime();           // kann nach OrderMultiClose() falsch sein
-      orders.closePrice      [i] = OrderClosePrice();          // kann nach OrderMultiClose() falsch sein
-   }
-
-    //orders.stopLoss        [i];                              // kann sich lokal, jedoch nicht beim Broker ändern
-      orders.risk            [i];
-      orders.closedByStop    [i];
-
-   if (!isPending) {
-      orders.swap            [i] = OrderSwap();                // kann nach OrderMultiClose() falsch sein
-      orders.commission      [i] = OrderCommission();          // kann nach OrderMultiClose() falsch sein
-      orders.profit          [i] = OrderProfit();              // kann nach OrderMultiClose() falsch sein
-   }
-   */
-
-   return(!IsLastError() && IsNoError(catch("Grid.UpdateTicket(3)")));
+   return(!IsLastError() && IsNoError(catch("Grid.UpdateOrder(3)")));
 }
 
 
@@ -3685,31 +3623,27 @@ bool SynchronizeStatus() {
    int sizeOfTickets = ArraySize(orders.ticket);
 
 
-   // (1.1) alle offenen Tickets in Datenarrays mit Online-Status synchronisieren
-   for (int i=0; i < sizeOfTickets; i++) {
+   // (1.1) alle offenen Tickets in Datenarrays mit Online-Status synchronisieren, gecancelte Orders lokal entfernen
+   for (int i=sizeOfTickets-1; i >= 0; i--) {
       if (orders.closeTime[i] == 0) {
          if (!OrderSelectByTicket(orders.ticket[i], "SynchronizeStatus(1)   cannot synchronize "+ OperationTypeDescription(ifInt(orders.type[i]==OP_UNDEFINED, orders.pendingType[i], orders.type[i])) +" order (#"+ orders.ticket[i] +" not found)"))
             return(false);
-         if (!Grid.UpdateTicket(orders.ticket[i]))
+         if (!Grid.UpdateOrder(i))
             return(false);
+         if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]!=0) {
+            if (!Grid.DropTicket(orders.ticket[i]))
+               return(false);
+            sizeOfTickets--;
+         }
       }
    }
 
-   // (1.2) gecancelte Orders aus Datenarrays entfernen                       // TODO: kann mit (1.1) zusammengefaßt werden, wenn dort keine wechselseitigen Abhängigkeiten auftreten können
-   for (i=sizeOfTickets-1; i >= 0; i--) {
-      if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]!=0) {
-         if (!Grid.DropTicket(orders.ticket[i]))
-            return(false);
-         sizeOfTickets--;
-      }
-   }
-
-   // (1.3) alle erreichbaren Online-Tickets der Sequenz auf lokale Referenz überprüfen
+   // (1.2) alle erreichbaren Online-Tickets der Sequenz auf lokale Referenz überprüfen
    for (i=OrdersTotal()-1; i >= 0; i--) {                                     // offene Tickets
       if (!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))                        // FALSE: während des Auslesens wurde in einem anderen Thread eine offene Order entfernt
          continue;
       if (IsMyOrder(sequenceId)) /*&&*/ if (!IntInArray(orders.ticket, OrderTicket()))
-         return(_false(catch("SynchronizeStatus(2)   unknown open #"+ OrderTicket() +" found (no local reference)", ERR_RUNTIME_ERROR)));
+         return(_false(catch("SynchronizeStatus(2)   unknown open ticket #"+ OrderTicket() +" found (no local reference)", ERR_RUNTIME_ERROR)));
    }
    for (i=OrdersHistoryTotal()-1; i >= 0; i--) {                              // geschlossene Tickets
       if (!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))                       // FALSE: während des Auslesens wurde der Anzeigezeitraum der History verändert
@@ -3717,7 +3651,7 @@ bool SynchronizeStatus() {
       if (IsPendingTradeOperation(OrderType()))                               // gecancelte Orders ignorieren
          continue;
       if (IsMyOrder(sequenceId)) /*&&*/ if (!IntInArray(orders.ticket, OrderTicket()))
-         return(_false(catch("SynchronizeStatus(3)   unknown closed #"+ OrderTicket() +" found (no local reference)", ERR_RUNTIME_ERROR)));
+         return(_false(catch("SynchronizeStatus(3)   unknown closed ticket #"+ OrderTicket() +" found (no local reference)", ERR_RUNTIME_ERROR)));
    }
 
 
