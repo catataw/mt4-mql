@@ -379,15 +379,6 @@ bool StopSequence() {
       }
    }
 
-   debug("StopSequence(0.1)   level="      + grid.level
-                          +"  stops="      + grid.stops
-                          +"  stopsPL="    + NumberToStr(grid.stopsPL,     ".2")
-                          +"  closedPL="   + NumberToStr(grid.closedPL,    ".2")
-                          +"  floatingPL=" + NumberToStr(grid.floatingPL,  ".2")
-                          +"  totalPL="    + NumberToStr(grid.totalPL,     ".2")
-                          +"  activeRisk=" + NumberToStr(grid.activeRisk,  ".2")
-                          +"  valueAtRisk="+ NumberToStr(grid.valueAtRisk, ".2"));
-
 
    // (3) offene Positionen schließen
    bool ordersChanged;
@@ -455,7 +446,7 @@ bool StopSequence() {
    RedrawStartStop();
 
 
-   debug("StopSequence(0.2)   level="      + grid.level
+   debug("StopSequence()      level="      + grid.level
                           +"  stops="      + grid.stops
                           +"  stopsPL="    + NumberToStr(grid.stopsPL,     ".2")
                           +"  closedPL="   + NumberToStr(grid.closedPL,    ".2")
@@ -492,7 +483,7 @@ bool ResumeSequence() {
 
 
 
-   if (!IsTesting()) return(_true(debug("ResumeSequence()   online not yet implemented")));
+   if (!IsTesting() || !IsDemo()) return(_true(debug("ResumeSequence()   online not yet implemented")));
 
 
 
@@ -549,9 +540,7 @@ bool ResumeSequence() {
 
 /*                                      ausgestoppt        closed           floating           total         activeRisk         gesamtRisk
 -----------------------------------------------------------------------------------------------------------------------------------------------
-StopSequence(0.1)   level=-4  stops=2  stopsPL=-36.00  closedPL=  0.00  floatingPL=145.20  totalPL=109.20  activeRisk=72.00  valueAtRisk=108.00
-StopSequence(0.2)   level=-4  stops=2  stopsPL=-36.00  closedPL=145.20  floatingPL=  0.00  totalPL=109.20  activeRisk=72.00  valueAtRisk=108.00
-
+StopSequence()      level=-4  stops=2  stopsPL=-36.00  closedPL=145.20  floatingPL=  0.00  totalPL=109.20  activeRisk=72.00  valueAtRisk=108.00
 ResumeSequence()    level=-4  stops=2  stopsPL=-36.00  closedPL=145.20  floatingPL=  0.00  totalPL=109.20  activeRisk=72.00  valueAtRisk=108.00
 SynchronizeStatus() level=-4  stops=2  stopsPL=-36.00  closedPL=145.20  floatingPL=  0.00  totalPL=109.20  activeRisk=72.00  valueAtRisk=108.00
 */
@@ -1196,6 +1185,10 @@ bool Grid.AddPosition(int type, int level) {
    if (!OrderSelectByTicket(ticket, "Grid.AddPosition(2)"))
       return(false);
 
+   int orders[], size=GetActiveOrders(level, orders);
+   if (size == 0)
+      return(false);
+
    //int    ticket            = OrderTicket();
    //int    level             = level;
    //double grid.base         = grid.base;
@@ -1213,16 +1206,32 @@ bool Grid.AddPosition(int type, int level) {
    datetime closeTime         = NULL;
    double   closePrice        = NULL;
    double   stopLoss          = OrderStopLoss();
-   double   risk              = FindRisk(level);                     // Risk der letzten Position des Levels übernehmen
+   double   risk              = orders.risk[orders[size-1]];         // Risk der letzten Position des Levels übernehmen
    bool     closedByStop      = false;
 
    double   swap              = NULL;
    double   commission        = execution[EXEC_COMMISSION];
    double   profit            = NULL;
 
+
+   if (IsTesting()) {
+      double pl, pips, sv, newRisk;
+      for (int i=0; i < size; i++) {
+         pl += orders.swap[orders[i]] + orders.commission[orders[i]] + orders.profit[orders[i]];
+      }
+      pips    = NormalizeDouble(MathAbs(openPrice-stopLoss)/Pips, 1);
+      sv      = NormalizeDouble(pips * PipValue(LotSize), 2);
+      newRisk = NormalizeDouble(pl + commission - sv, 2);
+
+      debug("Grid.AddPosition()   level="+ level +"  activeOrders="+ IntsToStr(orders, NULL) +"  risk="+ DoubleToStr(risk, 2) +"  pl="+ DoubleToStr(pl, 2) +"  pips="+ DoubleToStr(pips, 1) +"  sv="+ DoubleToStr(sv, 2) +"  newRisk="+ DoubleToStr(newRisk, 2));
+   }
+
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingModifyTime, pendingPrice, type, openTime, openPrice, openSlippage, closeTime, closePrice, stopLoss, risk, closedByStop, swap, commission, profit))
       return(false);
 
+
+   ArrayResize(execution, 0);
+   ArrayResize(orders,    0);
    return(IsNoError(catch("Grid.AddPosition(3)")));
 }
 
@@ -3867,33 +3876,36 @@ double GetOpenPriceSlippage(int i) {
 
 
 /**
- * Ermittelt das Risiko der letzten offenen Position am angegebenen Gridlevel.
+ * Gibt die Indizes der aktiven Orders des angegebenen Levels zurück. Eine Order ist aktiv, wenn die Position geöffnet
+ * und nicht per StopLoss geschlossen wurde, sie ist also noch offen oder durch StopSequence() geschlossen.
  *
- * @param  int level
+ * @param  int level    - Gridlevel
+ * @param  int orders[] - Array zur Aufnahme der gefunden Indizes
  *
- * @return double
+ * @return int - Anzahl der gefundenen aktiven Orders oder 0, wenn ein Fehler auftrat
  */
-double FindRisk(int level) {
+bool GetActiveOrders(int level, int orders[]) {
+   if (ArraySize(orders) != 0)
+      ArrayResize(orders, 0);
+
    int sizeOfTickets = ArraySize(orders.ticket);
 
-   datetime openTime;
-   double   risk;
-
-   for (int i=0; i < sizeOfTickets; i++) {
-      if (orders.level[i] != level)                                  // Ticket muß zum Level gehören
+   for (int i=sizeOfTickets-1; i >= 0; i--) {
+      if (orders.level[i] != level)                                  // Order muß zum Level gehören
          continue;
-      if (orders.type[i] == OP_UNDEFINED)                            // Ticket darf nicht pending sein
+      if (orders.type[i] == OP_UNDEFINED)                            // Order darf nicht pending sein
          continue;
-
-      if (openTime < orders.openTime[i]) {                           // jüngste Position suchen (offen oder geschlossen)
-         openTime = orders.openTime[i];
-         risk     = orders.risk    [i];
-      }
+      if (orders.closedByStop[i])
+         break;                                                      // Abbruch bei erster durch SL geschlossenen Order des Levels
+      ArrayPushInt(orders, i);
    }
 
-   if (EQ(risk, 0))
-      catch("FindRisk()   no risk value found for level "+ level, ERR_RUNTIME_ERROR);
-   return(risk);
+   int size = ArraySize(orders);
+   if (size == 0)
+      return(_NULL(catch("GetActiveOrders()   no active orders found for level "+ level, ERR_RUNTIME_ERROR)));
+
+   ReverseIntArray(orders);
+   return(size);
 }
 
 
