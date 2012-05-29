@@ -483,7 +483,7 @@ bool ResumeSequence() {
 
 
 
-   if (!IsTesting() || !IsDemo()) return(_true(debug("ResumeSequence()   online not yet implemented")));
+   if (!IsTesting() && !IsDemo()) return(_true(debug("ResumeSequence()   online not yet implemented")));
 
 
 
