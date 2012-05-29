@@ -1007,21 +1007,29 @@ bool ReopenPositions() {
    if (__STATUS__CANCELLED || IsLastError()) return(false);
    if (status != STATUS_STOPPED)             return(_false(catch("ReopenPositions(1)   cannot re-open positions of "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
+   // grid.activeRisk neu berechnen
+   grid.activeRisk = 0;
+
    if (grid.level > 0) {
-      for (int level=1; level <= grid.level; level++) {              // TODO: STOP_LEVEL-Fehler im letzten Level abfangen und behandeln
+      for (int level=1; level <= grid.level; level++) {                          // TODO: STOP_LEVEL-Fehler im letzten Level abfangen und behandeln
          if (!Grid.AddPosition(OP_BUY, level))
             return(false);
+         grid.activeRisk += orders.risk[ArraySize(orders.risk)-1];
       }
    }
    else if (grid.level < 0) {
-      for (level=-1; level >= grid.level; level--) {                 // TODO: STOP_LEVEL-Fehler im letzten Level abfangen und behandeln
+      for (level=-1; level >= grid.level; level--) {                             // TODO: STOP_LEVEL-Fehler im letzten Level abfangen und behandeln
          if (!Grid.AddPosition(OP_SELL, level))
             return(false);
+         grid.activeRisk += orders.risk[ArraySize(orders.risk)-1];
       }
    }
    else {
       // grid.level==0: beim letzten Stop waren keine Positionen offen
    }
+
+   // grid.valueAtRisk neu berechnen
+   grid.valueAtRisk = grid.activeRisk - grid.stopsPL; SS.Grid.ValueAtRisk();     // valueAtRisk = -stopsPL + activeRisk
 
    return(IsNoError(catch("ReopenPositions(2)")));
 }
@@ -1185,8 +1193,8 @@ bool Grid.AddPosition(int type, int level) {
    if (!OrderSelectByTicket(ticket, "Grid.AddPosition(2)"))
       return(false);
 
-   int orders[], size=GetActiveOrders(level, orders);
-   if (size == 0)
+   int orders[], sizeOfActiveOrders=GetActiveOrders(level, orders);
+   if (sizeOfActiveOrders == 0)
       return(false);
 
    //int    ticket            = OrderTicket();
@@ -1206,7 +1214,11 @@ bool Grid.AddPosition(int type, int level) {
    datetime closeTime         = NULL;
    double   closePrice        = NULL;
    double   stopLoss          = OrderStopLoss();
-   double   risk              = orders.risk[orders[size-1]];         // Risk der letzten Position des Levels übernehmen
+      double oldProfit;
+      for (int i=0; i < sizeOfActiveOrders; i++) {
+         oldProfit += orders.swap[orders[i]] + orders.commission[orders[i]] + orders.profit[orders[i]];
+      }                                                                                                                          // risk = oldProfit - newStopLossValue + newCommission  | * -1 (risk soll positiv sein)
+   double   risk              = MathAbs(openPrice-stopLoss)/Pips * PipValue(LotSize) - oldProfit - execution[EXEC_COMMISSION];   // risk = stopLossValue - oldProfit - commission
    bool     closedByStop      = false;
 
    double   swap              = NULL;
@@ -1215,15 +1227,7 @@ bool Grid.AddPosition(int type, int level) {
 
 
    if (IsTesting()) {
-      double pl, pips, sv, newRisk;
-      for (int i=0; i < size; i++) {
-         pl += orders.swap[orders[i]] + orders.commission[orders[i]] + orders.profit[orders[i]];
-      }
-      pips    = NormalizeDouble(MathAbs(openPrice-stopLoss)/Pips, 1);
-      sv      = NormalizeDouble(pips * PipValue(LotSize), 2);
-      newRisk = NormalizeDouble(pl + commission - sv, 2);
-
-      debug("Grid.AddPosition()   level="+ level +"  activeOrders="+ IntsToStr(orders, NULL) +"  risk="+ DoubleToStr(risk, 2) +"  pl="+ DoubleToStr(pl, 2) +"  pips="+ DoubleToStr(pips, 1) +"  sv="+ DoubleToStr(sv, 2) +"  newRisk="+ DoubleToStr(newRisk, 2));
+      debug("Grid.AddPosition()   level="+ level +"  activeOrders="+ IntsToStr(orders, NULL) +"  oldProfit="+ DoubleToStr(oldProfit, 2) +"  risk="+ DoubleToStr(risk, 2));
    }
 
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingModifyTime, pendingPrice, type, openTime, openPrice, openSlippage, closeTime, closePrice, stopLoss, risk, closedByStop, swap, commission, profit))
