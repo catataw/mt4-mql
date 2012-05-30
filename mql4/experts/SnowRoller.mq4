@@ -6,6 +6,8 @@
  *  -----
  *  - Resume implementieren                                                                           *
  *  - automatisches Pause/Resume am Wochenende implementieren                                         *
+ *  - STOPLEVEL-Verletzung bei Resume anfangen                                                        *
+ *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
  *  - StartConditions vervollständigen                                                                *
  *  - StopConditions vervollständigen                                                                 *
  *  - StartCondition "@level" implementieren (GBP/AUD 02.04.)                                         *
@@ -15,6 +17,8 @@
  *  - bidirektionales Grid entfernen                                                                  *
  *  - beidseitig unidirektionales Grid implementieren                                                 *
  *  - Build 419 silently crashes                                                                      *
+ *
+ *  - orders.pendingModifyTime[] entfernen
  *
  *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeprofit() erweitern
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
