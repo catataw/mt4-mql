@@ -511,6 +511,7 @@ bool ResumeSequence() {
    // (2) vorherige Positionen wieder in den Markt legen
    if (!ReopenPositions())
       return(false);
+
    status = STATUS_PROGRESSING;
 
 
@@ -535,20 +536,12 @@ bool ResumeSequence() {
 
 
    // (5) Breakeven neu berechnen und aktualisieren
-   string beOld = str.grid.breakeven;
    if (grid.maxLevelLong-grid.maxLevelShort > 0)                                 // jedoch nicht vorm ersten ausgeführten Trade
       Grid.UpdateBreakeven();
 
-
    RedrawStartStop();
-   return(IsNoError(catch("ResumeSequence(3)")));
 
-/*                                      ausgestoppt        closed           floating           total         activeRisk         gesamtRisk
------------------------------------------------------------------------------------------------------------------------------------------------
-StopSequence()      level=-4  stops=2  stopsPL=-36.00  closedPL=145.20  floatingPL=  0.00  totalPL=109.20  activeRisk=72.00  valueAtRisk=108.00
-ResumeSequence()    level=-4  stops=2  stopsPL=-36.00  closedPL=145.20  floatingPL=  0.00  totalPL=109.20  activeRisk=72.00  valueAtRisk=108.00
-SynchronizeStatus() level=-4  stops=2  stopsPL=-36.00  closedPL=145.20  floatingPL=  0.00  totalPL=109.20  activeRisk=72.00  valueAtRisk=108.00
-*/
+   return(IsNoError(catch("ResumeSequence(3)")));
 }
 
 
@@ -1018,14 +1011,14 @@ bool ReopenPositions() {
    grid.activeRisk = 0;
 
    if (grid.level > 0) {
-      for (int level=1; level <= grid.level; level++) {                          // TODO: STOP_LEVEL-Fehler im letzten Level abfangen und behandeln
+      for (int level=1; level <= grid.level; level++) {                          // TODO: STOPLEVEL-Fehler im letzten Level abfangen und behandeln
          if (!Grid.AddPosition(OP_BUY, level))
             return(false);
          grid.activeRisk += orders.risk[ArraySize(orders.risk)-1];
       }
    }
    else if (grid.level < 0) {
-      for (level=-1; level >= grid.level; level--) {                             // TODO: STOP_LEVEL-Fehler im letzten Level abfangen und behandeln
+      for (level=-1; level >= grid.level; level--) {                             // TODO: STOPLEVEL-Fehler im letzten Level abfangen und behandeln
          if (!Grid.AddPosition(OP_SELL, level))
             return(false);
          grid.activeRisk += orders.risk[ArraySize(orders.risk)-1];
@@ -1037,6 +1030,11 @@ bool ReopenPositions() {
 
    // valueAtRisk neu berechnen
    grid.valueAtRisk = grid.activeRisk - grid.stopsPL; SS.Grid.ValueAtRisk();     // valueAtRisk = -stopsPL + activeRisk
+
+
+   if (grid.level != 0)                                                          // Status speichern
+      if (!SaveStatus())
+         return(false);
 
    return(IsNoError(catch("ReopenPositions(2)")));
 }
@@ -2888,8 +2886,8 @@ bool SaveStatus() {
    if (IsTest()) /*&&*/ if (!IsTesting())    return(true);
 
    static int counter;
-   if (IsTesting()) /*&&*/ if (counter!=0) /*&&*/ if (status!=STATUS_STOPPED)    // im Tester Ausführung nur beim ersten Aufruf und nach Stop
-      return(true);
+   if (IsTesting()) /*&&*/ if (counter > 0) /*&&*/ if (status!=STATUS_STOPPED)   // im Tester Ausführung nur beim ersten Aufruf und nach Stop
+      return(true);                                                              // TODO: STATUS_STOPPED mit Check for deinit ersetzen
    counter++;
 
    /*
@@ -3659,10 +3657,12 @@ bool SynchronizeStatus() {
    /*double*/ grid.breakevenLong  = 0;
    /*double*/ grid.breakevenShort = 0;
 
-   #define EV_GRIDBASE_CHANGE    1                                            // Event-Types: {GridBaseChange | PositionOpen | PositionStopout | PositionClose}
-   #define EV_POSITION_OPEN      2
-   #define EV_POSITION_STOPOUT   3
-   #define EV_POSITION_CLOSE     4
+   #define EV_SEQUENCE_START     1                                            // Event-Types
+   #define EV_SEQUENCE_STOP      2
+   #define EV_GRIDBASE_CHANGE    3
+   #define EV_POSITION_OPEN      4
+   #define EV_POSITION_STOPOUT   5
+   #define EV_POSITION_CLOSE     6
 
 
    bool   pendingOrder, openPosition, closedPosition, closedByStop;
@@ -3670,6 +3670,7 @@ bool SynchronizeStatus() {
    int    openLevels[]; ArrayResize(openLevels, 0);
    double events[][7];  ArrayResize(events, 0);
 
+   // Tickets zu den Breakeven-Events hinzufügen
    for (i=0; i < sizeOfTickets; i++) {
       pendingOrder   = orders.type[i] == OP_UNDEFINED;
       openPosition   = !pendingOrder && orders.closeTime[i]==0;
@@ -3705,6 +3706,16 @@ bool SynchronizeStatus() {
       Sync.PushBreakevenEvent(events, grid.base.time[i], EV_GRIDBASE_CHANGE, grid.base.value[i], 0, NULL, NULL, NULL);
    }
 
+   // Sequenzstarts und -stops zu den Breakeven-Events hinzufügen
+   int starts = ArraySize(sequenceStartTimes);
+   for (i=0; i < starts; i++) {
+      /*
+      Sync.PushBreakevenEvent(events, sequenceStartTimes[i], EV_SEQUENCE_START, startGridBase, startLevel, NULL, NULL, NULL);
+      if (sequenceStopTimes[i] != 0)
+         Sync.PushBreakevenEvent(events, sequenceStopTimes[i], EV_SEQUENCE_STOP, stopGridBase, stopLevel, NULL, NULL, NULL);
+      */
+   }
+
    if (ArraySize(openLevels) != 0) {
       int min = openLevels[ArrayMinimum(openLevels)];
       int max = openLevels[ArrayMaximum(openLevels)];
@@ -3714,7 +3725,6 @@ bool SynchronizeStatus() {
    }
 
    // status
-   int starts = ArraySize(sequenceStartTimes);
    if (starts > 0) {
       if (sequenceStopTimes[starts-1] == 0) {
          status = STATUS_PROGRESSING;
@@ -4196,6 +4206,8 @@ string OrderDisplayModeToStr(int mode) {
  */
 string BreakevenEventToStr(int type) {
    switch (type) {
+      case EV_SEQUENCE_START  : return("EV_SEQUENCE_START"  );
+      case EV_SEQUENCE_STOP   : return("EV_SEQUENCE_STOP"   );
       case EV_GRIDBASE_CHANGE : return("EV_GRIDBASE_CHANGE" );
       case EV_POSITION_OPEN   : return("EV_POSITION_OPEN"   );
       case EV_POSITION_STOPOUT: return("EV_POSITION_STOPOUT");
