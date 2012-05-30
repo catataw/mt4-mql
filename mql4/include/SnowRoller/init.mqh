@@ -82,15 +82,15 @@ int onInitChartClose() {
 
    // (3) zum Schluﬂ neue Sequenz anlegen.
    if (ValidateConfiguration(true)) {
-      instanceStartTime  = TimeCurrent();
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+      instanceStartTime  = TimeCurrent() - 1;                                          // Wir setzen sequenceStartTime immer 1 sek. in die Vergangenheit (Erl‰uterungen siehe dort).
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // Um Konflikte zu vermeiden, wird auch instanceStartTime um 1 sec. in die Vergangenheit gesetzt.
       test               = IsTesting(); SS.Test();
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
 
-      if (start.conditions)                                          // Ohne StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
-         SaveStatus();                                               // wird erst danach gespeichert.
+      if (start.conditions)                                                            // Ohne StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
+         SaveStatus();                                                                 // wird erst danach gespeichert.
       RedrawStartStop();
    }
    return(last_error);
@@ -147,14 +147,14 @@ int onInitParameterChange() {
 
    if (status == STATUS_UNINITIALIZED) {
       // neue Sequenz anlegen
-      instanceStartTime  = TimeCurrent();
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+      instanceStartTime  = TimeCurrent() - 1;                                             // Wir setzen sequenceStartTime immer 1 sek. in die Vergangenheit (Erl‰uterungen siehe dort).
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                        // Um Konflikte zu vermeiden, wird auch instanceStartTime um 1 sec. in die Vergangenheit gesetzt.
       test               = IsTesting(); SS.Test();
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
 
-      if (start.conditions)                                          // Ohne StartConditions erfolgt sofortiger Sequenzstart, der Status automatisch speichert.
+      if (start.conditions)                                                               // Ohne StartConditions erfolgt sofortiger Sequenzstart, der Status automatisch speichert.
          SaveStatus();
       RedrawStartStop();
    }
