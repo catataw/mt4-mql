@@ -6,7 +6,7 @@
  *  -----
  *  - Resume implementieren                                                                           *
  *  - automatisches Pause/Resume am Wochenende implementieren                                         *
- *  - STOPLEVEL-Verletzung bei Resume anfangen                                                        *
+ *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
  *  - StartConditions vervollständigen                                                                *
  *  - StopConditions vervollständigen                                                                 *
