@@ -3913,7 +3913,7 @@ void RedrawStartStop() {
       if (ObjectFind(label) == 0)
          ObjectDelete(label);
       ObjectCreate(label, OBJ_ARROW, 0, time, price);
-      ObjectSet   (label, OBJPROP_ARROWCODE, SYMBOL_LEFTPRICE);
+      ObjectSet   (label, OBJPROP_ARROWCODE, SYMBOL_LEFTPRICE);      // Alternativen: kleiner Punkt (159)
       ObjectSet   (label, OBJPROP_BACK,      false           );
       ObjectSet   (label, OBJPROP_COLOR,     last.MarkerColor);
    }
@@ -3929,7 +3929,7 @@ void RedrawStartStop() {
             ObjectDelete(label);
          ObjectCreate(label, OBJ_ARROW, 0, time, price);
          ObjectSet   (label, OBJPROP_ARROWCODE, SYMBOL_LEFTPRICE);
-         ObjectSet   (label, OBJPROP_BACK,      false            );
+         ObjectSet   (label, OBJPROP_BACK,      false           );
          ObjectSet   (label, OBJPROP_COLOR,     last.MarkerColor);
       }
    }
