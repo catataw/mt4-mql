@@ -60,7 +60,7 @@ int onStart() {
 
 
          // (4) Tick senden
-         SendTick(false);
+         Chart.SendTick(false);
          return(catch("onStart(2)"));                                   // regular exit
       }
    }

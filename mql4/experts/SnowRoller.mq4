@@ -4,7 +4,6 @@
  *
  *  TODO:
  *  -----
- *  - Resume implementieren                                                                              *
  *  - automatisches Pause/Resume am Wochenende implementieren                                            *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                           *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                         *
@@ -79,11 +78,11 @@ datetime instanceStartTime;                           // Start des EA's
 double   instanceStartPrice;
 double   sequenceStartEquity;                         // Equity bei Start der ersten Subsequenz
 
-datetime sequenceStartTimes [];                       // Start/Resume-Daten
+datetime sequenceStartTimes [];                       // Start-Daten
 double   sequenceStartPrices[];
 
-datetime sequenceStopTimes  [];                       // Pause/Stop-Daten
-double   sequenceStopPrices [];
+datetime sequenceStopTimes [];                        // Stop-Daten
+double   sequenceStopPrices[];
 
 bool     start.conditions;                            // ob mindestens eine StartCondition aktiv ist
 bool     start.limit.condition;
@@ -110,9 +109,10 @@ double   grid.base;                                   // aktuelle Gridbasis     
 int      grid.level;                                  // aktueller Grid-Level                                                       SS Header:      Feld 2
 int      grid.maxLevelLong;                           // maximal erreichter Long-Level                                              SS Header:      Feld 3
 int      grid.maxLevelShort;                          // maximal erreichter Short-Level                                             SS Header:      Feld 4
+double   grid.commission;                             // Commission-Betrag je Level
 
-int      grid.stops;                                  // Anzahl der bisher getriggerten Stops                                       SS Realized:    Feld 1
-double   grid.stopsPL;                                // P/L der ausgestoppten Positionen (0 oder negativ)                          SS Realized:    Feld 2
+int      grid.stops;                                  // Anzahl der bisher getriggerten Stops                                       SS Stops:       Feld 1
+double   grid.stopsPL;                                // P/L der ausgestoppten Positionen (0 oder negativ)                          SS Stops:       Feld 2
 double   grid.closedPL;                               // P/L bei StopSequence() geschlossener Positionen (realizedPL = stopsPL + closedPL)
 double   grid.floatingPL;                             // P/L offener Positionen
 double   grid.totalPL;                                // Gesamt-P/L der Sequenz:  realizedPL + floatingPL                           SS Profit/Loss: Feld 1
@@ -189,20 +189,8 @@ int onTick() {
    // (1) Commands verarbeiten
    HandleEvent(EVENT_CHART_CMD);
 
-
    if (status == STATUS_STOPPED) {
       firstTick = false;
-
-      // temporär
-      if (IsTesting()) {
-         static bool done;
-         if (!done) {
-            if (TimeCurrent() > sequenceStopTimes[ArraySize(sequenceStopTimes)-1] + 6.5*HOURS) {
-               Tester.Pause();
-               done = true;
-            }
-         }
-      }
       return(last_error);
    }
 
@@ -312,14 +300,14 @@ bool StartSequence() {
    // Startvariablen und Status setzen
    sequenceStartEquity = AccountEquity()-AccountCredit();
 
-   datetime startTime  = TimeCurrent() - 1;                          // Wir setzen startTime um 1 sec. in die Vergangenheit. Ansonsten wäre es möglich, daß
+   datetime startTime  = TimeCurrent() - 1;                          // Wir setzen startTime 1 sec. in die Vergangenheit. Ansonsten wäre es möglich, daß
    double   startPrice = NormalizeDouble((Bid + Ask)/2, Digits);     // startTime und OpenTime() des nächsten Tickets denselben Timestamp haben, wodurch eine
    Grid.BaseReset(startTime, startPrice);                            // eindeutige Sortierung der Breakeven-Events für den Breakeven-Indikator unmöglich wäre.
 
    ArrayPushInt   (sequenceStartTimes,  startTime );
    ArrayPushDouble(sequenceStartPrices, startPrice);
-   ArrayPushInt   (sequenceStopTimes,   0);                          // Größe von sequenceStarts und -Stops synchron halten
-   ArrayPushDouble(sequenceStopPrices,  0);
+   ArrayPushInt   (sequenceStopTimes,            0);                 // Größe von sequenceStarts und -Stops synchron halten
+   ArrayPushDouble(sequenceStopPrices,           0);
 
    status = STATUS_PROGRESSING;
 
@@ -392,8 +380,8 @@ bool StopSequence() {
       if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, execution))
          return(_false(SetLastError(stdlib_PeekLastError())));
 
-      sequenceStopTimes [n] =                 execution[EXEC_TIME ] +0.1;        // (datetime)(double) datetime
-      sequenceStopPrices[n] = NormalizeDouble(execution[EXEC_PRICE], Digits);
+      sequenceStopTimes [n] = 1 +             execution[EXEC_TIME ] +0.1;        // (datetime)(double) datetime   // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Konflikte
+      sequenceStopPrices[n] = NormalizeDouble(execution[EXEC_PRICE], Digits);                                     // bei der Sortierung der Breakeven-Events zu vermeiden.
 
       for (i=0; i < sizeOfOpenPositions; i++) {
          int pos = SearchIntArray(orders.ticket, openPositions[i]);
@@ -421,8 +409,8 @@ bool StopSequence() {
       ordersChanged = true;
    }
    else {
-      sequenceStopTimes [n] = TimeCurrent();
-      sequenceStopPrices[n] = (Bid + Ask)/2;
+      sequenceStopTimes [n] = TimeCurrent() + 1;                                 // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Konflikte
+      sequenceStopPrices[n] = (Bid + Ask)/2;                                     // bei der Sortierung der Breakeven-Events zu vermeiden.
       if      (grid.base < sequenceStopPrices[n]) sequenceStopPrices[n] = Bid;
       else if (grid.base > sequenceStopPrices[n]) sequenceStopPrices[n] = Ask;
       sequenceStopPrices[n] = NormalizeDouble(sequenceStopPrices[n], Digits);
@@ -487,15 +475,10 @@ bool ResumeSequence() {
    firstTickConfirmed = true;
 
 
-
-   if (!IsTesting() && !IsDemo()) return(_true(debug("ResumeSequence()   online not yet implemented")));
-
-
-
    // (1) neue Gridbasis und Sequenzstart setzen
-   datetime startTime  = TimeCurrent() - 1;                                      // Wir setzen startTime um 1 sec. in die Vergangenheit. Ansonsten wäre es möglich, daß
-   double   startPrice = (Bid + Ask)/2;                                          // startTime und OpenTime() des nächsten Tickets denselben Timestamp haben, wodurch eine
-   double   stopPrice  = sequenceStopPrices[ArraySize(sequenceStopPrices)-1];    // eindeutige Sortierung der Breakeven-Events für den Breakeven-Indikator unmöglich wäre.
+   datetime startTime  = TimeCurrent() - 1;                                      // Wir setzen sequenceStartTime 1 sec. in die Vergangenheit, um Konflikte
+   double   startPrice = (Bid + Ask)/2;                                          // bei der Sortierung der Breakeven-Events zu vermeiden.
+   double   stopPrice  = sequenceStopPrices[ArraySize(sequenceStopPrices)-1];
    if      (grid.base < stopPrice) startPrice = Ask;
    else if (grid.base > stopPrice) startPrice = Bid;
    startPrice = NormalizeDouble(startPrice, Digits);
@@ -504,26 +487,31 @@ bool ResumeSequence() {
 
    ArrayPushInt   (sequenceStartTimes,  startTime );
    ArrayPushDouble(sequenceStartPrices, startPrice);
-   ArrayPushInt   (sequenceStopTimes,   0);                                      // Größe von sequenceStarts und -Stops synchron halten
-   ArrayPushDouble(sequenceStopPrices,  0);
+   ArrayPushInt   (sequenceStopTimes,            0);                             // Größe von sequenceStarts und -Stops synchron halten
+   ArrayPushDouble(sequenceStopPrices,           0);
+   RedrawStartStop();
 
 
-   // (2) vorherige Positionen wieder in den Markt legen
+   // (2) Start-/Stop-Bedingungen zunächst deaktivieren (können später wieder angepaßt werden)
+   start.conditions = false; StartConditions = "";                               // start.* nur, um Anzeige in ShowStatus() zu unterdrücken
+   stop.conditions  = false; StopConditions  = "";
+   SS.StartStopConditions();
+
+
+   // (3) vorherige Positionen wieder in den Markt legen
    if (!ReopenPositions())
       return(false);
-
    status = STATUS_PROGRESSING;
 
 
-   // (3) Stop-Orders vervollständigen
+   // (4) Stop-Orders vervollständigen
    if (!UpdatePendingOrders())
       return(false);
 
 
-   // (4) Start-/Stop-Bedingungen zunächst deaktivieren (können später wieder angepaßt werden)
-   start.conditions = false; StartConditions = "";                               // um Anzeige in ShowStatus() zu unterdrücken
-   stop.conditions  = false; StopConditions  = "";
-   SS.StartStopConditions();
+   // (5) Breakeven neu berechnen
+   Grid.CalculateBreakeven();
+
 
    debug("ResumeSequence()    level="      + grid.level
                           +"  stops="      + grid.stops
@@ -533,12 +521,6 @@ bool ResumeSequence() {
                           +"  totalPL="    + DoubleToStr(grid.totalPL,     2)
                           +"  activeRisk=" + DoubleToStr(grid.activeRisk,  2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
-
-
-   // (5) Breakeven neu berechnen
-   Grid.CalculateBreakeven();
-
-   RedrawStartStop();
 
    return(IsNoError(catch("ResumeSequence(3)")));
 }
@@ -579,7 +561,7 @@ bool UpdateStatus() {
                orders.openPrice [i] = OrderOpenPrice();
                orders.risk      [i] = CalculateActiveRisk(orders.level[i], orders.ticket[i], OrderOpenPrice(), OrderSwap(), OrderCommission());
                orders.swap      [i] = OrderSwap();
-               orders.commission[i] = OrderCommission();
+               orders.commission[i] = OrderCommission(); grid.commission = OrderCommission(); SS.LotSize();
                orders.profit    [i] = OrderProfit();
                ChartMarker.OrderFilled(i);
 
@@ -659,10 +641,10 @@ bool UpdateStatus() {
       else             status = STATUS_STOPPED;                                                 // alle Tickets sind geschlossen
       int n = ArraySize(sequenceStopTimes) - 1;
 
-      if (sequenceStopTimes[n]==0 || stopTime < sequenceStopTimes[n]) {
+      if (sequenceStopTimes[n]==0 || stopTime < sequenceStopTimes[n]) {                         // TODO: letzte StopTime + 1 verwenden
          sequenceStopTimes [n] = stopTime;
-         sequenceStopPrices[n] = NormalizeDouble(stopPrice, Digits);
-      }
+         sequenceStopPrices[n] = NormalizeDouble(stopPrice, Digits);                            // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Konflikte
+      }                                                                                         // bei der Sortierung der Breakeven-Events zu vermeiden.
       RedrawStartStop();
    }
 
@@ -1213,7 +1195,7 @@ bool Grid.AddPosition(int type, int level) {
    double   stopLoss          = OrderStopLoss();
    bool     closedByStop      = false;
 
-   double   swap              = execution[EXEC_SWAP      ];          // falls Swap bereits bei OrderOpen gesetzt ist
+   double   swap              = execution[EXEC_SWAP      ];          // falls Swap bereits bei OrderOpen gesetzt sein sollte
    double   commission        = execution[EXEC_COMMISSION];
    double   profit            = NULL;
 
@@ -1403,7 +1385,7 @@ bool Grid.SetData(int position, int ticket, int level, double gridBase, int pend
    orders.closedByStop     [i] = closedByStop;
 
    orders.swap             [i] = NormalizeDouble(swap,       2);
-   orders.commission       [i] = NormalizeDouble(commission, 2);
+   orders.commission       [i] = NormalizeDouble(commission, 2); if (type != OP_UNDEFINED) { grid.commission = orders.commission[i]; SS.LotSize(); }
    orders.profit           [i] = NormalizeDouble(profit,     2);
 
    return(!IsError(catch("Grid.SetData(2)")));
@@ -1423,7 +1405,7 @@ bool Grid.SetData(int position, int ticket, int level, double gridBase, int pend
  */
 bool Grid.UpdateOrder(int i) {
    if (i < 0 || i > ArraySize(orders.ticket)-1) return(_false(catch("Grid.UpdateOrder(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (orders.closeTime[i] != 0)                return(_false(catch("Grid.UpdateOrder(2)   cannot update #"+ orders.ticket[i] +" (marked as closed in grid arrays)", ERR_RUNTIME_ERROR)));
+   if (orders.closeTime[i] != 0)                return(_false(catch("Grid.UpdateOrder(2)   cannot update ticket #"+ orders.ticket[i] +" (marked as closed in grid arrays)", ERR_RUNTIME_ERROR)));
 
    // das Ticket ist bereits selektiert
    bool wasPending = orders.type[i] == OP_UNDEFINED;
@@ -1460,17 +1442,17 @@ bool Grid.UpdateOrder(int i) {
 
    if (!isPending) {
       orders.swap             [i] = OrderSwap();
-      orders.commission       [i] = OrderCommission();
+      orders.commission       [i] = OrderCommission(); grid.commission = OrderCommission(); SS.LotSize();
       orders.profit           [i] = OrderProfit();
    }
 
 
-   // (2) Sequenzdaten aktualisieren (für den theoretischen Fall, das Sequenz außerhalb geschlossen wird)
+   // (2) Sequenzdaten aktualisieren (falls Sequenz außerhalb geschlossen wird)     // TODO: StopTime korrigieren (+ 1)
    if (isClosed && !orders.closedByStop[i]) {
-      int n = ArraySize(sequenceStartTimes) - 1;
-      if (sequenceStopTimes[n]==0 || orders.closeTime[i] < sequenceStopTimes[n]) {
+      int n = ArraySize(sequenceStartTimes) - 1;                                    // Wir setzen sequenceStartTime 1 sec. in die Vergangenheit, um Konflikte
+      if (sequenceStopTimes[n]==0 || orders.closeTime[i] < sequenceStopTimes[n]) {  // bei der Sortierung der Breakeven-Events zu vermeiden.
          sequenceStopTimes [n] = orders.closeTime [i];
-         sequenceStopPrices[n] = orders.closePrice[i];               // TODO: bei Schließen Stück-für-Stück muß avg(stopPrice) berechnet werden
+         sequenceStopPrices[n] = orders.closePrice[i];                              // TODO: bei Schließen Stück-für-Stück muß avg(stopPrice) berechnet werden
       }
    }
 
@@ -1663,7 +1645,7 @@ int ShowStatus(bool initByTerminal=false) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
-   string msg, str.error, str.stopValue;
+   string msg, str.error;
 
    if (__STATUS__CANCELLED) {
       str.error = StringConcatenate("  [", ErrorDescription(ERR_CANCELLED_BY_USER), "]");
@@ -1687,13 +1669,10 @@ int ShowStatus(bool initByTerminal=false) {
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
-   if (!IsLastError())
-      str.stopValue = DoubleToStr(GridSize * PipValue(LotSize), 2);
-
    msg = StringConcatenate(__NAME__, msg, str.error,                                                 NL,
                                                                                                      NL,
                            "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction, NL,
-                           "LotSize:         ", str.LotSize, " lot = ", str.stopValue, "/stop",      NL,
+                           "LotSize:         ", str.LotSize,                                         NL,
                            str.startConditions,                                                             // enthält NL, wenn gesetzt
                            str.stopConditions,                                                              // enthält NL, wenn gesetzt
                            "Stops:           ", str.grid.stops, " ", str.grid.stopsPL,               NL,
@@ -1809,7 +1788,7 @@ void SS.LotSize() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.LotSize = NumberToStr(LotSize, ".+");
+   str.LotSize = StringConcatenate(NumberToStr(LotSize, ".+"), " lot = ", DoubleToStr(GridSize * PipValue(LotSize) - grid.commission, 2), "/stop");
 }
 
 
@@ -3440,7 +3419,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
    else if (StringStartsWith(key, "rt.order.")) {
       // Orderindex
       string strIndex = StringRight(key, -9);
-      if (!StringIsDigit(strIndex))                                             return(_false(catch("RestoreStatus.Runtime(37)   illegal order index \""+ key +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (!StringIsDigit(strIndex))                                             return(_false(catch("RestoreStatus.Runtime(37.2)   illegal order index \""+ key +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       i = StrToInteger(strIndex);
       if (ArraySize(orders.ticket) > i) /*&&*/ if (orders.ticket[i]!=0)         return(_false(catch("RestoreStatus.Runtime(38)   duplicate order index "+ key +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
@@ -3557,12 +3536,6 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       string strClosedByStop = StringTrim(values[14]);
       if (!StringIsDigit(strClosedByStop))                                      return(_false(catch("RestoreStatus.Runtime(91)   illegal closedByStop value \""+ strClosedByStop +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       bool closedByStop = _bool(StrToInteger(strClosedByStop));
-      if (type!=OP_UNDEFINED && closeTime!=0 && !closedByStop) {
-         datetime firstStopTime;
-         if (ArraySize(sequenceStopTimes) > 0) firstStopTime = sequenceStopTimes[0];
-         if (firstStopTime == 0)                                                return(_false(catch("RestoreStatus.Runtime(92)   sequenceStopTimes[0]/closed position mis-match "+ firstStopTime +"/#"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-         if (closeTime < firstStopTime)                                         return(_false(catch("RestoreStatus.Runtime(93)   sequenceStopTimes[0]/position close time mis-match '"+ TimeToStr(firstStopTime, TIME_FULL) +"'/#"+ ticket +" '"+ TimeToStr(closeTime, TIME_FULL) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      }
 
       // swap
       string strSwap = StringTrim(values[15]);
@@ -3723,8 +3696,12 @@ bool SynchronizeStatus() {
    double   stopsPLChange, closedPLChange, riskChange;
    int sizeOfEvents = ArrayRange(events, 0);
 
-   if (sizeOfEvents > 0)
+   if (sizeOfEvents > 0) {
       ArraySort(events);                                                         // Breakeven-Events zeitlich sortieren
+
+      int firstType = events[0][1] +0.1;                                         // (int) double
+      if (firstType != EV_SEQUENCE_START)    return(_false(catch("SynchronizeStatus(8)   illegal first break-even event = "+ BreakevenEventToStr(firstType), ERR_RUNTIME_ERROR)));
+   }
 
    for (i=0; i < sizeOfEvents; i++) {
       time           = events[i][0] +0.1;                                        // (datetime) double

@@ -25,7 +25,6 @@ int onDeinitUndefined() {
  */
 int onDeinitChartClose() {
    if (IsTesting()) {
-      //debug("onDeinitChartClose()   "+ StatusToStr(status));
       if (status==STATUS_WAITING || status==STATUS_PROGRESSING)      // TODO: !!! statt StopSequence() Statusfile löschen und Titelzeile des Testers zurücksetzen
          if (StopSequence())                                         // ruft intern UpdateStatus() und SaveStatus() auf
             ShowStatus();
@@ -94,5 +93,5 @@ int onDeinitParameterChange() {
  */
 int onDeinitChartChange() {
    // nicht-statische Input-Parameter werden für's nächste init() zwischengespeichert
-   return(onDeinitParameterChange());                                // Funktionalität entspricht onDeinitParameterChange()
+   return(onDeinitParameterChange());                                // entspricht onDeinitParameterChange()
 }
