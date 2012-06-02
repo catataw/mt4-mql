@@ -27,6 +27,7 @@
 
 
 // OrderDisplay-Farben
+#define CLR_PENDING        DarkTurquoise
 #define CLR_LONG           Blue
 #define CLR_SHORT          Red
 #define CLR_CLOSE          Orange

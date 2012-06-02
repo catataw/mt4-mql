@@ -16,10 +16,10 @@ int onDeinitUndefined() {
 
 
 /**
- * - Chart geschlossen
- * - Template wird neu geladen
- * - im Tester nach vorzeitigem, manuellem Abbruch
- * - Terminal-Shutdown
+ * - Chart geschlossen                                   -oder-
+ * - Template wird neu geladen                           -oder-
+ * - Terminal-Shutdown                                   -oder-
+ * - im Tester nach vorzeitigem Ende (per Stop-Button)
  *
  * @return int - Fehlerstatus
  */
@@ -57,6 +57,7 @@ int onDeinitRemove() {
 
 
 /**
+ * Recompilation
  *
  * @return int - Fehlerstatus
  */
@@ -67,6 +68,7 @@ int onDeinitRecompile() {
 
 
 /**
+ * Parameteränderung
  *
  * @return int - Fehlerstatus
  */

@@ -348,7 +348,7 @@ bool StopSequence() {
    // (1) eine wartende Sequenz ist noch nicht gestartet und wird gecanceled
    if (status == STATUS_WAITING) {
       __STATUS__CANCELLED = true;
-      if (IsVisualMode())                                                        // kurz für: (IsTesting() && IsVisualMode())
+      if (IsTesting())
          Tester.Pause();
       return(_false(catch("StopSequence(3)")));
    }
@@ -449,7 +449,7 @@ bool StopSequence() {
 
 
    // (6) ggf. Tester stoppen
-   if (IsVisualMode())                                                           // kurz für: (IsTesting() && IsVisualMode())
+   if (IsTesting())
       Tester.Pause();
 
    ArrayResize(pendingOrders, 0);
@@ -1570,11 +1570,9 @@ int CreateMagicNumber(int level) {
 /**
  * Zeigt den aktuellen Status der Sequenz an.
  *
- * @param  bool initByTerminal - ob der Aufruf innerhalb der vom Terminal aufgerufenen init()-Funktion erfolgt (default: nein)
- *
  * @return int - Fehlerstatus
  */
-int ShowStatus(bool initByTerminal=false) {
+int ShowStatus() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
@@ -1614,7 +1612,7 @@ int ShowStatus(bool initByTerminal=false) {
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
-   if (initByTerminal)
+   if (__WHEREAMI__ == FUNC_INIT)
       WindowRedraw();
 
 
@@ -3960,8 +3958,8 @@ bool ChartMarker.OrderSent(int i) {
    color    markerColor = CLR_NONE;
 
    if (orderDisplayMode != DM_NONE) {
-      if (pending || orderDisplayMode >= DM_PYRAMID)
-         markerColor = ifInt(IsLongTradeOperation(type), CLR_LONG, CLR_SHORT);
+      if      (pending)                        markerColor = CLR_PENDING;
+      else if (orderDisplayMode >= DM_PYRAMID) markerColor = ifInt(IsLongTradeOperation(type), CLR_LONG, CLR_SHORT);
    }
 
    if (!ChartMarker.OrderSent_B(orders.ticket[i], Digits, markerColor, type, LotSize, Symbol(), openTime, openPrice, orders.stopLoss[i], 0, comment))

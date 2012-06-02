@@ -197,14 +197,12 @@ int onInitChartChange() {
 /**
  * Initialisierung
  *
- * @param  bool userCall - ob der Aufruf der zugrunde liegenden init()-Funktion durch das Terminal oder durch User-Code erfolgte
- *
  * @return int - Fehlerstatus
  */
-int afterInit(bool userCall) {
+int afterInit() {
    CreateStatusBox();
    SS.All();
-   ShowStatus(!userCall);
+   ShowStatus();
 
    if (IsLastError())
       status = STATUS_DISABLED;
