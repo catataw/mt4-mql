@@ -20,7 +20,7 @@
  *
  *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeprofit() erweitern
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
- *  - Bug: ChartMarker bei PendingOrders + Stops
+ *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
@@ -1240,7 +1240,7 @@ bool Grid.TrailPendingOrder(int i) {
 
    double stopPrice   = grid.base +          orders.level[i]  * GridSize * Pips;
    double stopLoss    = stopPrice - MathSign(orders.level[i]) * GridSize * Pips;
-   color  markerColor = ifInt(orders.level[i] > 0, CLR_LONG, CLR_SHORT);
+   color  markerColor = CLR_PENDING;
    double execution[] = {NULL};
 
    if (EQ(orders.pendingPrice[i], stopPrice)) /*&&*/ if (EQ(orders.stopLoss[i], stopLoss))
@@ -1466,7 +1466,7 @@ int PendingStopOrder(int type, int level, double& execution[]) {
    int      magicNumber = CreateMagicNumber(level);
    datetime expires     = NULL;
    string   comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
-   color    markerColor = ifInt(level > 0, CLR_LONG, CLR_SHORT);
+   color    markerColor = CLR_PENDING;
 
    /*
    #define DM_NONE      0     // - keine Anzeige -
