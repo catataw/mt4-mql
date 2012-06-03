@@ -620,7 +620,7 @@ bool UpdateStatus() {
                   grid.valueAtRisk = grid.activeRisk - grid.stopsPL; SS.Grid.ValueAtRisk();     // valueAtRisk = -stopsPL + activeRisk
                   recalcBreakeven  = true;
                }
-               else {                                                                           // Sequenzstop im STATUS_MONITORING
+               else {                                                                           // Sequenzstop im STATUS_MONITORING oder autom. Close bei Beenden des Testers
                   status = STATUS_STOPPING;
                   grid.closedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
@@ -1721,13 +1721,13 @@ void SS.Test() {
  */
 void SS.SequenceId() {
    if (IsTesting()) {
-      int hWnd = GetTesterWindow();
-      if (hWnd == 0)
+      int hWndTester = GetTesterWindow();
+      if (hWndTester == 0)
          return(_ZERO(SetLastError(stdlib_PeekLastError())));
 
       string text = StringConcatenate("Tester - SR.", sequenceId);
 
-      if (!SetWindowTextA(hWnd, text))
+      if (!SetWindowTextA(hWndTester, text))
          catch("SS.SequenceId() ->user32::SetWindowTextA()   error="+ RtlGetLastWin32Error(), ERR_WIN32_ERROR);
    }
 }
@@ -3896,22 +3896,24 @@ double CalculateActiveRisk(int level, int ticket, double openPrice, double swap,
 
 
 /**
- * Ermittelt die SequenceStopTime der aktuell gestoppten Sequenz.
+ * Ermittelt die StopTime der aktuell gestoppten Sequenz.
  *
  * @return datetime
  */
 datetime CalculateSequenceStopTime() {
-   if (status != STATUS_STOPPED)          return(_NULL(catch("CalculateSequenceStopTime(1)   cannot calculate stop time for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
-   if (grid.level == 0)                   return(_NULL(catch("CalculateSequenceStopTime(2)   cannot calculate stop time for sequence at level "+ grid.level, ERR_RUNTIME_ERROR)));
+   if (status != STATUS_STOPPED)    return(_NULL(catch("CalculateSequenceStopTime(1)   cannot calculate stop time for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (grid.level == 0)             return(_NULL(catch("CalculateSequenceStopTime(2)   cannot calculate stop time for sequence at level "+ grid.level, ERR_RUNTIME_ERROR)));
 
    datetime stopTime;
    int n=grid.level, size=ArraySize(orders.ticket);
 
    for (int i=size-1; n != 0; i--) {
-      if (orders.level[i] != n)           return(_NULL(catch("CalculateSequenceStopTime(3)   #"+ orders.ticket[i] +" (level="+ orders.level[i] +") doesn't match the expected level "+ n, ERR_RUNTIME_ERROR)));
-      if (orders.type[i] == OP_UNDEFINED) return(_NULL(catch("CalculateSequenceStopTime(4)   #"+ orders.ticket[i] +" ("+ OperationTypeDescription(orders.type[i]) +") is not a trade position", ERR_RUNTIME_ERROR)));
-      if (orders.closeTime[i] == 0)       return(_NULL(catch("CalculateSequenceStopTime(5)   #"+ orders.ticket[i] +" is not a closed position", ERR_RUNTIME_ERROR)));
-      if (orders.closedByStop[i])         return(_NULL(catch("CalculateSequenceStopTime(6)   #"+ orders.ticket[i] +" is closed by stoploss", ERR_RUNTIME_ERROR)));
+      if (orders.closeTime[i] == 0) return(_NULL(catch("CalculateSequenceStopTime(3)   #"+ orders.ticket[i] +" is not closed", ERR_RUNTIME_ERROR)));
+      if (orders.type[i] == OP_UNDEFINED)                            // gestrichene Orders ignorieren
+         continue;
+      if (orders.closedByStop[i])                                    // ausgestoppte Positionen ignorieren
+         continue;
+      if (orders.level[i] != n)     return(_NULL(catch("CalculateSequenceStopTime(4)   #"+ orders.ticket[i] +" (level="+ orders.level[i] +") doesn't match the expected level "+ n, ERR_RUNTIME_ERROR)));
 
       stopTime = Max(stopTime, orders.closeTime[i]);
 
@@ -3923,22 +3925,24 @@ datetime CalculateSequenceStopTime() {
 
 
 /**
- * Ermittelt den SequenceStopPrice der aktuell gestoppten Sequenz.
+ * Ermittelt den StopPrice der aktuell gestoppten Sequenz.
  *
  * @return double
  */
 double CalculateSequenceStopPrice() {
-   if (status != STATUS_STOPPED)          return(_NULL(catch("CalculateSequenceStopPrice(1)   cannot calculate stop price for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
-   if (grid.level == 0)                   return(_NULL(catch("CalculateSequenceStopPrice(2)   cannot calculate stop price for sequence at level "+ grid.level, ERR_RUNTIME_ERROR)));
+   if (status != STATUS_STOPPED)    return(_NULL(catch("CalculateSequenceStopPrice(1)   cannot calculate stop price for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (grid.level == 0)             return(_NULL(catch("CalculateSequenceStopPrice(2)   cannot calculate stop price for sequence at level "+ grid.level, ERR_RUNTIME_ERROR)));
 
    double stopPrice;
    int n=grid.level, size=ArraySize(orders.ticket);
 
    for (int i=size-1; n != 0; i--) {
-      if (orders.level[i] != n)           return(_NULL(catch("CalculateSequenceStopPrice(3)   #"+ orders.ticket[i] +" (level="+ orders.level[i] +") doesn't match the expected level "+ n, ERR_RUNTIME_ERROR)));
-      if (orders.type[i] == OP_UNDEFINED) return(_NULL(catch("CalculateSequenceStopPrice(4)   #"+ orders.ticket[i] +" ("+ OperationTypeDescription(orders.type[i]) +") is not a trade position", ERR_RUNTIME_ERROR)));
-      if (orders.closeTime[i] == 0)       return(_NULL(catch("CalculateSequenceStopPrice(5)   #"+ orders.ticket[i] +" is not a closed position", ERR_RUNTIME_ERROR)));
-      if (orders.closedByStop[i])         return(_NULL(catch("CalculateSequenceStopPrice(6)   #"+ orders.ticket[i] +" is closed by stoploss", ERR_RUNTIME_ERROR)));
+      if (orders.closeTime[i] == 0) return(_NULL(catch("CalculateSequenceStopPrice(3)   #"+ orders.ticket[i] +" is not closed", ERR_RUNTIME_ERROR)));
+      if (orders.type[i] == OP_UNDEFINED)                            // gestrichene Orders ignorieren
+         continue;
+      if (orders.closedByStop[i])                                    // ausgestoppte Positionen ignorieren
+         continue;
+      if (orders.level[i] != n)     return(_NULL(catch("CalculateSequenceStopPrice(4)   #"+ orders.ticket[i] +" (level="+ orders.level[i] +") doesn't match the expected level "+ n, ERR_RUNTIME_ERROR)));
 
       stopPrice += orders.closePrice[i];
 

@@ -16,22 +16,28 @@ int onDeinitUndefined() {
 
 
 /**
- * - Chart geschlossen                                   -oder-
- * - Template wird neu geladen                           -oder-
- * - Terminal-Shutdown                                   -oder-
- * - im Tester nach vorzeitigem Ende (per Stop-Button)
+ * - Chart geschlossen                       -oder-
+ * - Template wird neu geladen               -oder-
+ * - Terminal-Shutdown                       -oder-
+ * - im Tester nach gewaltsamen Beenden der start()-Funktion (Stop-Button oder Chart ->Close)
  *
  * @return int - Fehlerstatus
  */
 int onDeinitChartClose() {
+   // (1) Testing
    if (IsTesting()) {
-      if (status==STATUS_WAITING || status==STATUS_PROGRESSING)      // TODO: !!! statt StopSequence() Statusfile löschen und Titelzeile des Testers zurücksetzen
-         if (StopSequence())                                         // ruft intern UpdateStatus() und SaveStatus() auf
-            ShowStatus();
+      status = STATUS_DISABLED;                                      // Vorsicht: der EA-Status ist undefined
+
+      // Statusfile löschen
+      FileDelete("presets\\"+ StringToLower(StdSymbol()) +".SR."+ sequenceId +".set");
+      GetLastError();
+
+      // Titelzeile des Testers kann nicht zurückgesetzt werden, SendMessage() führt in deinit() zu Deadlock
       return(last_error);
    }
 
-   // der Status kann sich seit dem letzten Tick geändert haben
+
+   // (2) Nicht Testing:  Der Status kann sich seit dem letzten Tick geändert haben
    if (status==STATUS_WAITING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
       UpdateStatus();
       SaveStatus();
