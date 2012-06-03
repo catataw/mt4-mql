@@ -83,7 +83,7 @@ int onInitChartClose() {
    // (3) zum Schluﬂ neue Sequenz anlegen.
    if (ValidateConfiguration(true)) {
       instanceStartTime  = TimeCurrent() - 1;                                          // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erl‰uterungen siehe dort).
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // Um Konflikte zu vermeiden, wird auch instanceStartTime 1 sec. in die Vergangenheit gesetzt.
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // Entsprechend wird auch instanceStartTime 1 sec. in die Vergangenheit gesetzt.
       test               = IsTesting(); SS.Test();
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
@@ -148,7 +148,7 @@ int onInitParameterChange() {
    if (status == STATUS_UNINITIALIZED) {
       // neue Sequenz anlegen
       instanceStartTime  = TimeCurrent() - 1;                                             // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erl‰uterungen siehe dort).
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                        // Um Konflikte zu vermeiden, wird auch instanceStartTime 1 sec. in die Vergangenheit gesetzt.
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                        // Entsprechend wird auch instanceStartTime 1 sec. in die Vergangenheit gesetzt.
       test               = IsTesting(); SS.Test();
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();

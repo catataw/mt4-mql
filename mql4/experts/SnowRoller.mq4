@@ -17,7 +17,6 @@
  *  - beidseitig unidirektionales Grid implementieren                                                    *
  *
  *  - orders.stopLoss[] in open-Block verschieben
- *  - Schreibzugriffe auf Statusvariablen normalisieren
  *
  *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeprofit() erweitern
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
@@ -383,8 +382,8 @@ bool StopSequence() {
       if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, execution))
          return(_false(SetLastError(stdlib_PeekLastError())));
 
-      sequenceStopTimes [n] = 1 +             execution[EXEC_TIME ] +0.1;        // (datetime)(double) datetime   // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Konflikte
-      sequenceStopPrices[n] = NormalizeDouble(execution[EXEC_PRICE], Digits);                                     // bei der Sortierung der Breakeven-Events zu vermeiden.
+      sequenceStopTimes [n] = 1 +             execution[EXEC_TIME ] +0.1;        // (datetime)(double) datetime   // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Unein-
+      sequenceStopPrices[n] = NormalizeDouble(execution[EXEC_PRICE], Digits);                                     // deutigkeiten bei der Sortierung der Breakeven-Events zu vermeiden.
 
       for (i=0; i < sizeOfOpenPositions; i++) {
          int pos = SearchIntArray(orders.ticket, openPositions[i]);
@@ -411,7 +410,7 @@ bool StopSequence() {
       ordersChanged = true;
    }
    else {
-      sequenceStopTimes [n] = TimeCurrent() + 1;                                 // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Konflikte
+      sequenceStopTimes [n] = TimeCurrent() + 1;                                 // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Uneindeutigkeiten
       sequenceStopPrices[n] = (Bid + Ask)/2;                                     // bei der Sortierung der Breakeven-Events zu vermeiden.
       if      (grid.base < sequenceStopPrices[n]) sequenceStopPrices[n] = Bid;
       else if (grid.base > sequenceStopPrices[n]) sequenceStopPrices[n] = Ask;
@@ -452,6 +451,7 @@ bool StopSequence() {
    if (IsTesting())
       Tester.Pause();
 
+
    ArrayResize(pendingOrders, 0);
    ArrayResize(openPositions, 0);
    ArrayResize(execution,     0);
@@ -483,7 +483,7 @@ bool ResumeSequence() {
 
 
    // (1) neue Gridbasis und Sequenzstart setzen
-   datetime startTime  = TimeCurrent() - 1;                                      // Wir setzen sequenceStartTime 1 sec. in die Vergangenheit, um Konflikte
+   datetime startTime  = TimeCurrent() - 1;                                      // Wir setzen sequenceStartTime 1 sec. in die Vergangenheit, um Uneindeutigkeiten
    double   startPrice = (Bid + Ask)/2;                                          // bei der Sortierung der Breakeven-Events zu vermeiden.
    double   stopPrice  = sequenceStopPrices[ArraySize(sequenceStopPrices)-1];
    if      (grid.base < stopPrice) startPrice = Ask;
@@ -650,7 +650,7 @@ bool UpdateStatus() {
 
       if (sequenceStopTimes[n]==0 || stopTime < sequenceStopTimes[n]) {                         // TODO: letzte StopTime + 1 verwenden
          sequenceStopTimes [n] = stopTime;
-         sequenceStopPrices[n] = NormalizeDouble(stopPrice, Digits);                            // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Konflikte
+         sequenceStopPrices[n] = NormalizeDouble(stopPrice, Digits);                            // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Uneindeutigkeiten
       }                                                                                         // bei der Sortierung der Breakeven-Events zu vermeiden.
       RedrawStartStop();
    }
@@ -3758,7 +3758,7 @@ bool Sync.UpdateOrder(int i) {
 
    // (2) Sequenzdaten aktualisieren (falls Sequenz außerhalb geschlossen wird)     // TODO: StopTime korrigieren (+ 1)
    if (isClosed && !orders.closedByStop[i]) {
-      int n = ArraySize(sequenceStartTimes) - 1;                                    // Wir setzen sequenceStartTime 1 sec. in die Vergangenheit, um Konflikte
+      int n = ArraySize(sequenceStartTimes) - 1;                                    // Wir setzen sequenceStartTime 1 sec. in die Vergangenheit, um Uneindeutigkeiten
       if (sequenceStopTimes[n]==0 || orders.closeTime[i] < sequenceStopTimes[n]) {  // bei der Sortierung der Breakeven-Events zu vermeiden.
          sequenceStopTimes [n] = orders.closeTime [i];
          sequenceStopPrices[n] = orders.closePrice[i];                              // TODO: bei Schließen Stück-für-Stück muß avg(stopPrice) berechnet werden
