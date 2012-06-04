@@ -15,9 +15,11 @@
  *  - PendingOrders nicht per Tick trailen                                                               *
  *  - bidirektionales Grid entfernen                                                                     *
  *  - beidseitig unidirektionales Grid implementieren                                                    *
+ *  - ein Log je Instanz                                                                                 *
  *
  *  - orders.stopLoss[] in open-Block verschieben
  *
+ *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
  *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeprofit() erweitern
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei Stopouts
@@ -30,10 +32,11 @@
  *  - Heartbeat implementieren
  *  - STATUS_MONITORING implementieren
  *  - Client-Side-Limits implementieren
- *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
- *  - Alpari: StopOrder-Slippage EUR/USD bis zu 3.9 pip, GBP/AUD bis zu 6 pip, GBP/JPY bis zu 21.4 pip
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *  - Build 419 silently crashes
+ *
+ *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
+ *  - Alpari: StopOrder-Slippage EUR/USD bis zu 3.9 pip, GBP/AUD bis zu 6 pip, GBP/JPY bis zu 21.4 pip
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
@@ -248,7 +251,7 @@ int onChartCommand(string commands[]) {
    }
    else if (cmd == "stop") {
       switch (status) {
-         case STATUS_WAITING:
+         case STATUS_WAITING    :
          case STATUS_PROGRESSING:
             if (UpdateStatus())
                StopSequence();
@@ -256,8 +259,17 @@ int onChartCommand(string commands[]) {
       }
       return(last_error);
    }
+   else if (cmd == "orderdisplay") {
+      return(SwitchOrderDisplayMode());
+   }
 
-   return(catch("onChartCommand(2)   unknow command = \""+ cmd +"\"", ERR_INVALID_FUNCTION_PARAMVALUE));
+
+   // Fehler anzeigen und zurücksetzen, damit ein unbekanntes Command nicht den EA deaktivieren kann
+   int error = last_error;
+   catch("onChartCommand(2)   unknow command = \""+ cmd +"\"", ERR_INVALID_COMMAND);
+   SetLastError(error);
+
+   return(NO_ERROR);
 }
 
 
@@ -2657,7 +2669,6 @@ bool ValidateConfiguration(bool interactive) {
 
 
    // (7) OrderDisplayMode
-   string modes[] = {"None", "Stops", "Pyramid", "All"};
    switch (StringGetChar(StringToUpper(StringTrim(OrderDisplayMode) +"N"), 0)) {
       case 'N': orderDisplayMode = DM_NONE;    break;                   // default
       case 'S': orderDisplayMode = DM_STOPS;   break;
@@ -2665,7 +2676,7 @@ bool ValidateConfiguration(bool interactive) {
       case 'A': orderDisplayMode = DM_ALL;     break;
       default:                                     return(_false(HandleConfigError("ValidateConfiguration(41)", "Invalid parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", interactive)));
    }
-   OrderDisplayMode = modes[orderDisplayMode];
+   OrderDisplayMode = orderDisplayModes[orderDisplayMode];
 
 
    // (8) Breakeven.Color
@@ -2685,13 +2696,12 @@ bool ValidateConfiguration(bool interactive) {
    ArrayResize(directions, 0);
    ArrayResize(exprs,      0);
    ArrayResize(elems,      0);
-   ArrayResize(modes,      0);
    return(IsNoError(catch("ValidateConfiguration(44)")));
 }
 
 
 /**
- * "Exception-Handler" für ungültige Input-Parameter. Je nach Laufzeitumgebung wird der Fehler weitergereicht oder eine interaktive Korrektur angeboten.
+ * "Exception-Handler" für ungültige Input-Parameter. Je nach Laufzeitumgebung wird der Fehler weitergereicht oder zur Korrektur aufgefordert.
  *
  * @param  string location  - Ort, an dem der Fehler auftrat
  * @param  string msg       - Fehlermeldung
@@ -4029,13 +4039,130 @@ void RedrawOrders() {
       pendingOrder   = orders.type[i] == OP_UNDEFINED;
       closedPosition = !pendingOrder && orders.closeTime[i]!=0;
 
-      if     (pendingOrder)                         ChartMarker.OrderSent(i);
+      if    (pendingOrder)                          ChartMarker.OrderSent(i);
       else /*(openPosition || closedPosition)*/ {                                   // openPosition ist Folge einer
          if (orders.pendingType[i] != OP_UNDEFINED) ChartMarker.OrderFilled(i);     // ...ausgeführten Pending-
          else                                       ChartMarker.OrderSent(i);       // ...oder Market-Order
          if (closedPosition)                        ChartMarker.PositionClosed(i);
       }
    }
+}
+
+
+/**
+ * Wechselt den Modus der Orderanzeige.
+ *
+ * @return int - Fehlerstatus
+ */
+int SwitchOrderDisplayMode() {
+   int pendings   = CountPendingOrders();
+   int open       = CountOpenPositions();
+   int stoppedOut = CountStoppedOutPositions();
+   int closed     = CountClosedPositions();
+
+
+   // Mode wechseln, Modes ohne entsprechende Orders überspringen
+   int oldMode      = orderDisplayMode;
+   int size         = ArraySize(orderDisplayModes);
+   orderDisplayMode = (orderDisplayMode+1) % size;
+
+   while (orderDisplayMode != oldMode) {                             // #define DM_NONE         - keine Anzeige -
+      if (orderDisplayMode == DM_NONE) {                             // #define DM_STOPS        Pending,       StoppedOut
+         break;                                                      // #define DM_PYRAMID      Pending, Open,             Closed
+      }                                                              // #define DM_ALL          Pending, Open, StoppedOut, Closed
+      else if (orderDisplayMode == DM_STOPS) {
+         if (pendings+stoppedOut > 0)
+            break;
+      }
+      else if (orderDisplayMode == DM_PYRAMID) {
+         if (pendings+open+closed > 0)
+            if (open+stoppedOut+closed > 0)                          // ansonsten ist Anzeige identisch zu vorherigem Mode
+               break;
+      }
+      else if (orderDisplayMode == DM_ALL) {
+         if (pendings+open+stoppedOut+closed > 0)
+            if (stoppedOut > 0)                                      // ansonsten ist Anzeige identisch zu vorherigem Mode
+               break;
+      }
+      orderDisplayMode = (orderDisplayMode+1) % size;
+   }
+
+
+   // Anzeige aktualisieren
+   if (orderDisplayMode != oldMode) {
+      OrderDisplayMode = orderDisplayModes[orderDisplayMode];
+      RedrawOrders();
+   }
+   else {
+      // nothing to change, Anzeige bleibt unverändert
+      PlaySound("Windows XP-Batterie niedrig.wav");
+   }
+
+   return(catch("SwitchOrderDisplayMode()"));
+}
+
+
+/**
+ * Gibt die Anzahl der Pending-Orders der Sequenz zurück.
+ *
+ * @return int
+ */
+int CountPendingOrders() {
+   int count, size=ArraySize(orders.ticket);
+
+   for (int i=0; i < size; i++) {
+      if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]==0)
+         count++;
+   }
+   return(count);
+}
+
+
+/**
+ * Gibt die Anzahl der offenen Positionen der Sequenz zurück.
+ *
+ * @return int
+ */
+int CountOpenPositions() {
+   int count, size=ArraySize(orders.ticket);
+
+   for (int i=0; i < size; i++) {
+      if (orders.type[i]!=OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]==0)
+         count++;
+   }
+   return(count);
+}
+
+
+/**
+ * Gibt die Anzahl der ausgestoppten Positionen der Sequenz zurück.
+ *
+ * @return int
+ */
+int CountStoppedOutPositions() {
+   int count, size=ArraySize(orders.ticket);
+
+   for (int i=0; i < size; i++) {
+      if (orders.closedByStop[i])
+         count++;
+   }
+   return(count);
+}
+
+
+/**
+ * Gibt die Anzahl der durch StopSequence() geschlossenen Positionen der Sequenz zurück.
+ *
+ * @return int
+ */
+int CountClosedPositions() {
+   int count, size=ArraySize(orders.ticket);
+
+   for (int i=0; i < size; i++) {
+      if (orders.type[i]!=OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]!=0) /*&&*/ if (!orders.closedByStop[i])
+         count++;
+   }
+   return(count);
 }
 
 

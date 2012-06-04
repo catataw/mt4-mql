@@ -21,35 +21,37 @@ int onStart() {
    int  status[], sizeOfIds;
 
 
-   // (1) aktive Sequenzen ermitteln
-   if (GetActiveSequences(ids, status)) {
+   // (1) Sequenzen im aktuellen Chart ermitteln
+   if (FindChartSequences(ids, status)) {
       sizeOfIds = ArraySize(ids);
 
+
+      // (2) f¸r Start-Command unzutreffende Sequenzen herausfiltern
       for (int i=sizeOfIds-1; i >= 0; i--) {
          switch (status[i]) {
-            case STATUS_WAITING:
-            case STATUS_STOPPED:
-               if (StringGetChar(ids[i], 0)!='T' || ScriptIsTesting())  // solange es keine Testsequenz auﬂerhalb des Testers ist
-                  break;
-            default:
-               ArraySpliceStrings(ids, i, 1);                           // nicht (wieder) zu startende Sequenzen entfernen
+            case STATUS_WAITING:                                           // STATUS_UNINITIALIZED:   // filtern
+            case STATUS_STOPPED:                                           // STATUS_WAITING      :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
+               if (StringGetChar(ids[i], 0)!='T' || ScriptIsTesting())     // STATUS_PROGRESSING  :   // filtern
+                  continue;                                                // STATUS_STOPPING     :   // filtern
+            default:                                                       // STATUS_STOPPED      :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
+               ArraySpliceStrings(ids, i, 1);                              // STATUS_DISABLED     :   // filtern
                ArraySpliceInts(status, i, 1);
                sizeOfIds--;
          }
       }
 
 
-      // (2) Best‰tigung einholen
+      // (3) Best‰tigung einholen
       for (i=0; i < sizeOfIds; i++) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo() && !This.IsTesting(), "- Live Account -\n\n", "") +"Do you really want to "+ ifString(status[i]==STATUS_WAITING, "start", "resume") +" sequence "+ ids[i] +"?", __NAME__, MB_ICONQUESTION|ifInt(sizeOfIds==1, MB_OKCANCEL, MB_YESNOCANCEL));
+         int button = ForceMessageBox(ifString(!IsDemo() && !ScriptIsTesting(), "- Live Account -\n\n", "") +"Do you really want to "+ ifString(status[i]==STATUS_WAITING, "start", "resume") +" sequence "+ ids[i] +"?", __NAME__, MB_ICONQUESTION|ifInt(sizeOfIds==1, MB_OKCANCEL, MB_YESNOCANCEL));
          if (button == IDCANCEL)
             break;
          if (button == IDNO)
             continue;
 
 
-         // (3) Command setzen
+         // (4) Command setzen
          string label = StringConcatenate("SnowRoller.", ids[i], ".command");
          if (ObjectFind(label) != 0) {
             if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
@@ -59,7 +61,7 @@ int onStart() {
          ObjectSetText(label, "start", 1);
 
 
-         // (4) Tick senden
+         // (5) Tick senden
          Chart.SendTick(false);
          return(catch("onStart(2)"));                                   // regular exit
       }

@@ -20,14 +20,16 @@
 
 
 // OrderDisplay-Modes
-#define DM_NONE                  0                    // - keine Anzeige -
+#define DM_NONE                  0                    // - keine Anzeige -                   (default)
 #define DM_STOPS                 1                    // Pending,       ClosedByStop
-#define DM_PYRAMID               2                    // Pending, Open,               Closed (default)
+#define DM_PYRAMID               2                    // Pending, Open,               Closed
 #define DM_ALL                   3                    // Pending, Open, ClosedByStop, Closed
+
+string orderDisplayModes[] = {"None", "Stops", "Pyramid", "All"};
 
 
 // OrderDisplay-Farben
-#define CLR_PENDING        DeepSkyBlue
-#define CLR_LONG           Blue
-#define CLR_SHORT          Red
-#define CLR_CLOSE          Orange
+#define CLR_PENDING              DeepSkyBlue
+#define CLR_LONG                 Blue
+#define CLR_SHORT                Red
+#define CLR_CLOSE                Orange
