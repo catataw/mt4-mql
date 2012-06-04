@@ -312,14 +312,15 @@ bool StartSequence() {
    // Startvariablen und Status setzen
    sequenceStartEquity = AccountEquity()-AccountCredit();
 
-   datetime startTime  = TimeCurrent() - 1;                          // Wir setzen startTime 1 sec. in die Vergangenheit. Ansonsten wäre es möglich, daß
-   double   startPrice = NormalizeDouble((Bid + Ask)/2, Digits);     // startTime und OpenTime() des nächsten Tickets denselben Timestamp haben, wodurch eine
-   Grid.BaseReset(startTime, startPrice);                            // eindeutige Sortierung der Breakeven-Events für den Breakeven-Indikator unmöglich wäre.
+   datetime startTime  = TimeCurrent();
+   double   startPrice = NormalizeDouble((Bid + Ask)/2, Digits);
 
-   ArrayPushInt   (sequenceStartTimes,  startTime );
-   ArrayPushDouble(sequenceStartPrices, startPrice);
-   ArrayPushInt   (sequenceStopTimes,            0);                 // Größe von sequenceStarts und -Stops synchron halten
+   ArrayPushInt   (sequenceStartTimes, startTime-1);                 // Wir setzen startTime 1 sec. in die Vergangenheit. Ansonsten wäre es möglich, daß
+   ArrayPushDouble(sequenceStartPrices, startPrice);                 // startTime und OpenTime() des nächsten Tickets denselben Timestamp haben, wodurch eine
+   ArrayPushInt   (sequenceStopTimes,            0);                 // eindeutige Sortierung der Breakeven-Events für den Breakeven-Indikator unmöglich wäre.
    ArrayPushDouble(sequenceStopPrices,           0);
+
+   Grid.BaseReset(startTime, startPrice);
 
    status = STATUS_PROGRESSING;
 
@@ -495,17 +496,17 @@ bool ResumeSequence() {
 
 
    // (1) neuen Sequenzstart und Gridbasis setzen
-   datetime startTime     = TimeCurrent() - 1;                                   // Wir setzen sequenceStartTime 1 sec. in die Vergangenheit, um Uneindeutigkeiten
-   double   startPrice    = (Bid + Ask)/2;                                       // bei der Sortierung der Breakeven-Events zu vermeiden.
+   datetime startTime     = TimeCurrent();
+   double   startPrice    = (Bid + Ask)/2;
    double   lastStopPrice = sequenceStopPrices[ArraySize(sequenceStopPrices)-1];
    if      (grid.base < lastStopPrice) startPrice = Ask;
    else if (grid.base > lastStopPrice) startPrice = Bid;
-   startPrice = NormalizeDouble(startPrice, Digits);                             // TODO: Startdaten auf den tatsächlich erzielten Entry setzen
+   startPrice = NormalizeDouble(startPrice, Digits);
 
-   ArrayPushInt   (sequenceStartTimes,  startTime );
-   ArrayPushDouble(sequenceStartPrices, startPrice);
+   ArrayPushInt   (sequenceStartTimes, startTime-1);                             // Wir setzen sequenceStartTime 1 sec. in die Vergangenheit, um Uneindeutigkeiten
+   ArrayPushDouble(sequenceStartPrices, startPrice);                             // bei der Sortierung der Breakeven-Events zu vermeiden.
    ArrayPushInt   (sequenceStopTimes,            0);
-   ArrayPushDouble(sequenceStopPrices,           0);                             // Größe von sequenceStarts und -Stops synchron halten
+   ArrayPushDouble(sequenceStopPrices,           0);
 
    Grid.BaseChange(startTime, grid.base + startPrice - lastStopPrice);
 
@@ -516,7 +517,7 @@ bool ResumeSequence() {
    SS.StartStopConditions();
 
 
-   // (3) vorherige Positionen wieder in den Markt legen und tatsächlich erzielten Entry-Preis übernehmen
+   // (3) vorherige Positionen wieder in den Markt legen und tatsächlich erzielten Entry-Preis als sequenceStartPrice übernehmen
    status = STATUS_PROGRESSING;
    if (!UpdateOpenPositions(startPrice))
       return(false);
