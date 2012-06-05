@@ -3996,15 +3996,15 @@ void RedrawStartStop() {
          break;
       }
       else {
-         if (i == 0) time  = instanceStartTime;
-         else        time  = sequenceStartTimes [i];
-                     price = sequenceStartPrices[i];
+         time  = sequenceStartTimes [i];
+         price = sequenceStartPrices[i];
       }
+
       label = StringConcatenate("SR.", sequenceId, ".start.", i);
       if (ObjectFind(label) == 0)
          ObjectDelete(label);
       ObjectCreate(label, OBJ_ARROW, 0, time, price);
-      ObjectSet   (label, OBJPROP_ARROWCODE, SYMBOL_LEFTPRICE);      // Alternativen: kleiner Punkt (159)
+      ObjectSet   (label, OBJPROP_ARROWCODE, SYMBOL_LEFTPRICE);      // Alternative: kleiner Punkt (159)
       ObjectSet   (label, OBJPROP_BACK,      false           );
       ObjectSet   (label, OBJPROP_COLOR,     last.MarkerColor);
    }
@@ -4015,6 +4015,7 @@ void RedrawStartStop() {
       if (sequenceStopTimes[i] > 0) {
          time  = sequenceStopTimes [i];
          price = sequenceStopPrices[i];
+
          label = StringConcatenate("SR.", sequenceId, ".stop.", i);
          if (ObjectFind(label) == 0)
             ObjectDelete(label);
