@@ -22,7 +22,7 @@
  *  - orders.stopLoss[] in open-Block verschieben
  *
  *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
- *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeprofit() erweitern
+ *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeProfit() erweitern
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
@@ -57,7 +57,7 @@ extern               string GridDirection         = "Bidirectional* | Long | Sho
 extern               int    GridSize              = 20;
 extern               double LotSize               = 0.1;
 extern               string StartConditions       = "";                       // @limit(1.33) && @time(2012.03.12 12:00)
-extern               string StopConditions        = "@profit(20%)";           // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%) || @profit(10%E)
+extern               string StopConditions        = "@profit(20%)";           // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
 extern /*transient*/ string OrderDisplayMode      = "None";
 extern               string OrderDisplayMode.Help = "None* | Stopped | Pending | Active | All";
 extern /*transient*/ color  Breakeven.Color       = DodgerBlue;
@@ -2593,13 +2593,12 @@ bool ValidateConfiguration(bool interactive) {
    //debug("()   StartConditions = \""+ StartConditions +"\"");
 
 
-   // (6) StopConditions:  "@limit(1.33) || @time(12:00) || @profit(1234.00) || @profit(20%) || @profit(10%e)" OR-verknüpft
-   // ---------------------------------------------------------------------------------------------------------------------
+   // (6) StopConditions:  "@limit(1.33) || @time(12:00) || @profit(1234.00) || @profit(20%)" OR-verknüpft
+   // ----------------------------------------------------------------------------------------------------
    //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
    //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
    //  @profit(1234.00)
    //  @profit(20%)     oder  20%                                             // shortkey nicht implementiert
-   //  @profit(10%e)    oder  20%e           // noch nicht implementiert      // shortkey nicht implementiert
    if (parameterChange)
       if (StopConditions != last.StopConditions)
          if (status == STATUS_STOPPED)             return(_false(HandleConfigError("ValidateConfiguration(26)", "Cannot change StopConditions of "+ StatusDescription(status) +" sequence", interactive)));
