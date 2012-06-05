@@ -4,6 +4,12 @@
  *
  *  TODO:
  *  -----
+ *  - BE-Berechnung korrekt implementieren
+ *  - BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
+ *  - Wechsel des BE-Displaymodes per Chart-Command implementieren
+ *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
+ *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
+ *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                           *
  *  - automatisches Pause/Resume am Wochenende implementieren                                            *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                         *
@@ -13,7 +19,7 @@
  *  - StartSequence: bei @level(1) zurück auf @price(@level(0.5)) gehen (Stop 1 liegt ungünstig)         *
  *  - Änderungen der Gridbasis während Auszeit erkennen                                                  *
  *  - PendingOrders nicht per Tick trailen                                                               *
- *  - maxProfit/Loss muß analog zu PendingOrders regelmäßig in die Statusdatei geschrieben werden        *
+ *  - maxProfit/Loss muß analog zu PendingOrders regelmäßig gespeichert werden                           *
  *  - bidirektionales Grid entfernen                                                                     *
  *  - beidseitig unidirektionales Grid implementieren                                                    *
  *  - Sequenz-ID in Logmessages integrieren                                                              *
@@ -23,12 +29,9 @@
  *
  *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
  *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeProfit() erweitern
- *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Bug: Konkurrenz-Problem beim Zugriff auf Chart-Commands
- *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
- *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
  *  - Logging: alle Trade-Operationen und Trade-Request-Fehler, Slippage, Aufruf von MessageBoxen
  *  - Logging im Tester reduzieren
  *  - Upload der Statusdatei implementieren
