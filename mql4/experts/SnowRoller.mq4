@@ -13,9 +13,11 @@
  *  - StartSequence: bei @level(1) zurück auf @price(@level(0.5)) gehen (Stop 1 liegt ungünstig)         *
  *  - Änderungen der Gridbasis während Auszeit erkennen                                                  *
  *  - PendingOrders nicht per Tick trailen                                                               *
+ *  - maxProfit/Loss muß analog zu PendingOrders regelmäßig in die Statusdatei geschrieben werden        *
  *  - bidirektionales Grid entfernen                                                                     *
  *  - beidseitig unidirektionales Grid implementieren                                                    *
- *  - ein Log je Instanz                                                                                 *
+ *  - Sequenz-ID in Logmessages integrieren                                                              *
+ *  - ein Logfile je Instanz                                                                             *
  *
  *  - orders.stopLoss[] in open-Block verschieben
  *
@@ -24,6 +26,7 @@
  *  - Bug: BE-Anzeige ab erstem Trade, laufende Sequenzen bis zum aktuellen Moment
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
+ *  - Bug: Konkurrenz-Problem beim Zugriff auf Chart-Commands
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
  *  - Logging: alle Trade-Operationen und Trade-Request-Fehler, Slippage, Aufruf von MessageBoxen
@@ -56,7 +59,7 @@ extern               double LotSize               = 0.1;
 extern               string StartConditions       = "";                       // @limit(1.33) && @time(2012.03.12 12:00)
 extern               string StopConditions        = "@profit(20%)";           // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%) || @profit(10%E)
 extern /*transient*/ string OrderDisplayMode      = "None";
-extern               string OrderDisplayMode.Help = "None* | Stops | Pyramid | All";
+extern               string OrderDisplayMode.Help = "None* | Stopped | Pending | Active | All";
 extern /*transient*/ color  Breakeven.Color       = DodgerBlue;
 extern /*transient*/ int    Breakeven.Width       = 1;
 
@@ -76,7 +79,7 @@ int      last.Breakeven.Width;
 int      status = STATUS_UNINITIALIZED;
 
 int      sequenceId;
-bool     test = false;                                // ob diese Sequenz ein Test ist oder war (*nicht*, ob der Test gerade läuft)
+bool     test = false;                                // ob dies eine Testsequenz ist (im Tester oder im Online-Chart)
 
 datetime instanceStartTime;                           // Start des EA's
 double   instanceStartPrice;
@@ -4027,24 +4030,25 @@ void RedrawStartStop() {
 
 
 /**
- * Visualisiert die Orders entsprechend dem aktuellen OrderDisplay-Mode.
+ * Zeichnet die ChartMarker aller Orders neu.
  */
 void RedrawOrders() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   bool pendingOrder, closedPosition;
+   bool wasPending, isPending, closedPosition;
    int  size = ArraySize(orders.ticket);
 
    for (int i=0; i < size; i++) {
-      pendingOrder   = orders.type[i] == OP_UNDEFINED;
-      closedPosition = !pendingOrder && orders.closeTime[i]!=0;
+      wasPending     = orders.pendingType[i] != OP_UNDEFINED;
+      isPending      = orders.type[i] == OP_UNDEFINED;
+      closedPosition = !isPending && orders.closeTime[i]!=0;
 
-      if    (pendingOrder)                          ChartMarker.OrderSent(i);
-      else /*(openPosition || closedPosition)*/ {                                   // openPosition ist Folge einer
-         if (orders.pendingType[i] != OP_UNDEFINED) ChartMarker.OrderFilled(i);     // ...ausgeführten Pending-
-         else                                       ChartMarker.OrderSent(i);       // ...oder Market-Order
-         if (closedPosition)                        ChartMarker.PositionClosed(i);
+      if    (isPending)                         ChartMarker.OrderSent(i);
+      else /*openPosition || closedPosition*/ {                                     // openPosition ist Folge einer
+         if (wasPending)                        ChartMarker.OrderFilled(i);         // ...ausgeführten Pending-Order
+         else                                   ChartMarker.OrderSent(i);           // ...oder Market-Order
+         if (closedPosition)                    ChartMarker.PositionClosed(i);
       }
    }
 }
