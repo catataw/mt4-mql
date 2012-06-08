@@ -24,7 +24,7 @@ int onDeinitUndefined() {
  * @return int - Fehlerstatus
  */
 int onDeinitChartClose() {
-   // (1) Testing
+   // (1) Tester
    if (IsTesting()) {
       status = STATUS_DISABLED;                                      // Vorsicht: der EA-Status ist undefined
 
@@ -37,8 +37,8 @@ int onDeinitChartClose() {
    }
 
 
-   // (2) Nicht Testing:  Der Status kann sich seit dem letzten Tick geändert haben
-   if (status==STATUS_WAITING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
+   // (2) Nicht im Tester:  Der Status kann sich seit dem letzten Tick geändert haben
+   if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
       UpdateStatus();
       SaveStatus();
    }
@@ -54,7 +54,7 @@ int onDeinitChartClose() {
  */
 int onDeinitRemove() {
    // der Status kann sich seit dem letzten Tick geändert haben
-   if (status==STATUS_WAITING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
+   if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
       UpdateStatus();
       SaveStatus();
    }

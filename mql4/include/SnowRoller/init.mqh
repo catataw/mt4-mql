@@ -42,7 +42,7 @@ int onInitChartClose() {
       return(last_error);
    }
    else if (StringLen(StringTrim(Sequence.ID)) > 0) {
-      return(last_error);                                            // Falscheingabe
+      return(last_error);                                                              // Falscheingabe
    }
 
 
@@ -59,8 +59,8 @@ int onInitChartClose() {
             sequenceId  = ids[i];
             Sequence.ID = sequenceId; SS.SequenceId();
             status      = STATUS_WAITING;
-            if (RestoreStatus())                                     // TODO: erkennen, ob einer der anderen Parameter von Hand geändert wurde und
-               if (ValidateConfiguration(false))                     //       sofort nach neuer Sequenz mit Hinweis auf die laufenden fragen
+            if (RestoreStatus())                                                       // TODO: erkennen, ob einer der anderen Parameter von Hand geändert wurde und
+               if (ValidateConfiguration(false))                                       //       sofort nach neuer Sequenz mit Hinweis auf die laufenden fragen
                   SynchronizeStatus();
             return(last_error);
          }
@@ -82,8 +82,8 @@ int onInitChartClose() {
 
    // (3) zum Schluß neue Sequenz anlegen.
    if (ValidateConfiguration(true)) {
-      instanceStartTime  = TimeCurrent() - 1;                                          // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erläuterungen siehe dort).
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // Entsprechend wird auch instanceStartTime 1 sec. in die Vergangenheit gesetzt.
+      instanceStartTime  = TimeCurrent() - 1;                                          // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erläuterungen siehe dort),
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // entsprechend wird auch instanceStartTime zurückgesetzt.
       test               = IsTesting(); SS.Test();
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
@@ -105,7 +105,7 @@ int onInitChartClose() {
 int onInitRemove() {
    if (__STATUS__CANCELLED)
       return(NO_ERROR);
-   return(onInitChartClose());                                       // Funktionalität entspricht onInitChartClose()
+   return(onInitChartClose());                                                         // Funktionalität entspricht onInitChartClose()
 }
 
 
@@ -138,7 +138,7 @@ int onInitParameterChange() {
    if (__STATUS__CANCELLED)
       return(NO_ERROR);
 
-   SaveConfiguration();
+   StoreConfiguration();
 
    if (!ValidateConfiguration(true)) {
       RestoreConfiguration();
@@ -147,14 +147,14 @@ int onInitParameterChange() {
 
    if (status == STATUS_UNINITIALIZED) {
       // neue Sequenz anlegen
-      instanceStartTime  = TimeCurrent() - 1;                                             // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erläuterungen siehe dort).
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                        // Entsprechend wird auch instanceStartTime 1 sec. in die Vergangenheit gesetzt.
+      instanceStartTime  = TimeCurrent() - 1;                                          // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erläuterungen siehe dort),
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // entsprechend wird auch instanceStartTime zurückgesetzt.
       test               = IsTesting(); SS.Test();
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
 
-      if (start.conditions)                                                               // Ohne StartConditions erfolgt sofortiger Sequenzstart, der Status automatisch speichert.
+      if (start.conditions)                                                            // Ohne StartConditions erfolgt sofortiger Sequenzstart, der Status automatisch speichert.
          SaveStatus();
       RedrawStartStop();
    }
@@ -216,9 +216,9 @@ int afterInit() {
 int CreateStatusBox() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
-                                                                     // Chart-Background: C'248,248,248'
-   color color.Background = C'248,248,248';                          // hellblau:         C'136,225,223'
-                                                                     // Standard-Dialog:  C'212,208,200'
+
+   color color.Background = C'248,248,248';                          // entspricht Chart-Background
+
    // (1)
    string label = StringConcatenate(__NAME__, ".statusbox.1");
    if (ObjectFind(label) != 0) {

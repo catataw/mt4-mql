@@ -514,6 +514,11 @@ bool StopSequence() {
    RedrawStartStop();
 
 
+   // (6) ggf. Tester stoppen
+   if (IsTesting())
+      Tester.Pause();
+
+   /*
    debug("StopSequence()      level="      + grid.level
                           +"  stops="      + grid.stops
                           +"  stopsPL="    + DoubleToStr(grid.stopsPL,     2)
@@ -522,12 +527,7 @@ bool StopSequence() {
                           +"  totalPL="    + DoubleToStr(grid.totalPL,     2)
                           +"  activeRisk=" + DoubleToStr(grid.activeRisk,  2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
-
-
-   // (6) ggf. Tester stoppen
-   if (IsTesting())
-      Tester.Pause();
-
+   */
    return(IsNoError(catch("StopSequence(5)")));
 }
 
@@ -629,7 +629,7 @@ bool ResumeSequence() {
    RedrawStartStop();
    Grid.CalculateBreakeven();
 
-
+   /*
    debug("ResumeSequence()    level="      + grid.level
                           +"  stops="      + grid.stops
                           +"  stopsPL="    + DoubleToStr(grid.stopsPL,     2)
@@ -638,7 +638,7 @@ bool ResumeSequence() {
                           +"  totalPL="    + DoubleToStr(grid.totalPL,     2)
                           +"  activeRisk=" + DoubleToStr(grid.activeRisk,  2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
-
+   */
    return(IsNoError(catch("ResumeSequence(3)")));
 }
 
@@ -3895,7 +3895,10 @@ bool SynchronizeStatus() {
    grid.valueAtRisk = NormalizeDouble(grid.valueAtRisk,                               2);
    SS.All();
 
+   RedrawStartStop();
+   RedrawOrders();
 
+   /*
    debug("SynchronizeStatus() level="      + grid.level
                           +"  stops="      + grid.stops
                           +"  stopsPL="    + DoubleToStr(grid.stopsPL,     2)
@@ -3904,10 +3907,7 @@ bool SynchronizeStatus() {
                           +"  totalPL="    + DoubleToStr(grid.totalPL,     2)
                           +"  activeRisk=" + DoubleToStr(grid.activeRisk,  2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
-
-   RedrawStartStop();
-   RedrawOrders();
-
+   */
    ArrayResize(openLevels, 0);
    ArrayResize(events,     0);
    return(IsNoError(catch("SynchronizeStatus(19)")));

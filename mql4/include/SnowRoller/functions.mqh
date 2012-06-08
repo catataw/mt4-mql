@@ -61,6 +61,7 @@ bool IsSequenceStatus(int value) {
    switch (value) {
       case STATUS_UNINITIALIZED: return(true);
       case STATUS_WAITING      : return(true);
+      case STATUS_STARTING     : return(true);
       case STATUS_PROGRESSING  : return(true);
       case STATUS_STOPPING     : return(true);
       case STATUS_STOPPED      : return(true);
