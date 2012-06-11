@@ -8,19 +8,22 @@
  *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
- *  - Wechsel des BE-Displaymodes per Chart-Command
+ *  - Wechsel der BE-Displaymodes per Chart-Command
  *
  *
  *  TODO:
  *  -----
+ *  - Anzeigewechsel der Sequenz-Starts/Stops per Chart-Command                                    *
  *  - Sounds abschaltbar machen                                                                    *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                     *
  *  - ResumeCondition implementieren                                                               *
- *  - automatisches Pause/Resume am Wochenende                                                     *
+ *  - automatisches Pause/Resume an Wochenenden                                                    *
  *  - Start/StopConditions vervollständigen                                                        *
  *  - StartCondition @level() implementieren                                                       *
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen              *
  *  - PendingOrders nicht per Tick trailen                                                         *
+ *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                   *
+ *  - Statusdateien müssen auch in presets-Unterordnern gefunden werden                            *
  *  - Equity-Charts generieren                                                                     *
  *  - beidseitig unidirektionales Grid implementieren                                              *
  *  - Laufzeitumgebung auf Server auslagern                                                        *
@@ -30,15 +33,15 @@
  *  - bidirektionales Grid entfernen
  *  - Sequenz-ID in Logmessages integrieren
  *  - ein Logfile je Instanz
- *  - Orderabbruch bei IsStopped()=TRUE abfangen
  *
  *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
  *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeProfit() erweitern
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Bug: Konkurrenz-Problem beim Zugriff auf Chart-Commands
- *  - Logging: alle Trade-Operationen und Trade-Request-Fehler, Slippage, Aufruf von MessageBoxen
+ *  - Logging: alle Trade-Operationen und Traderequest-Fehler, Slippage, MessageBoxen
  *  - Logging im Tester reduzieren
+ *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
  *  - Upload der Statusdatei implementieren
  *  - Heartbeat implementieren
  *  - STATUS_MONITORING implementieren
