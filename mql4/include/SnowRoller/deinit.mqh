@@ -6,6 +6,9 @@
  */
 int onDeinitUndefined() {
    if (IsTesting()) {
+      if (__STATUS__CANCELLED)
+         return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
+
       if (status==STATUS_WAITING || status==STATUS_PROGRESSING)
          if (StopSequence())                                         // ruft intern UpdateStatus() und SaveStatus() auf
             ShowStatus();
@@ -26,7 +29,7 @@ int onDeinitUndefined() {
 int onDeinitChartClose() {
    // (1) Tester
    if (IsTesting()) {
-      status = STATUS_DISABLED;                                      // Vorsicht: der EA-Status ist undefined
+      __STATUS__CANCELLED = true;                                    // Vorsicht: der EA-Status ist undefined
 
       // Statusfile löschen
       FileDelete("presets\\"+ StringToLower(StdSymbol()) +".SR."+ sequenceId +".set");
@@ -37,8 +40,8 @@ int onDeinitChartClose() {
    }
 
 
-   // (2) Nicht im Tester:  Der Status kann sich seit dem letzten Tick geändert haben
-   if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
+   // (2) Nicht im Tester:  Der Status kann sich seit dem letzten Tick geändert haben.
+   if (!IsTest()) /*&&*/ if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
       UpdateStatus();
       SaveStatus();
    }
@@ -53,8 +56,8 @@ int onDeinitChartClose() {
  * @return int - Fehlerstatus
  */
 int onDeinitRemove() {
-   // der Status kann sich seit dem letzten Tick geändert haben
-   if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
+   // Der Status kann sich seit dem letzten Tick geändert haben.
+   if (!IsTest()) /*&&*/ if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
       UpdateStatus();
       SaveStatus();
    }
