@@ -3887,16 +3887,14 @@ bool SynchronizeStatus() {
       if (firstType != EV_SEQUENCE_START)    return(_false(catch("SynchronizeStatus(9)   illegal first break-even event = "+ BreakevenEventToStr(firstType) +" (time="+ (events[0][0]+0.1) +")", ERR_RUNTIME_ERROR)));
    }
 
-   int startTime = GetTickCount();
-
    for (i=0; i < sizeOfEvents; i++) {
       time      = events[i][0] +0.1;                                    // (datetime) double
       type      = events[i][1] +0.1;                                    //      (int) double
       gridBase  = events[i][2];
       iOrder    = events[i][3] + Sign(events[i][3]) * 0.1;              //      (int) double
       iOrderMax = Max(iOrderMax, iOrder);
-      nextTime  = ifInt(i < sizeOfEvents-1, events[i+1][0]+0.1, 0);
-      nextType  = ifInt(i < sizeOfEvents-1, events[i+1][1]+0.1, 0);
+      if (i < sizeOfEvents-1) { nextTime = events[i+1][0]+0.1; nextType = events[i+1][1]+0.1; }
+      else                    { nextTime = 0;                  nextType = 0;                  }
 
       // (3.1) zwischen den Breakeven-Events liegende BarOpen(M1)-Events simulieren
       if (breakevenVisible) {
@@ -3989,7 +3987,6 @@ bool SynchronizeStatus() {
       lastTime = time;
       lastType = type;
    }
-
 
    grid.stopsPL     = NormalizeDouble(grid.stopsPL,                                   2);
    grid.closedPL    = NormalizeDouble(grid.closedPL,                                  2);
