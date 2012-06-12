@@ -13,17 +13,16 @@
  *
  *  TODO:
  *  -----
- *  - Anzeigewechsel der Sequenz-Starts/Stops per Chart-Command                                    *
+ *  - Statusdateien müssen auch in presets-Unterordnern gefunden werden                            *
  *  - Sounds abschaltbar machen                                                                    *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                     *
+ *  - Start/StopConditions vervollständigen                                                        *
  *  - ResumeCondition implementieren                                                               *
  *  - automatisches Pause/Resume an Wochenenden                                                    *
- *  - Start/StopConditions vervollständigen                                                        *
  *  - StartCondition @level() implementieren                                                       *
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen              *
  *  - PendingOrders nicht per Tick trailen                                                         *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                   *
- *  - Statusdateien müssen auch in presets-Unterordnern gefunden werden                            *
  *  - Equity-Charts generieren                                                                     *
  *  - beidseitig unidirektionales Grid implementieren                                              *
  *  - Laufzeitumgebung auf Server auslagern                                                        *
@@ -48,8 +47,8 @@
  *  - Client-Side-Limits implementieren
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *  - orders.stopLoss[] in open-Block verschieben
- *  - Build 419 silently crashes
  *
+ *  - Build 419 silently crashes
  *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
  *  - Alpari: StopOrder-Slippage EUR/USD bis 3.9 pip, GBP/AUD bis 6 pip, GBP/JPY bis 21.4 pip
  *
@@ -98,31 +97,42 @@ int __DEINIT_FLAGS__[];
 #include <SnowRoller/define.mqh>
 
 
-//////////////////////////////////////////////////////////////// externe Parameter ////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////// Konfiguration //////////////////////////////////////////////////////////////////
 
-extern /*transient*/ string Sequence.ID           = "";
-extern               string GridDirection         = "Bidirectional* | Long | Short | Long+Short";
-extern               int    GridSize              = 20;
-extern               double LotSize               = 0.1;
-extern               string StartConditions       = "";                       // @limit(1.33) && @time(2012.03.12 12:00)
-extern               string StopConditions        = "@profit(20%)";           // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
-extern /*transient*/ string OrderDisplayMode      = "None";
-extern               string OrderDisplayMode.Help = "None* | Stopped | Active | All";
-extern /*transient*/ color  Breakeven.Color       = DodgerBlue;
-extern /*transient*/ int    Breakeven.Width       = 1;
+extern /*sticky*/ string Sequence.ID           = "";
+extern            string GridDirection         = "Bidirectional* | Long | Short | Long+Short";
+extern            int    GridSize              = 20;
+extern            double LotSize               = 0.1;
+extern            string StartConditions       = "";                       // @limit(1.33) && @time(2012.03.12 12:00)
+extern            string StopConditions        = "@profit(20%)";           // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
+extern /*sticky*/ string OrderDisplayMode      = "None";
+extern            string OrderDisplayMode.Help = "None* | Stopped | Active | All";
+extern /*sticky*/ color  Breakeven.Color       = DodgerBlue;
+extern /*sticky*/ int    Breakeven.Width       = 1;
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/*sticky*/ int  startStopDisplayMode           = SDM_PRICE;
+           int  orderDisplayMode               = ODM_NONE;
+           int  breakevenDisplayMode           = BDM_NONE;
+
+           bool ignoreOrphans.pendingOrders    = false;
+           bool ignoreOrphans.openPositions    = false;
+           bool ignoreOrphans.closedPositions  = false;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-string   last.Sequence.ID      = "";                  // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
-string   last.GridDirection    = "";                  // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
+string   last.Sequence.ID        = "";                // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
+string   last.GridDirection      = "";                // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
 int      last.GridSize;                               // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
 double   last.LotSize;                                // in init() daraus restauriert.
-string   last.StartConditions  = "";
-string   last.StopConditions   = "";
-string   last.OrderDisplayMode = "";
+string   last.StartConditions    = "";
+string   last.StopConditions     = "";
+string   last.OrderDisplayMode   = "";
 color    last.Breakeven.Color;
 int      last.Breakeven.Width;
+int      last.startStopDisplayMode;
 
 int      status = STATUS_UNINITIALIZED;
 
@@ -220,12 +230,6 @@ string   str.grid.maxDrawdown  = "0.00";
 string   str.grid.valueAtRisk  = "0.00";
 string   str.grid.plStatistics = "";
 
-int      orderDisplayMode;
-
-bool     ignoreOrphanes.pendingOrders   = false;
-bool     ignoreOrphanes.openPositions   = false;
-bool     ignoreOrphanes.closedPositions = false;
-
 bool     firstTick                      = true;
 bool     firstTickConfirmed             = false;
 
@@ -317,15 +321,16 @@ int onChartCommand(string commands[]) {
       }
       return(last_error);
    }
+   else if (cmd == "startstopdisplay") {
+      return(SwitchStartStopDisplayMode());
+   }
    else if (cmd == "orderdisplay") {
       return(SwitchOrderDisplayMode());
    }
 
 
-   // unbekannte Commands anzeigen, aber keinen Fehler setzen (falsches Command darf den EA nicht deaktivieren)
-   int error = last_error;
-   catch("onChartCommand(2)   unknow command = \""+ cmd +"\"", ERR_INVALID_COMMAND);
-   SetLastError(error);
+   // unbekannte Commands anzeigen, aber keinen Fehler setzen (Command darf den EA nicht deaktivieren)
+   warn("onChartCommand(2)   unknown command \""+ cmd +"\"");
 
    return(NO_ERROR);
 }
@@ -1657,12 +1662,12 @@ int SubmitStopOrder(int type, int level, double& execution[]) {
    color    markerColor = CLR_PENDING;
 
    /*
-   #define DM_NONE      0     // - keine Anzeige -
-   #define DM_STOPS     1     // Pending,       ClosedBySL
-   #define DM_PYRAMID   2     // Pending, Open,             Closed
-   #define DM_ALL       3     // Pending, Open, ClosedBySL, Closed
+   #define ODM_NONE     0     // - keine Anzeige -
+   #define ODM_STOPS    1     // Pending,       ClosedBySL
+   #define ODM_PYRAMID  2     // Pending, Open,             Closed
+   #define ODM_ALL      3     // Pending, Open, ClosedBySL, Closed
    */
-   if (orderDisplayMode == DM_NONE)
+   if (orderDisplayMode == ODM_NONE)
       markerColor = CLR_NONE;
 
    if (IsLastError())
@@ -1714,12 +1719,12 @@ int SubmitMarketOrder(int type, int level, double& execution[]) {
    color    markerColor = ifInt(level > 0, CLR_LONG, CLR_SHORT);
 
    /*
-   #define DM_NONE      0     // - keine Anzeige -
-   #define DM_STOPS     1     // Pending,       ClosedBySL
-   #define DM_PYRAMID   2     // Pending, Open,             Closed
-   #define DM_ALL       3     // Pending, Open, ClosedBySL, Closed
+   #define ODM_NONE     0     // - keine Anzeige -
+   #define ODM_STOPS    1     // Pending,       ClosedBySL
+   #define ODM_PYRAMID  2     // Pending, Open,             Closed
+   #define ODM_ALL      3     // Pending, Open, ClosedBySL, Closed
    */
-   if (orderDisplayMode == DM_NONE)
+   if (orderDisplayMode == ODM_NONE)
       markerColor = CLR_NONE;
 
    if (IsLastError())
@@ -2363,6 +2368,13 @@ int StoreTransientStatus() {
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
    ObjectSetText(label, ifString(sequenceId==0, "0", Sequence.ID), 1);        // 0 = STATUS_UNINITIALIZED
 
+   label = StringConcatenate(__NAME__, ".transient.startStopDisplayMode");
+   if (ObjectFind(label) == 0)
+      ObjectDelete(label);
+   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
+   ObjectSetText(label, StringConcatenate("", startStopDisplayMode), 1);
+
    label = StringConcatenate(__NAME__, ".transient.OrderDisplayMode");
    if (ObjectFind(label) == 0)
       ObjectDelete(label);
@@ -2435,12 +2447,22 @@ bool RestoreTransientStatus() {
          idFound     = true;
       }
 
+      label = StringConcatenate(__NAME__, ".transient.startStopDisplayMode");
+      if (ObjectFind(label) == 0) {
+         strValue = StringTrim(ObjectDescription(label));
+         if (!StringIsInteger(strValue))
+            return(_false(catch("RestoreTransientStatus(3)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+         iValue = StrToInteger(strValue);
+         if (!IntInArray(startStopDisplayModes, iValue))
+            return(_false(catch("RestoreTransientStatus(4)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+         startStopDisplayMode = iValue;
+      }
+
       label = StringConcatenate(__NAME__, ".transient.OrderDisplayMode");
       if (ObjectFind(label) == 0) {
-         string modes[] = {"None", "Stops", "Pyramid", "All"};
          strValue = StringTrim(ObjectDescription(label));
-         if (!StringInArray(modes, strValue))
-            return(_false(catch("RestoreTransientStatus(3)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+         if (!StringInArray(orderDisplayModes, strValue))
+            return(_false(catch("RestoreTransientStatus(5)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          OrderDisplayMode = strValue;
       }
 
@@ -2448,10 +2470,10 @@ bool RestoreTransientStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
-            return(_false(catch("RestoreTransientStatus(4)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(6)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
          if (iValue < CLR_NONE || iValue > C'255,255,255')
-            return(_false(catch("RestoreTransientStatus(5)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\" (0x"+ IntToHexStr(iValue) +")", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(7)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\" (0x"+ IntToHexStr(iValue) +")", ERR_INVALID_CONFIG_PARAMVALUE)));
          Breakeven.Color = iValue;
       }
 
@@ -2459,10 +2481,10 @@ bool RestoreTransientStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
-            return(_false(catch("RestoreTransientStatus(6)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(8)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
          if (iValue < 1 || iValue > 5)
-            return(_false(catch("RestoreTransientStatus(7)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(9)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          Breakeven.Width = iValue;
       }
 
@@ -2470,7 +2492,7 @@ bool RestoreTransientStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsDigit(strValue))
-            return(_false(catch("RestoreTransientStatus(8)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(10)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          __STATUS__CANCELLED = StrToInteger(strValue) != 0;
       }
 
@@ -2478,12 +2500,12 @@ bool RestoreTransientStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsDigit(strValue))
-            return(_false(catch("RestoreTransientStatus(9)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(11)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          __STATUS__INVALID_INPUT = StrToInteger(strValue) != 0;
       }
    }
 
-   return(idFound && IsNoError(catch("RestoreTransientStatus(10)")));
+   return(idFound && IsNoError(catch("RestoreTransientStatus(12)")));
 }
 
 
@@ -2809,10 +2831,10 @@ bool ValidateConfiguration(bool interactive) {
 
    // (7) OrderDisplayMode
    switch (StringGetChar(StringToUpper(StringTrim(OrderDisplayMode) +"N"), 0)) {
-      case 'N': orderDisplayMode = DM_NONE;    break;                   // default
-      case 'S': orderDisplayMode = DM_STOPS;   break;
-      case 'P': orderDisplayMode = DM_PYRAMID; break;
-      case 'A': orderDisplayMode = DM_ALL;     break;
+      case 'N': orderDisplayMode = ODM_NONE;    break;                  // default
+      case 'S': orderDisplayMode = ODM_STOPS;   break;
+      case 'P': orderDisplayMode = ODM_PYRAMID; break;
+      case 'A': orderDisplayMode = ODM_ALL;     break;
       default:                                     return(_false(HandleConfigError("ValidateConfiguration(41)", "Invalid parameter OrderDisplayMode = \""+ OrderDisplayMode +"\"", interactive)));
    }
    OrderDisplayMode = orderDisplayModes[orderDisplayMode];
@@ -3744,7 +3766,7 @@ bool SynchronizeStatus() {
       //ArraySort(orphanedPendingOrders);
       //ForceSound("notify.wav");
       //int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned pending order"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedPendingOrders, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", __NAME__ +" - SynchronizeStatus()", MB_ICONWARNING|MB_OKCANCEL);
-      //ignoreOrphanes.pendingOrders = (button == IDOK);
+      //ignoreOrphans.pendingOrders = (button == IDOK);
       //if (button != IDOK) {
       //   __STATUS__CANCELLED = true;
       //   return(_false(catch("SynchronizeStatus(3)")));
@@ -3756,7 +3778,7 @@ bool SynchronizeStatus() {
       //ArraySort(orphanedOpenPositions);
       //ForceSound("notify.wav");
       //button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned open position"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedPendingOrders, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", __NAME__ +" - SynchronizeStatus()", MB_ICONWARNING|MB_OKCANCEL);
-      //ignoreOrphanes.openPositions = (button == IDOK);
+      //ignoreOrphans.openPositions = (button == IDOK);
       //if (button != IDOK) {
       //   __STATUS__CANCELLED = true;
       //   return(_false(catch("SynchronizeStatus(5)")));
@@ -3767,7 +3789,7 @@ bool SynchronizeStatus() {
       ArraySort(orphanedClosedPositions);
       ForceSound("notify.wav");
       int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned closed position"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedClosedPositions, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", __NAME__ +" - SynchronizeStatus()", MB_ICONWARNING|MB_OKCANCEL);
-      ignoreOrphanes.closedPositions = (button == IDOK);
+      ignoreOrphans.closedPositions = (button == IDOK);
       if (button != IDOK) {
          __STATUS__CANCELLED = true;
          return(_false(catch("SynchronizeStatus(6)")));
@@ -4268,7 +4290,6 @@ void RedrawStartStop() {
    if (Breakeven.Color != CLR_NONE)
       last.MarkerColor = Breakeven.Color;
 
-
    datetime time;
    double   price;
    string   label;
@@ -4293,10 +4314,13 @@ void RedrawStartStop() {
       label = StringConcatenate("SR.", sequenceId, ".start.", i);
       if (ObjectFind(label) == 0)
          ObjectDelete(label);
-      ObjectCreate(label, OBJ_ARROW, 0, time, price);
-      ObjectSet   (label, OBJPROP_ARROWCODE, SYMBOL_LEFTPRICE);      // Alternative: kleiner Punkt (159)
-      ObjectSet   (label, OBJPROP_BACK,      false           );
-      ObjectSet   (label, OBJPROP_COLOR,     last.MarkerColor);
+
+      if (startStopDisplayMode != SDM_NONE) {
+         ObjectCreate(label, OBJ_ARROW, 0, time, price);
+         ObjectSet   (label, OBJPROP_ARROWCODE, startStopDisplayMode);
+         ObjectSet   (label, OBJPROP_BACK,      false               );
+         ObjectSet   (label, OBJPROP_COLOR,     last.MarkerColor    );
+      }
    }
 
 
@@ -4309,10 +4333,13 @@ void RedrawStartStop() {
          label = StringConcatenate("SR.", sequenceId, ".stop.", i);
          if (ObjectFind(label) == 0)
             ObjectDelete(label);
-         ObjectCreate(label, OBJ_ARROW, 0, time, price);
-         ObjectSet   (label, OBJPROP_ARROWCODE, SYMBOL_LEFTPRICE);
-         ObjectSet   (label, OBJPROP_BACK,      false           );
-         ObjectSet   (label, OBJPROP_COLOR,     last.MarkerColor);
+
+         if (startStopDisplayMode != SDM_NONE) {
+            ObjectCreate(label, OBJ_ARROW, 0, time, price);
+            ObjectSet   (label, OBJPROP_ARROWCODE, startStopDisplayMode);
+            ObjectSet   (label, OBJPROP_BACK,      false               );
+            ObjectSet   (label, OBJPROP_COLOR,     last.MarkerColor    );
+         }
       }
    }
 
@@ -4346,6 +4373,29 @@ void RedrawOrders() {
 
 
 /**
+ * Wechselt den Modus der Start/Stopanzeige.
+ *
+ * @return int - Fehlerstatus
+ */
+int SwitchStartStopDisplayMode() {
+   // Mode wechseln
+   int i = SearchIntArray(startStopDisplayModes, startStopDisplayMode);    // #define SDM_NONE        - keine Anzeige -
+   if (i == -1) {                                                          // #define SDM_MARKER      einfache Markierung
+      startStopDisplayMode = SDM_PRICE;           // default               // #define SDM_PRICE       Markierung mit Preisangabe
+   }
+   else {
+      int size = ArraySize(startStopDisplayModes);
+      startStopDisplayMode = startStopDisplayModes[(i+1) % size];
+   }
+
+   // Anzeige aktualisieren
+   RedrawStartStop();
+
+   return(catch("SwitchStartStopDisplayMode()"));
+}
+
+
+/**
  * Wechselt den Modus der Orderanzeige.
  *
  * @return int - Fehlerstatus
@@ -4362,22 +4412,22 @@ int SwitchOrderDisplayMode() {
    int size         = ArraySize(orderDisplayModes);
    orderDisplayMode = (orderDisplayMode+1) % size;
 
-   while (orderDisplayMode != oldMode) {                             // #define DM_NONE         - keine Anzeige -
-      if (orderDisplayMode == DM_NONE) {                             // #define DM_STOPS        Pending,       StoppedOut
-         break;                                                      // #define DM_PYRAMID      Pending, Open,             Closed
-      }                                                              // #define DM_ALL          Pending, Open, StoppedOut, Closed
-      else if (orderDisplayMode == DM_STOPS) {
+   while (orderDisplayMode != oldMode) {                                   // #define ODM_NONE        - keine Anzeige -
+      if (orderDisplayMode == ODM_NONE) {                                  // #define ODM_STOPS       Pending,       StoppedOut
+         break;                                                            // #define ODM_PYRAMID     Pending, Open,             Closed
+      }                                                                    // #define ODM_ALL         Pending, Open, StoppedOut, Closed
+      else if (orderDisplayMode == ODM_STOPS) {
          if (pendings+stoppedOut > 0)
             break;
       }
-      else if (orderDisplayMode == DM_PYRAMID) {
+      else if (orderDisplayMode == ODM_PYRAMID) {
          if (pendings+open+closed > 0)
-            if (open+stoppedOut+closed > 0)                          // ansonsten ist Anzeige identisch zu vorherigem Mode
+            if (open+stoppedOut+closed > 0)                                // ansonsten ist Anzeige identisch zu vorherigem Mode
                break;
       }
-      else if (orderDisplayMode == DM_ALL) {
+      else if (orderDisplayMode == ODM_ALL) {
          if (pendings+open+stoppedOut+closed > 0)
-            if (stoppedOut > 0)                                      // ansonsten ist Anzeige identisch zu vorherigem Mode
+            if (stoppedOut > 0)                                            // ansonsten ist Anzeige identisch zu vorherigem Mode
                break;
       }
       orderDisplayMode = (orderDisplayMode+1) % size;
@@ -4393,7 +4443,6 @@ int SwitchOrderDisplayMode() {
       // nothing to change, Anzeige bleibt unverändert
       PlaySound("Windows XP-Batterie niedrig.wav");
    }
-
    return(catch("SwitchOrderDisplayMode()"));
 }
 
@@ -4473,10 +4522,10 @@ bool ChartMarker.OrderSent(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
    if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
-   #define DM_NONE      0     // - keine Anzeige -
-   #define DM_STOPS     1     // Pending,       ClosedBySL
-   #define DM_PYRAMID   2     // Pending, Open,             Closed
-   #define DM_ALL       3     // Pending, Open, ClosedBySL, Closed
+   #define ODM_NONE     0     // - keine Anzeige -
+   #define ODM_STOPS    1     // Pending,       ClosedBySL
+   #define ODM_PYRAMID  2     // Pending, Open,             Closed
+   #define ODM_ALL      3     // Pending, Open, ClosedBySL, Closed
    */
    bool pending = orders.pendingType[i] != OP_UNDEFINED;
 
@@ -4486,9 +4535,9 @@ bool ChartMarker.OrderSent(int i) {
    string   comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(orders.level[i], "+."));
    color    markerColor = CLR_NONE;
 
-   if (orderDisplayMode != DM_NONE) {
-      if      (pending)                        markerColor = CLR_PENDING;
-      else if (orderDisplayMode >= DM_PYRAMID) markerColor = ifInt(IsLongTradeOperation(type), CLR_LONG, CLR_SHORT);
+   if (orderDisplayMode != ODM_NONE) {
+      if      (pending)                         markerColor = CLR_PENDING;
+      else if (orderDisplayMode >= ODM_PYRAMID) markerColor = ifInt(IsLongTradeOperation(type), CLR_LONG, CLR_SHORT);
    }
 
    if (!ChartMarker.OrderSent_B(orders.ticket[i], Digits, markerColor, type, LotSize, Symbol(), openTime, openPrice, orders.stopLoss[i], 0, comment))
@@ -4508,15 +4557,15 @@ bool ChartMarker.OrderFilled(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
    if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
-   #define DM_NONE      0     // - keine Anzeige -
-   #define DM_STOPS     1     // Pending,       ClosedBySL
-   #define DM_PYRAMID   2     // Pending, Open,             Closed
-   #define DM_ALL       3     // Pending, Open, ClosedBySL, Closed
+   #define ODM_NONE     0     // - keine Anzeige -
+   #define ODM_STOPS    1     // Pending,       ClosedBySL
+   #define ODM_PYRAMID  2     // Pending, Open,             Closed
+   #define ODM_ALL      3     // Pending, Open, ClosedBySL, Closed
    */
    string comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(orders.level[i], "+."));
    color  markerColor = CLR_NONE;
 
-   if (orderDisplayMode >= DM_PYRAMID)
+   if (orderDisplayMode >= ODM_PYRAMID)
       markerColor = ifInt(orders.type[i]==OP_BUY, CLR_LONG, CLR_SHORT);
 
    if (!ChartMarker.OrderFilled_B(orders.ticket[i], orders.pendingType[i], orders.pendingPrice[i], Digits, markerColor, LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], comment))
@@ -4536,16 +4585,16 @@ bool ChartMarker.PositionClosed(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
    if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
-   #define DM_NONE      0     // - keine Anzeige -
-   #define DM_STOPS     1     // Pending,       ClosedBySL
-   #define DM_PYRAMID   2     // Pending, Open,             Closed
-   #define DM_ALL       3     // Pending, Open, ClosedBySL, Closed
+   #define ODM_NONE     0     // - keine Anzeige -
+   #define ODM_STOPS    1     // Pending,       ClosedBySL
+   #define ODM_PYRAMID  2     // Pending, Open,             Closed
+   #define ODM_ALL      3     // Pending, Open, ClosedBySL, Closed
    */
    color markerColor = CLR_NONE;
 
-   if (orderDisplayMode != DM_NONE) {
-      if ( orders.closedBySL[i] && orderDisplayMode!=DM_PYRAMID) markerColor = CLR_CLOSE;
-      if (!orders.closedBySL[i] && orderDisplayMode>=DM_PYRAMID) markerColor = CLR_CLOSE;
+   if (orderDisplayMode != ODM_NONE) {
+      if ( orders.closedBySL[i] && orderDisplayMode!=ODM_PYRAMID) markerColor = CLR_CLOSE;
+      if (!orders.closedBySL[i] && orderDisplayMode>=ODM_PYRAMID) markerColor = CLR_CLOSE;
    }
 
    if (!ChartMarker.PositionClosed_B(orders.ticket[i], Digits, markerColor, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]))
@@ -4689,10 +4738,10 @@ string StatusDescription(int status) {
  */
 string OrderDisplayModeToStr(int mode) {
    switch (mode) {
-      case DM_NONE   : return("DM_NONE"   );
-      case DM_STOPS  : return("DM_STOPS"  );
-      case DM_PYRAMID: return("DM_PYRAMID");
-      case DM_ALL    : return("DM_ALL"    );
+      case ODM_NONE   : return("ODM_NONE"   );
+      case ODM_STOPS  : return("ODM_STOPS"  );
+      case ODM_PYRAMID: return("ODM_PYRAMID");
+      case ODM_ALL    : return("ODM_ALL"    );
    }
    return(_empty(catch("OrderDisplayModeToStr()  invalid parameter mode = "+ mode, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }

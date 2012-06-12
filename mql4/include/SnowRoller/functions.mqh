@@ -1,6 +1,6 @@
 
 /**
- * Ermittelt die Daten der im aktuellen Chart gemanagten Sequenzen.
+ * Ermittelt ID und Status der im aktuellen Chart gemanagten Sequenzen.
  *
  * @param  string ids[]    - Array zur Aufnahme der gefundenen Sequenz-ID's
  * @param  int    status[] - Array zur Aufnahme der gefundenen Sequenz-Statuswerte
@@ -42,7 +42,7 @@ bool FindChartSequences(string ids[], int status[]) {
 
          ArrayPushString(ids,    sequenceId    );
          ArrayPushInt   (status, sequenceStatus);
-         //debug("GetCurrentChartSequences()   "+ label +" = "+ sequenceId +"|"+ sequenceStatus);
+         //debug("FindChartSequences()   "+ label +" = "+ sequenceId +"|"+ sequenceStatus);
       }
    }
 
