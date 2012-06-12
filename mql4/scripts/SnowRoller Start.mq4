@@ -26,16 +26,16 @@ int onStart() {
       sizeOfIds = ArraySize(ids);
 
 
-      // (2) f¸r Start-Command unzutreffende Sequenzen herausfiltern
+      // (2) f¸r Command unzutreffende Sequenzen herausfiltern
       for (int i=sizeOfIds-1; i >= 0; i--) {
          switch (status[i]) {
-            case STATUS_WAITING:                                           // STATUS_UNINITIALIZED:   // filtern
-            case STATUS_STOPPED:                                           // STATUS_WAITING      :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
-               if (StringGetChar(ids[i], 0)!='T' || ScriptIsTesting())     // STATUS_PROGRESSING  :   // filtern
-                  continue;                                                // STATUS_STOPPING     :   // filtern
-            default:                                                       // STATUS_STOPPED      :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
-               ArraySpliceStrings(ids, i, 1);                              // STATUS_DISABLED     :   // filtern
-               ArraySpliceInts(status, i, 1);
+            case STATUS_WAITING:                                                 // STATUS_UNINITIALIZED:   // entfernen
+            case STATUS_STOPPED:                                                 // STATUS_WAITING      :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
+               if (StringGetChar(ids[i], 0)!='T' || ScriptIsTesting())           // STATUS_STARTING     :   // entfernen
+                  continue;                                                      // STATUS_PROGRESSING  :   // entfernen
+            default:                                                             // STATUS_STOPPING     :   // entfernen
+               ArraySpliceStrings(ids, i, 1);                                    // STATUS_STOPPED      :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
+               ArraySpliceInts(status, i, 1);                                    // STATUS_DISABLED     :   // entfernen
                sizeOfIds--;
          }
       }
@@ -51,19 +51,19 @@ int onStart() {
             continue;
 
 
-         // (4) Command setzen
-         string label = StringConcatenate("SnowRoller.", ids[i], ".command");
+         // (4) Command setzen                                                   // TODO: Zugriff synchronisieren
+         string label = StringConcatenate("SnowRoller.", ids[i], ".command");    // TODO: Commands zu bereits existierenden Commands hinzuf¸gen
          if (ObjectFind(label) != 0) {
             if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
                return(catch("onStart(1)"));
-            ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                // hidden on all timeframes
+            ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                         // hidden on all timeframes
          }
          ObjectSetText(label, "start", 1);
 
 
          // (5) Tick senden
          Chart.SendTick(false);
-         return(catch("onStart(2)"));                                   // regular exit
+         return(catch("onStart(2)"));                                            // regular exit
       }
    }
 
