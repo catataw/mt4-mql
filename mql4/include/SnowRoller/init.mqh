@@ -160,9 +160,8 @@ int onInitParameterChange() {
    else {
       // Parameteränderung einer laufenden Sequenz
       if (SaveStatus()) {
-         if      (OrderDisplayMode != last.OrderDisplayMode) { RedrawOrders();                                        }
-         if      ( Breakeven.Color != last.Breakeven.Color ) {                 RedrawStartStop(); RecolorBreakeven(); }
-         else if ( Breakeven.Width != last.Breakeven.Width ) {                                    RecolorBreakeven(); }
+         if (OrderDisplayMode != last.OrderDisplayMode) { RedrawOrders();                                        }
+         if ( Breakeven.Color != last.Breakeven.Color ) {                 RedrawStartStop(); RecolorBreakeven(); }
       }
    }
    return(last_error);
@@ -187,7 +186,6 @@ int onInitChartChange() {
    StopConditions   = last.StopConditions;
    OrderDisplayMode = last.OrderDisplayMode;
    Breakeven.Color  = last.Breakeven.Color;
-   Breakeven.Width  = last.Breakeven.Width;
    // TODO: Symbolwechsel behandeln
    return(NO_ERROR);
 }

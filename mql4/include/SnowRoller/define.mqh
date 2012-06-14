@@ -20,10 +20,6 @@
 #define STATUS_DISABLED             6
 
 
-// BreakevenDisplay-Modes
-#define BDM_NONE                    0                    // - keine Anzeige -
-
-
 // Start/StopDisplay-Modes
 #define SDM_NONE                    0                    // - keine Anzeige -
 #define SDM_MARKER                159                    // einfache Markierung (kleiner Punkt)

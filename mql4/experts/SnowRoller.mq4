@@ -8,7 +8,6 @@
  *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
- *  - Wechsel der BE-Displaymodes per Chart-Command
  *
  *
  *  TODO:
@@ -51,6 +50,7 @@
  *  - Build 419 silently crashes
  *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
  *  - Alpari: StopOrder-Slippage EUR/USD bis 3.9 pip, GBP/AUD bis 6 pip, GBP/JPY bis 21.4 pip
+ *  - FxPro: zu viele Traderequests in zu kurzer Zeit => ERR_TRADE_TIMEOUT
  *
  *
  *  Übersicht der Aktionen und Statuswechsel:
@@ -108,13 +108,12 @@ extern            string StopConditions        = "@profit(20%)";           // @l
 extern /*sticky*/ string OrderDisplayMode      = "None";
 extern            string OrderDisplayMode.Help = "None* | Stopped | Active | All";
 extern /*sticky*/ color  Breakeven.Color       = DodgerBlue;
-extern /*sticky*/ int    Breakeven.Width       = 1;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*sticky*/ int  startStopDisplayMode           = SDM_PRICE;
            int  orderDisplayMode               = ODM_NONE;
-           int  breakevenDisplayMode           = BDM_NONE;
+/*sticky*/ int  breakeven.Width                = 0;
 
            bool ignoreOrphans.pendingOrders    = false;
            bool ignoreOrphans.openPositions    = false;
@@ -131,8 +130,6 @@ string   last.StartConditions    = "";
 string   last.StopConditions     = "";
 string   last.OrderDisplayMode   = "";
 color    last.Breakeven.Color;
-int      last.Breakeven.Width;
-int      last.startStopDisplayMode;
 
 int      status = STATUS_UNINITIALIZED;
 
@@ -321,17 +318,12 @@ int onChartCommand(string commands[]) {
       }
       return(last_error);
    }
-   else if (cmd == "startstopdisplay") {
-      return(SwitchStartStopDisplayMode());
-   }
-   else if (cmd == "orderdisplay") {
-      return(SwitchOrderDisplayMode());
-   }
-
+   else if (cmd == "startstopdisplay") return(ToggleStartStopDisplayMode());
+   else if (cmd ==     "orderdisplay") return(    ToggleOrderDisplayMode());
+   else if (cmd == "breakevendisplay") return(ToggleBreakevenDisplayMode());
 
    // unbekannte Commands anzeigen, aber keinen Fehler setzen (Command darf den EA nicht deaktivieren)
    warn("onChartCommand(2)   unknown command \""+ cmd +"\"");
-
    return(NO_ERROR);
 }
 
@@ -2170,9 +2162,9 @@ void Grid.DrawBreakeven(datetime time=NULL) {
       if (grid.direction != D_SHORT) {                                           // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
          string labelL = StringConcatenate("SR.", sequenceId, ".beL ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(last.startTimeLong, TIME_FULL), ")");
          if (ObjectCreate(labelL, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenLong, now, grid.breakevenLong)) {
-            ObjectSet(labelL, OBJPROP_RAY  , false          );
+            ObjectSet(labelL, OBJPROP_RAY,   false          );
             ObjectSet(labelL, OBJPROP_COLOR, Breakeven.Color);
-            ObjectSet(labelL, OBJPROP_WIDTH, Breakeven.Width);
+            ObjectSet(labelL, OBJPROP_WIDTH, breakeven.Width);
             if (EQ(last.grid.breakevenLong, grid.breakevenLong)) last.startTimeLong = last.drawingTime;
             else                                                 last.startTimeLong = now;
          }
@@ -2186,9 +2178,9 @@ void Grid.DrawBreakeven(datetime time=NULL) {
       if (grid.direction != D_LONG) {
          string labelS = StringConcatenate("SR.", sequenceId, ".beS ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(last.startTimeShort, TIME_FULL), ")");
          if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, now, grid.breakevenShort)) {
-            ObjectSet(labelS, OBJPROP_RAY  , false          );
+            ObjectSet(labelS, OBJPROP_RAY,   false          );
             ObjectSet(labelS, OBJPROP_COLOR, Breakeven.Color);
-            ObjectSet(labelS, OBJPROP_WIDTH, Breakeven.Width);
+            ObjectSet(labelS, OBJPROP_WIDTH, breakeven.Width);
             if (EQ(last.grid.breakevenShort, grid.breakevenShort)) last.startTimeShort = last.drawingTime;
             else                                                   last.startTimeShort = now;
          }
@@ -2222,8 +2214,14 @@ void RecolorBreakeven() {
       for (int i=ObjectsTotal()-1; i>=0; i--) {
          label = ObjectName(i);
          if (ObjectType(label)==OBJ_TREND) /*&&*/ if (StringStartsWith(label, labelBe)) {
-            ObjectSet(label, OBJPROP_COLOR, Breakeven.Color);
-            ObjectSet(label, OBJPROP_WIDTH, Breakeven.Width);
+            if (breakeven.Width == 0) {
+               ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                         // hidden on all timeframes
+            }
+            else {
+               ObjectSet(label, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);               // visible on all timeframes
+               ObjectSet(label, OBJPROP_COLOR,      Breakeven.Color);
+               ObjectSet(label, OBJPROP_WIDTH,      breakeven.Width);
+            }
          }
       }
    }
@@ -2389,12 +2387,12 @@ int StoreTransientStatus() {
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
    ObjectSetText(label, StringConcatenate("", Breakeven.Color), 1);
 
-   label = StringConcatenate(__NAME__, ".transient.Breakeven.Width");
+   label = StringConcatenate(__NAME__, ".transient.breakeven.Width");
    if (ObjectFind(label) == 0)
       ObjectDelete(label);
    ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
-   ObjectSetText(label, StringConcatenate("", Breakeven.Width), 1);
+   ObjectSetText(label, StringConcatenate("", breakeven.Width), 1);
 
    label = StringConcatenate(__NAME__, ".transient.__STATUS__CANCELLED");
    if (ObjectFind(label) == 0)
@@ -2477,15 +2475,15 @@ bool RestoreTransientStatus() {
          Breakeven.Color = iValue;
       }
 
-      label = StringConcatenate(__NAME__, ".transient.Breakeven.Width");
+      label = StringConcatenate(__NAME__, ".transient.breakeven.Width");
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
             return(_false(catch("RestoreTransientStatus(8)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
-         if (iValue < 1 || iValue > 5)
+         if (iValue < 0 || iValue > 5)
             return(_false(catch("RestoreTransientStatus(9)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
-         Breakeven.Width = iValue;
+         breakeven.Width = iValue;
       }
 
       label = StringConcatenate(__NAME__, ".transient.__STATUS__CANCELLED");
@@ -2846,15 +2844,11 @@ bool ValidateConfiguration(bool interactive) {
    if (Breakeven.Color < CLR_NONE || Breakeven.Color > C'255,255,255')  // kann nur nicht-interaktiv falsch reinkommen
                                                    return(_false(HandleConfigError("ValidateConfiguration(42)", "Invalid parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), interactive)));
 
-   // (9) Breakeven.Width
-   if (Breakeven.Width < 1 || Breakeven.Width > 5) return(_false(HandleConfigError("ValidateConfiguration(43)", "Invalid parameter Breakeven.Width = "+ Breakeven.Width, interactive)));
-
-
-   // (10) __STATUS__INVALID_INPUT zurücksetzen
+   // (9) __STATUS__INVALID_INPUT zurücksetzen
    if (interactive)
       __STATUS__INVALID_INPUT = false;
 
-   return(IsNoError(catch("ValidateConfiguration(44)")));
+   return(IsNoError(catch("ValidateConfiguration(43)")));
 }
 
 
@@ -2902,7 +2896,6 @@ void StoreConfiguration(bool save=true) {
    static string   _StopConditions;
    static string   _OrderDisplayMode;
    static color    _Breakeven.Color;
-   static int      _Breakeven.Width;
 
    static int      _grid.direction;
    static int      _orderDisplayMode;
@@ -2932,7 +2925,6 @@ void StoreConfiguration(bool save=true) {
       _StopConditions               = StringConcatenate(StopConditions,   "");
       _OrderDisplayMode             = StringConcatenate(OrderDisplayMode, "");
       _Breakeven.Color              = Breakeven.Color;
-      _Breakeven.Width              = Breakeven.Width;
 
       _grid.direction               = grid.direction;
       _orderDisplayMode             = orderDisplayMode;
@@ -2962,7 +2954,6 @@ void StoreConfiguration(bool save=true) {
       StopConditions                = _StopConditions;
       OrderDisplayMode              = _OrderDisplayMode;
       Breakeven.Color               = _Breakeven.Color;
-      Breakeven.Width               = _Breakeven.Width;
 
       grid.direction                = _grid.direction;
       orderDisplayMode              = _orderDisplayMode;
@@ -4374,7 +4365,7 @@ void RedrawOrders() {
  *
  * @return int - Fehlerstatus
  */
-int SwitchStartStopDisplayMode() {
+int ToggleStartStopDisplayMode() {
    // Mode wechseln
    int i = SearchIntArray(startStopDisplayModes, startStopDisplayMode);    // #define SDM_NONE        - keine Anzeige -
    if (i == -1) {                                                          // #define SDM_MARKER      einfache Markierung
@@ -4388,7 +4379,7 @@ int SwitchStartStopDisplayMode() {
    // Anzeige aktualisieren
    RedrawStartStop();
 
-   return(catch("SwitchStartStopDisplayMode()"));
+   return(catch("ToggleStartStopDisplayMode()"));
 }
 
 
@@ -4397,7 +4388,7 @@ int SwitchStartStopDisplayMode() {
  *
  * @return int - Fehlerstatus
  */
-int SwitchOrderDisplayMode() {
+int ToggleOrderDisplayMode() {
    int pendings   = CountPendingOrders();
    int open       = CountOpenPositions();
    int stoppedOut = CountStoppedOutPositions();
@@ -4440,7 +4431,26 @@ int SwitchOrderDisplayMode() {
       // nothing to change, Anzeige bleibt unverändert
       PlaySound("Windows XP-Batterie niedrig.wav");
    }
-   return(catch("SwitchOrderDisplayMode()"));
+   return(catch("ToggleOrderDisplayMode()"));
+}
+
+
+/**
+ * Wechselt den Modus der Breakeven-Anzeige.
+ *
+ * @return int - Fehlerstatus
+ */
+int ToggleBreakevenDisplayMode() {
+   /*
+   if      (breakeven.Width == 0) breakeven.Width = 1;
+   else if (breakeven.Width == 1) breakeven.Width = 2;
+   else                           breakeven.Width = 0;
+   */
+   if (breakeven.Width == 0) breakeven.Width = 1;
+   else                      breakeven.Width = 0;
+
+   RecolorBreakeven();
+   return(catch("ToggleBreakevenDisplayMode()"));
 }
 
 
