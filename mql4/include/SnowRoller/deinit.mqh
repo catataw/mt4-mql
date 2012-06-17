@@ -91,6 +91,7 @@ int onDeinitParameterChange() {
    last.StopConditions   = StringConcatenate(StopConditions,   "");
    last.OrderDisplayMode = StringConcatenate(OrderDisplayMode, "");
    last.Breakeven.Color  = Breakeven.Color;
+   last.Sequence.Start   = StringConcatenate(Sequence.Start,   "");
    return(-1);
 
 }

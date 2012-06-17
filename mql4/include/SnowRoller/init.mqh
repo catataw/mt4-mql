@@ -186,6 +186,8 @@ int onInitChartChange() {
    StopConditions   = last.StopConditions;
    OrderDisplayMode = last.OrderDisplayMode;
    Breakeven.Color  = last.Breakeven.Color;
+   Sequence.Start   = last.Sequence.Start;
+
    // TODO: Symbolwechsel behandeln
    return(NO_ERROR);
 }

@@ -98,33 +98,36 @@ int __DEINIT_FLAGS__[];
 
 ////////////////////////////////////////////////////////////////// Konfiguration //////////////////////////////////////////////////////////////////
 
-extern /*sticky*/ string Sequence.ID           = "";
-extern            string GridDirection         = "Bidirectional* | Long | Short | Long+Short";
-extern            int    GridSize              = 20;
-extern            double LotSize               = 0.1;
-extern            string StartConditions       = "";                       // @limit(1.33) && @time(2012.03.12 12:00)
-extern            string StopConditions        = "@profit(20%)";           // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
-extern /*sticky*/ string OrderDisplayMode      = "None";
-extern            string OrderDisplayMode.Help = "None* | Stopped | Active | All";
-extern /*sticky*/ color  Breakeven.Color       = Blue;
+extern /*sticky*/ string Sequence.ID            = "";
+extern            string GridDirection          = "Bidirectional* | Long | Short | Long+Short";
+extern            int    GridSize               = 20;
+extern            double LotSize                = 0.1;
+extern            string StartConditions        = "";                      // @limit(1.33) && @time(2012.03.12 12:00)
+extern            string StopConditions         = "@profit(20%)";          // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
+extern /*sticky*/ string OrderDisplayMode       = "None";
+extern            string OrderDisplayMode.Help  = "None* | Stopped | Active | All";
+extern /*sticky*/ color  Breakeven.Color        = Blue;
+extern /*sticky*/ string Sequence.Start         = "(do not change this field)";
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/*sticky*/ int  startStopDisplayMode           = SDM_PRICE;
-           int  orderDisplayMode               = ODM_NONE;
-/*sticky*/ int  breakeven.Width                = 1;
+/*sticky*/ string statusFile;                                              // Dateiname der Statusdatei relativ zu "..\files\presets":
+/*sticky*/ int    startStopDisplayMode          = SDM_PRICE;               // "Alpari\EURUSD\2012-06-05\eurusd.SR.5324.set"
+           int    orderDisplayMode              = ODM_NONE;
+/*sticky*/ int    breakeven.Width               = 1;
 
-           bool ignoreOrphans.pendingOrders    = false;
-           bool ignoreOrphans.openPositions    = false;
-           bool ignoreOrphans.closedPositions  = false;
+           bool   ignoreOrphans.pendingOrders   = false;
+           bool   ignoreOrphans.openPositions   = false;
+           bool   ignoreOrphans.closedPositions = false;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 string   last.Sequence.ID      = "";                  // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
-string   last.GridDirection    = "";                  // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
-int      last.GridSize;                               // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
-double   last.LotSize;                                // in init() daraus restauriert.
+string   last.Sequence.Start   = "";                  // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
+string   last.GridDirection    = "";                  // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
+int      last.GridSize;                               // in init() daraus restauriert.
+double   last.LotSize;
 string   last.StartConditions  = "";
 string   last.StopConditions   = "";
 string   last.OrderDisplayMode = "";
@@ -2381,8 +2384,8 @@ double DistanceToProfit(double distance) {
 
 /**
  * Speichert den transienten Sequenzstatus im Chart, sodaß er nach einem Recompile oder Terminal-Restart wiederhergestellt werden kann.
- * Der transiente Status umfaßt die User-Eingaben, die nicht im Statusfile gespeichert sind (Sequenz-ID, Display-Modes, Farben, Strichstärken)
- * und die Flags __STATUS__CANCELLED und __STATUS__INVALID_INPUT.
+ * Der transiente Status umfaßt die User-Eingaben, die zur Ermittlung des vollen Dateinamens der Statusdatei erforderlich sind und jene,
+ * die nicht im Statusfile gespeichert sind (Display-Modes, Farben, Strichstärken) sowie die Flags __STATUS__CANCELLED und __STATUS__INVALID_INPUT.
  *
  * @return int - Fehlerstatus
  */
@@ -2393,6 +2396,13 @@ int StoreTransientStatus() {
    ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
    ObjectSetText(label, ifString(sequenceId==0, "0", Sequence.ID), 1);        // 0 = STATUS_UNINITIALIZED
+
+   label = StringConcatenate(__NAME__, ".transient.Sequence.Start");
+   if (ObjectFind(label) == 0)
+      ObjectDelete(label);
+   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
+   ObjectSetText(label, Sequence.Start, 1);
 
    label = StringConcatenate(__NAME__, ".transient.startStopDisplayMode");
    if (ObjectFind(label) == 0)
@@ -2441,7 +2451,7 @@ int StoreTransientStatus() {
 
 
 /**
- * Restauriert die im Chart gespeicherten transienten Sequenzdaten.
+ * Restauriert die im Chart gespeicherten Sequenzdaten.
  *
  * @return bool - ob die ID einer initialisierten Sequenz gefunden wurde (gespeicherte Sequenz kann im STATUS_UNINITIALIZED sein)
  */
@@ -2471,6 +2481,11 @@ bool RestoreTransientStatus() {
          Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
          status      = STATUS_WAITING;
          idFound     = true;
+      }
+
+      label = StringConcatenate(__NAME__, ".transient.Sequence.Start");
+      if (ObjectFind(label) == 0) {
+         Sequence.Start = StringTrim(ObjectDescription(label));
       }
 
       label = StringConcatenate(__NAME__, ".transient.startStopDisplayMode");
@@ -2917,6 +2932,7 @@ int HandleConfigError(string location, string msg, bool interactive) {
  */
 void StoreConfiguration(bool save=true) {
    static string   _Sequence.ID;
+   static string   _Sequence.Start;
    static string   _GridDirection;
    static int      _GridSize;
    static double   _LotSize;
@@ -2946,6 +2962,7 @@ void StoreConfiguration(bool save=true) {
 
    if (save) {
       _Sequence.ID                  = StringConcatenate(Sequence.ID,      "");   // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
+      _Sequence.Start               = StringConcatenate(Sequence.Start,   "");
       _GridDirection                = StringConcatenate(GridDirection,    "");
       _GridSize                     = GridSize;
       _LotSize                      = LotSize;
@@ -2975,6 +2992,7 @@ void StoreConfiguration(bool save=true) {
    }
    else {
       Sequence.ID                   = _Sequence.ID;
+      Sequence.Start                = _Sequence.Start;
       GridDirection                 = _GridDirection;
       GridSize                      = _GridSize;
       LotSize                       = _LotSize;
@@ -3162,14 +3180,17 @@ bool SaveStatus() {
 
 
    // (2) Daten in lokaler Datei speichern/überschreiben
-   string fileName = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
-   if      (IsTesting()) fileName = "presets\\"+ fileName;                                // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
-   else if (IsTest())    fileName = "presets\\tester\\"+ fileName;                        //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
-   else                  fileName = "presets\\"+ ShortAccountCompany() +"\\"+ fileName;
+   string filesDir = TerminalPath() +"\\experts\\files\\";
+   string subDir;
+      if      (IsTesting()) subDir = "presets\\";                                         // "experts\files\presets" ist SymLink auf "experts\presets"
+      else if (IsTest())    subDir = "presets\\tester\\";
+      else                  subDir = "presets\\"+ ShortAccountCompany() +"\\";
+   string fileName     = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
+   string fullFileName = filesDir + subDir + fileName;
 
-   int hFile = FileOpen(fileName, FILE_CSV|FILE_WRITE);
+   int hFile = FileOpen(subDir + fileName, FILE_CSV|FILE_WRITE);
    if (hFile < 0)
-      return(_false(catch("SaveStatus(2) ->FileOpen(\""+ fileName +"\")")));
+      return(_false(catch("SaveStatus(2) ->FileOpen(\""+ subDir + fileName +"\")")));
 
    for (i=0; i < ArraySize(lines); i++) {
       if (FileWrite(hFile, lines[i]) < 0) {
@@ -3245,24 +3266,69 @@ bool RestoreStatus() {
    if (sequenceId == 0)                      return(_false(catch("RestoreStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
 
-   // (1) bei nicht existierender lokaler Konfiguration die Datei vom Server laden
+   // (1) Pfade und Dateinamen bestimmen
    string filesDir = TerminalPath() +"\\experts\\files\\";
-   string fileName = StringToLower(StdSymbol()) +".SR."+ sequenceId +".set";
+   string subDir;
+      if      (IsTesting()) subDir = "presets\\";                                   // "experts\files\presets" ist SymLink auf "experts\presets"
+      else if (IsTest())    subDir = "presets\\tester\\";
+      else                  subDir = "presets\\"+ ShortAccountCompany() +"\\";
+   string sequence     = "SR."+ sequenceId;
+   string fileName     = StringToLower(StdSymbol()) +"."+ sequence +".set";
+   string fullFileName = filesDir + subDir + fileName;
+   //debug("RestoreStatus()   fullFileName=\""+ fullFileName +"\"");
 
-   if      (IsTesting()) fileName = "presets\\"+ fileName;                                // "experts\files\presets" ist SymLink auf "experts\presets", dadurch
-   else if (IsTest())    fileName = "presets\\tester\\"+ fileName;                        //  ist "experts\presets" für die MQL-Dateifunktionen erreichbar.
-   else                  fileName = "presets\\"+ ShortAccountCompany() +"\\"+ fileName;
 
-   if (!IsFile(filesDir + fileName)) {
+
+   // (2) lokale Statusdatei suchen
+
+   // ID ist vorhanden
+
+   // immer Datei in Basisverzeichnis suchen
+   // - wenn gefunden, Datei in Datumsverzeichnis verschieben und Link ins Basisverzeichnis legen
+
+   // immer Link in Basisverzeichnis suchen
+
+   // mit Datum Unterverzeichnis dieses Datums durchsuchen
+
+   // ohne Datum alle Unterverzeichnisse absteigend nach Datum durchsuchen
+
+
+
+
+
+
+
+   /*
+   //string name, pattern=StringConcatenate(filesDir, subDir, "*SR.5324.*set");     // .set-Dateien des Ausgangsverzeichnisses einlesen
+   string name, pattern=StringConcatenate(filesDir, subDir, "*");
+   WIN32_FIND_DATA int wfd[]; InitializeBuffer(wfd, WIN32_FIND_DATA.size);
+   int hSearch = FindFirstFileA(pattern, wfd), result=hSearch;
+
+   while (result > 0) {
+      name = wfd.FileName(wfd);
+      //debug("RestoreStatus()   \""+ name +"\"   "+ wfd.FileAttributesToStr(wfd));
+      //if (!wfd.FileAttribute.Directory(wfd)) {
+      //}
+      result = FindNextFileA(hSearch, wfd);
+   }
+   if (hSearch == INVALID_HANDLE_VALUE) return(_false(catch("RestoreStatus(2) ->kernel32::FindFirstFileA(filename=\""+ pattern +"\")   INVALID_HANDLE_VALUE, error="+ RtlGetLastWin32Error(), ERR_WIN32_ERROR)));
+   if (!FindClose(hSearch))             return(_false(catch("RestoreStatus(3) ->kernel32::FindClose() failed, error="+ RtlGetLastWin32Error(), ERR_WIN32_ERROR)));
+   ArrayResize(wfd, 0);
+   */
+
+
+   /*
+   // (3) bei nicht existierender Datei die Datei vom Server laden
+   if (!IsFile(fullFileName)) {
       if (IsTest())
-         return(_false(catch("RestoreStatus(2)   status file \""+ filesDir + fileName +"\" for test sequence T"+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
-      /*
+         return(_false(catch("RestoreStatus(2)   status file \""+ subDir + fileName +"\" for test sequence T"+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+
       // TODO: Existenz von wget.exe prüfen
 
       // Befehlszeile für Shellaufruf zusammensetzen
       string url        = "http://sub.domain.tld/downloadSRStatus.php?company="+ UrlEncode(ShortAccountCompany()) +"&account="+ AccountNumber() +"&symbol="+ UrlEncode(StdSymbol()) +"&sequence="+ sequenceId;
-      string targetFile = filesDir +"\\"+ fileName;
-      string logFile    = filesDir +"\\"+ fileName +".log";
+      string targetFile = fullFileName;
+      string logFile    = fullFileName +".log";
       string cmd        = "wget.exe \""+ url +"\" -O \""+ targetFile +"\" -o \""+ logFile +"\"";
 
       debug("RestoreStatus()   downloading status file for sequence "+ ifString(IsTest(), "T", "") + sequenceId);
@@ -3272,25 +3338,25 @@ bool RestoreStatus() {
          return(_false(SetLastError(error)));
 
       debug("RestoreStatus()   status file for sequence "+ ifString(IsTest(), "T", "") + sequenceId +" successfully downloaded");
-      FileDelete(fileName +".log");
-      */
+      FileDelete(subDir + fileName +".log");
    }
-   if (!IsFile(filesDir + fileName))
-      return(_false(catch("RestoreStatus(3)   status file \""+ filesDir + fileName +"\" for "+ ifString(IsTest(), "test ", "") +"sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_FILE_NOT_FOUND)));
+   */
+   if (!IsFile(fullFileName))
+      return(_false(catch("RestoreStatus(3)   status file \""+ subDir + fileName +"\" for "+ ifString(IsTest(), "test ", "") +"sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_FILE_NOT_FOUND)));
 
 
-   // (2) Datei einlesen
+   // (4) Datei einlesen
    string lines[];
-   int size = FileReadLines(fileName, lines, true);
+   int size = FileReadLines(subDir + fileName, lines, true);
    if (size < 0)
       return(_false(SetLastError(stdlib_PeekLastError())));
    if (size == 0) {
-      FileDelete(fileName);
+      FileDelete(subDir + fileName);
       return(_false(catch("RestoreStatus(4)   status for sequence "+ ifString(IsTest(), "T", "") + sequenceId +" not found", ERR_RUNTIME_ERROR)));
    }
 
 
-   // (3) notwendige Schlüssel definieren
+   // (5) notwendige Schlüssel definieren
    string keys[] = { "Account", "Symbol", "Sequence.ID", "GridDirection", "GridSize", "LotSize", "StartConditions", "StopConditions", "rt.instanceStartTime", "rt.instanceStartPrice", "rt.sequenceStartEquity", "rt.sequenceStarts", "rt.sequenceStops", "rt.grid.maxProfit", "rt.grid.maxProfitTime", "rt.grid.maxDrawdown", "rt.grid.maxDrawdownTime", "rt.grid.base" };
    /*                "Account"                ,
                      "Symbol"                 ,                      // Der Compiler kommt mit den Zeilennummern durcheinander,
@@ -3313,7 +3379,7 @@ bool RestoreStatus() {
    */
 
 
-   // (4.1) Nicht-Runtime-Settings auslesen, validieren und übernehmen
+   // (5.1) Nicht-Runtime-Settings auslesen, validieren und übernehmen
    string parts[], key, value, accountValue;
    int    accountLine;
 
@@ -3325,7 +3391,7 @@ bool RestoreStatus() {
       if (key == "Account") {
          accountValue = value;
          accountLine  = i;
-         ArrayDropString(keys, key);                                  // Abhängigkeit Account <=> Sequence.ID (siehe 4.2)
+         ArrayDropString(keys, key);                                  // Abhängigkeit Account <=> Sequence.ID (siehe 5.2)
       }
       else if (key == "Symbol") {
          if (value != Symbol())                                       return(_false(catch("RestoreStatus(6)   symbol mis-match \""+ value +"\"/\""+ Symbol() +"\" in status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
@@ -3366,16 +3432,16 @@ bool RestoreStatus() {
       }
    }
 
-   // (4.2) gegenseitige Abhängigkeiten validieren
+   // (5.2) gegenseitige Abhängigkeiten validieren
 
-   // Account: Wenn die AccountCompany (= Zeitzone) übereinstimmt, kann ein Test in einem anderen Account visualisiert werden.
+   // Account: Eine Testsequenz kann in einem anderen Account visualisiert werden, solange die Zeitzonen beider Accounts übereinstimmen.
    if (accountValue != ShortAccountCompany()+":"+GetAccountNumber()) {
       if (IsTesting() || !IsTest() || !StringIStartsWith(accountValue, ShortAccountCompany()+":"))
                                                                       return(_false(catch("RestoreStatus(11)   account mis-match \""+ ShortAccountCompany() +":"+ GetAccountNumber() +"\"/\""+ accountValue +"\" in status file \""+ fileName +"\" (line \""+ lines[accountLine] +"\")", ERR_RUNTIME_ERROR)));
    }
 
 
-   // (5.1) Runtime-Settings auslesen, validieren und übernehmen
+   // (6.1) Runtime-Settings auslesen, validieren und übernehmen
    ArrayResize(sequenceStartTimes,  0);
    ArrayResize(sequenceStartPrices, 0);
    ArrayResize(sequenceStopTimes,   0);
@@ -3394,7 +3460,7 @@ bool RestoreStatus() {
    }
    if (ArraySize(keys) > 0)                                           return(_false(catch("RestoreStatus(13)   "+ ifString(ArraySize(keys)==1, "entry", "entries") +" \""+ JoinStrings(keys, "\", \"") +"\" missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
 
-   // (5.2) gegenseitige Abhängigkeiten validieren
+   // (6.2) gegenseitige Abhängigkeiten validieren
    if (ArraySize(sequenceStartTimes) != ArraySize(sequenceStopTimes)) return(_false(catch("RestoreStatus(14)   sequenceStarts("+ ArraySize(sequenceStartTimes) +") / sequenceStops("+ ArraySize(sequenceStopTimes) +") mis-match in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
    if (IntInArray(orders.ticket, 0))                                  return(_false(catch("RestoreStatus(15)   one or more order entries missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
 
