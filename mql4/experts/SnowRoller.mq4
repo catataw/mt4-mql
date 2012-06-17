@@ -335,8 +335,9 @@ int onChartCommand(string commands[]) {
  * @return int - Fehlerstatus
  */
 int onBarOpen(int timeframes[]) {
-   Grid.DrawBreakeven();
-   return(catch("onBarOpen()"));
+   if (Grid.DrawBreakeven())
+      return(NO_ERROR);
+   return(last_error);
 }
 
 
@@ -2138,7 +2139,9 @@ bool Grid.CalculateBreakeven(datetime time=0, int i=-1) {
          grid.breakevenShort = grid.base - distance1*Pips;
       }
    }
-   Grid.DrawBreakeven(time);
+
+   if (!Grid.DrawBreakeven(time))
+      return(false);
    SS.Grid.Breakeven();
 
    return(IsNoError(catch("Grid.CalculateBreakeven()")));
@@ -2150,16 +2153,19 @@ bool Grid.CalculateBreakeven(datetime time=0, int i=-1) {
  *
  * @param  datetime time   - Zeitpunkt der zu zeichnenden Werte (default: aktueller Zeitpunkt)
  * @param  int      status - Status zu diesem Zeitpunkt (default: aktueller Status)
+ *
+ * @return bool - Erfolgsstatus
  */
-void Grid.DrawBreakeven(datetime time=NULL, int timeStatus=NULL) {
+bool Grid.DrawBreakeven(datetime time=NULL, int timeStatus=NULL) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
-      return;
+      return(true);
    if (EQ(grid.breakevenLong, 0))                                                // ohne initialisiertes Breakeven sofortige Rückkehr
-      return;
+      return(true);
 
    static double   last.grid.breakevenLong, last.grid.breakevenShort;            // Daten der zuletzt gezeichneten Indikatorwerte
    static datetime last.startTimeLong, last.startTimeShort, last.drawingTime;
    static int      last.status;
+
 
    if (time == NULL)
       time = TimeCurrent();
@@ -2203,8 +2209,8 @@ void Grid.DrawBreakeven(datetime time=NULL, int timeStatus=NULL) {
          if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, now, grid.breakevenShort)) {
             ObjectSet(labelS, OBJPROP_RAY,   false               );
             ObjectSet(labelS, OBJPROP_WIDTH, breakeven.Width     );
-            ObjectSet(labelL, OBJPROP_COLOR, breakeven.Color     );
-            ObjectSet(labelL, OBJPROP_BACK,  breakeven.Background);
+            ObjectSet(labelS, OBJPROP_COLOR, breakeven.Color     );
+            ObjectSet(labelS, OBJPROP_BACK,  breakeven.Background);
 
             if (EQ(last.grid.breakevenLong, grid.breakevenLong)) last.startTimeLong = last.drawingTime;
             else                                                 last.startTimeLong = now;
@@ -2225,7 +2231,7 @@ void Grid.DrawBreakeven(datetime time=NULL, int timeStatus=NULL) {
    last.drawingTime         = now;
    last.status              = nowStatus;
 
-   catch("Grid.DrawBreakeven()");
+   return(IsNoError(catch("Grid.DrawBreakeven()")));
 }
 
 
@@ -3914,7 +3920,8 @@ bool SynchronizeStatus() {
          lastMinute = lastTime/60; minute = time/60;
          while (lastMinute < minute-1) {                                // TODO: Wochenenden überspringen
             lastMinute++;
-            Grid.DrawBreakeven(lastMinute * MINUTES);
+            if (!Grid.DrawBreakeven(lastMinute * MINUTES))
+               return(false);
          }
       }
 
@@ -3993,7 +4000,8 @@ bool SynchronizeStatus() {
          breakevenVisible = true;
       }
       else if (breakevenVisible) {
-         Grid.DrawBreakeven(time);
+         if (!Grid.DrawBreakeven(time))
+            return(false);
          breakevenVisible = (status != STATUS_STOPPED);
       }
 
