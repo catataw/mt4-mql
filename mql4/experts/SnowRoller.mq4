@@ -36,7 +36,6 @@
  *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeProfit() erweitern
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
- *  - Bug: Konkurrenz-Problem beim Zugriff auf Chart-Commands
  *  - Logging: alle Trade-Operationen und Traderequest-Fehler, Slippage, MessageBoxen
  *  - Logging im Tester reduzieren
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
@@ -107,13 +106,13 @@ extern            string StartConditions       = "";                       // @l
 extern            string StopConditions        = "@profit(20%)";           // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
 extern /*sticky*/ string OrderDisplayMode      = "None";
 extern            string OrderDisplayMode.Help = "None* | Stopped | Active | All";
-extern /*sticky*/ color  Breakeven.Color       = DodgerBlue;
+extern /*sticky*/ color  Breakeven.Color       = Blue;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*sticky*/ int  startStopDisplayMode           = SDM_PRICE;
            int  orderDisplayMode               = ODM_NONE;
-/*sticky*/ int  breakeven.Width                = 0;
+/*sticky*/ int  breakeven.Width                = 1;
 
            bool ignoreOrphans.pendingOrders    = false;
            bool ignoreOrphans.openPositions    = false;
@@ -122,13 +121,13 @@ extern /*sticky*/ color  Breakeven.Color       = DodgerBlue;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-string   last.Sequence.ID        = "";                // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
-string   last.GridDirection      = "";                // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
+string   last.Sequence.ID      = "";                  // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
+string   last.GridDirection    = "";                  // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
 int      last.GridSize;                               // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
 double   last.LotSize;                                // in init() daraus restauriert.
-string   last.StartConditions    = "";
-string   last.StopConditions     = "";
-string   last.OrderDisplayMode   = "";
+string   last.StartConditions  = "";
+string   last.StopConditions   = "";
+string   last.OrderDisplayMode = "";
 color    last.Breakeven.Color;
 
 int      status = STATUS_UNINITIALIZED;
@@ -814,17 +813,24 @@ bool EventListener.ChartCommand(string commands[], int flags=NULL) {
    if (ArraySize(commands) > 0)
       ArrayResize(commands, 0);
 
-   static string label;
+   static string label, mutex="mutex.ChartCommand";
    static int    sid;
 
-   if (sequenceId != sid) {                                          // Label wird nur modifiziert, wenn es sich tatsächlich ändert
-      label = StringConcatenate(__NAME__, ".", Sequence.ID, ".command");
+   if (sequenceId != sid) {
+      label = StringConcatenate(__NAME__, ".", Sequence.ID, ".command");      // Label wird nur modifiziert, wenn es sich tatsächlich ändert
       sid   = sequenceId;
    }
 
    if (ObjectFind(label) == 0) {
+      if (!AquireLock(mutex))
+         return(_false(SetLastError(stdlib_PeekLastError())));
+
       ArrayPushString(commands, ObjectDescription(label));
       ObjectDelete(label);
+
+      if (!ReleaseLock(mutex))
+         return(_false(SetLastError(stdlib_PeekLastError())));
+
       return(true);
    }
    return(false);
@@ -2142,9 +2148,10 @@ bool Grid.CalculateBreakeven(datetime time=0, int i=-1) {
 /**
  * Aktualisiert den Breakeven-Indikator.
  *
- * @param  datetime time - Zeitpunkt der zu zeichnenden Werte (default: aktueller Zeitpunkt)
+ * @param  datetime time   - Zeitpunkt der zu zeichnenden Werte (default: aktueller Zeitpunkt)
+ * @param  int      status - Status zu diesem Zeitpunkt (default: aktueller Status)
  */
-void Grid.DrawBreakeven(datetime time=NULL) {
+void Grid.DrawBreakeven(datetime time=NULL, int timeStatus=NULL) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
    if (EQ(grid.breakevenLong, 0))                                                // ohne initialisiertes Breakeven sofortige Rückkehr
@@ -2152,19 +2159,35 @@ void Grid.DrawBreakeven(datetime time=NULL) {
 
    static double   last.grid.breakevenLong, last.grid.breakevenShort;            // Daten der zuletzt gezeichneten Indikatorwerte
    static datetime last.startTimeLong, last.startTimeShort, last.drawingTime;
+   static int      last.status;
 
    if (time == NULL)
-      time = TimeCurrent();                                                      // Farbe für stopped Sequence: DeepSkyBlue
+      time = TimeCurrent();
    datetime now = time;
+
+   if (timeStatus == NULL)
+      timeStatus = status;
+   int nowStatus = timeStatus;
+
+   int breakeven.Color      = Breakeven.Color;
+   int breakeven.Background = false;
+
+   if (last.status == STATUS_STOPPED) {
+      breakeven.Color      = Aqua;
+      breakeven.Background = true;
+   }
+
 
    if (last.drawingTime != 0) {
       // (1) Long
       if (grid.direction != D_SHORT) {                                           // "SR.5609.L 1.53024 -> 1.52904 (2012.01.23 10:19:35)"
          string labelL = StringConcatenate("SR.", sequenceId, ".beL ", DoubleToStr(last.grid.breakevenLong, Digits), " -> ", DoubleToStr(grid.breakevenLong, Digits), " (", TimeToStr(last.startTimeLong, TIME_FULL), ")");
          if (ObjectCreate(labelL, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenLong, now, grid.breakevenLong)) {
-            ObjectSet(labelL, OBJPROP_RAY,   false          );
-            ObjectSet(labelL, OBJPROP_COLOR, Breakeven.Color);
-            ObjectSet(labelL, OBJPROP_WIDTH, breakeven.Width);
+            ObjectSet(labelL, OBJPROP_RAY,   false               );
+            ObjectSet(labelL, OBJPROP_WIDTH, breakeven.Width     );
+            ObjectSet(labelL, OBJPROP_COLOR, breakeven.Color     );
+            ObjectSet(labelL, OBJPROP_BACK,  breakeven.Background);
+
             if (EQ(last.grid.breakevenLong, grid.breakevenLong)) last.startTimeLong = last.drawingTime;
             else                                                 last.startTimeLong = now;
          }
@@ -2178,11 +2201,13 @@ void Grid.DrawBreakeven(datetime time=NULL) {
       if (grid.direction != D_LONG) {
          string labelS = StringConcatenate("SR.", sequenceId, ".beS ", DoubleToStr(last.grid.breakevenShort, Digits), " -> ", DoubleToStr(grid.breakevenShort, Digits), " (", TimeToStr(last.startTimeShort, TIME_FULL), ")");
          if (ObjectCreate(labelS, OBJ_TREND, 0, last.drawingTime, last.grid.breakevenShort, now, grid.breakevenShort)) {
-            ObjectSet(labelS, OBJPROP_RAY,   false          );
-            ObjectSet(labelS, OBJPROP_COLOR, Breakeven.Color);
-            ObjectSet(labelS, OBJPROP_WIDTH, breakeven.Width);
-            if (EQ(last.grid.breakevenShort, grid.breakevenShort)) last.startTimeShort = last.drawingTime;
-            else                                                   last.startTimeShort = now;
+            ObjectSet(labelS, OBJPROP_RAY,   false               );
+            ObjectSet(labelS, OBJPROP_WIDTH, breakeven.Width     );
+            ObjectSet(labelL, OBJPROP_COLOR, breakeven.Color     );
+            ObjectSet(labelL, OBJPROP_BACK,  breakeven.Background);
+
+            if (EQ(last.grid.breakevenLong, grid.breakevenLong)) last.startTimeLong = last.drawingTime;
+            else                                                 last.startTimeLong = now;
          }
          else {
             GetLastError();                                                      // ERR_OBJECT_ALREADY_EXISTS
@@ -2198,6 +2223,9 @@ void Grid.DrawBreakeven(datetime time=NULL) {
    last.grid.breakevenLong  = grid.breakevenLong;
    last.grid.breakevenShort = grid.breakevenShort;
    last.drawingTime         = now;
+   last.status              = nowStatus;
+
+   catch("Grid.DrawBreakeven()");
 }
 
 
@@ -2214,14 +2242,8 @@ void RecolorBreakeven() {
       for (int i=ObjectsTotal()-1; i>=0; i--) {
          label = ObjectName(i);
          if (ObjectType(label)==OBJ_TREND) /*&&*/ if (StringStartsWith(label, labelBe)) {
-            if (breakeven.Width == 0) {
-               ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                         // hidden on all timeframes
-            }
-            else {
-               ObjectSet(label, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);               // visible on all timeframes
-               ObjectSet(label, OBJPROP_COLOR,      Breakeven.Color);
-               ObjectSet(label, OBJPROP_WIDTH,      breakeven.Width);
-            }
+            if (breakeven.Width == 0) ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY          );    // hidden on all timeframes
+            else                      ObjectSet(label, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);    // visible on all timeframes
          }
       }
    }
@@ -4429,7 +4451,7 @@ int ToggleOrderDisplayMode() {
    }
    else {
       // nothing to change, Anzeige bleibt unverändert
-      PlaySound("Windows XP-Batterie niedrig.wav");
+      ForceSound("Windows XP-Batterie niedrig.wav");
    }
    return(catch("ToggleOrderDisplayMode()"));
 }
