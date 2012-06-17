@@ -52,14 +52,21 @@ int onStart() {
             continue;
 
 
-         // (4) Command setzen                                                   // TODO: Zugriff synchronisieren
+         // (4) Command setzen
+         string mutex = "mutex.ChartCommand";
+         if (!AquireLock(mutex))
+            return(SetLastError(stdlib_PeekLastError()));
+
          string label = StringConcatenate("SnowRoller.", ids[i], ".command");    // TODO: Commands zu bereits existierenden Commands hinzufügen
          if (ObjectFind(label) != 0) {
             if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
-               return(catch("onStart(1)"));
+               return(_int(catch("onStart(1)"), ReleaseLock(mutex)));
             ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                         // hidden on all timeframes
          }
          ObjectSetText(label, "stop", 1);
+
+         if (!ReleaseLock(mutex))
+            return(SetLastError(stdlib_PeekLastError()));
 
 
          // (5) Tick senden
