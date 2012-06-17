@@ -98,39 +98,38 @@ int __DEINIT_FLAGS__[];
 
 ////////////////////////////////////////////////////////////////// Konfiguration //////////////////////////////////////////////////////////////////
 
-extern /*sticky*/ string Sequence.ID            = "";
-extern            string GridDirection          = "Bidirectional* | Long | Short | Long+Short";
-extern            int    GridSize               = 20;
-extern            double LotSize                = 0.1;
-extern            string StartConditions        = "";                      // @limit(1.33) && @time(2012.03.12 12:00)
-extern            string StopConditions         = "@profit(20%)";          // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
-extern /*sticky*/ string OrderDisplayMode       = "None";
-extern            string OrderDisplayMode.Help  = "None* | Stopped | Active | All";
-extern /*sticky*/ color  Breakeven.Color        = Blue;
-extern /*sticky*/ string Sequence.Start         = "(do not change this field)";
+extern /*sticky*/ string Sequence.ID           = "";
+extern            string GridDirection         = "Bidirectional* | Long | Short | Long+Short";
+extern            int    GridSize              = 20;
+extern            double LotSize               = 0.1;
+extern            string StartConditions       = "";                       // @limit(1.33) && @time(2012.03.12 12:00)
+extern            string StopConditions        = "@profit(20%)";           // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
+extern /*sticky*/ string OrderDisplayMode      = "None";
+extern            string OrderDisplayMode.Help = "None* | Stopped | Active | All";
+extern /*sticky*/ color  Breakeven.Color       = Blue;
+extern /*sticky*/ string Sequence.StatusFile   = "(do not change)";        // Dateiname mit zu "..\files\presets" relativer Pfadangabe: "Alpari\EURUSD\2012-06-05\eurusd.SR.5324.set"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/*sticky*/ string statusFile;                                              // Dateiname der Statusdatei relativ zu "..\files\presets":
-/*sticky*/ int    startStopDisplayMode          = SDM_PRICE;               // "Alpari\EURUSD\2012-06-05\eurusd.SR.5324.set"
-           int    orderDisplayMode              = ODM_NONE;
-/*sticky*/ int    breakeven.Width               = 1;
+/*sticky*/ int  startStopDisplayMode           = SDM_PRICE;
+           int  orderDisplayMode               = ODM_NONE;
+/*sticky*/ int  breakeven.Width                = 1;
 
-           bool   ignoreOrphans.pendingOrders   = false;
-           bool   ignoreOrphans.openPositions   = false;
-           bool   ignoreOrphans.closedPositions = false;
+           bool ignoreOrphans.pendingOrders    = false;
+           bool ignoreOrphans.openPositions    = false;
+           bool ignoreOrphans.closedPositions  = false;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-string   last.Sequence.ID      = "";                  // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
-string   last.Sequence.Start   = "";                  // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
-string   last.GridDirection    = "";                  // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
+string   last.Sequence.ID         = "";               // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
+string   last.Sequence.StatusFile = "";               // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
+string   last.GridDirection       = "";               // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
 int      last.GridSize;                               // in init() daraus restauriert.
 double   last.LotSize;
-string   last.StartConditions  = "";
-string   last.StopConditions   = "";
-string   last.OrderDisplayMode = "";
+string   last.StartConditions     = "";
+string   last.StopConditions      = "";
+string   last.OrderDisplayMode    = "";
 color    last.Breakeven.Color;
 
 int      status = STATUS_UNINITIALIZED;
@@ -2397,12 +2396,12 @@ int StoreTransientStatus() {
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
    ObjectSetText(label, ifString(sequenceId==0, "0", Sequence.ID), 1);        // 0 = STATUS_UNINITIALIZED
 
-   label = StringConcatenate(__NAME__, ".transient.Sequence.Start");
+   label = StringConcatenate(__NAME__, ".transient.Sequence.StatusFile");
    if (ObjectFind(label) == 0)
       ObjectDelete(label);
    ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
-   ObjectSetText(label, Sequence.Start, 1);
+   ObjectSetText(label, Sequence.StatusFile, 1);
 
    label = StringConcatenate(__NAME__, ".transient.startStopDisplayMode");
    if (ObjectFind(label) == 0)
@@ -2483,19 +2482,22 @@ bool RestoreTransientStatus() {
          idFound     = true;
       }
 
-      label = StringConcatenate(__NAME__, ".transient.Sequence.Start");
+      label = StringConcatenate(__NAME__, ".transient.Sequence.StatusFile");
       if (ObjectFind(label) == 0) {
-         Sequence.Start = StringTrim(ObjectDescription(label));
+         strValue = StringTrim(ObjectDescription(label));
+         //if (!IsFile(TerminalPath() +"\\experts\\files\\presets\\" + strValue))
+         //   return(_false(catch("RestoreTransientStatus(3)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+         Sequence.StatusFile = strValue;
       }
 
       label = StringConcatenate(__NAME__, ".transient.startStopDisplayMode");
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
-            return(_false(catch("RestoreTransientStatus(3)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(4)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
          if (!IntInArray(startStopDisplayModes, iValue))
-            return(_false(catch("RestoreTransientStatus(4)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(5)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          startStopDisplayMode = iValue;
       }
 
@@ -2503,7 +2505,7 @@ bool RestoreTransientStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringInArray(orderDisplayModes, strValue))
-            return(_false(catch("RestoreTransientStatus(5)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(6)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          OrderDisplayMode = strValue;
       }
 
@@ -2511,10 +2513,10 @@ bool RestoreTransientStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
-            return(_false(catch("RestoreTransientStatus(6)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(7)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
          if (iValue < CLR_NONE || iValue > C'255,255,255')
-            return(_false(catch("RestoreTransientStatus(7)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\" (0x"+ IntToHexStr(iValue) +")", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(8)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\" (0x"+ IntToHexStr(iValue) +")", ERR_INVALID_CONFIG_PARAMVALUE)));
          Breakeven.Color = iValue;
       }
 
@@ -2522,10 +2524,10 @@ bool RestoreTransientStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
-            return(_false(catch("RestoreTransientStatus(8)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(9)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
          if (iValue < 0 || iValue > 5)
-            return(_false(catch("RestoreTransientStatus(9)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(10)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          breakeven.Width = iValue;
       }
 
@@ -2533,7 +2535,7 @@ bool RestoreTransientStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsDigit(strValue))
-            return(_false(catch("RestoreTransientStatus(10)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(11)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          __STATUS__CANCELLED = StrToInteger(strValue) != 0;
       }
 
@@ -2541,12 +2543,12 @@ bool RestoreTransientStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsDigit(strValue))
-            return(_false(catch("RestoreTransientStatus(11)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreTransientStatus(12)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          __STATUS__INVALID_INPUT = StrToInteger(strValue) != 0;
       }
    }
 
-   return(idFound && IsNoError(catch("RestoreTransientStatus(12)")));
+   return(idFound && IsNoError(catch("RestoreTransientStatus(13)")));
 }
 
 
@@ -2932,7 +2934,7 @@ int HandleConfigError(string location, string msg, bool interactive) {
  */
 void StoreConfiguration(bool save=true) {
    static string   _Sequence.ID;
-   static string   _Sequence.Start;
+   static string   _Sequence.StatusFile;
    static string   _GridDirection;
    static int      _GridSize;
    static double   _LotSize;
@@ -2961,14 +2963,14 @@ void StoreConfiguration(bool save=true) {
    static double   _stop.profitPercent.value;
 
    if (save) {
-      _Sequence.ID                  = StringConcatenate(Sequence.ID,      "");   // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
-      _Sequence.Start               = StringConcatenate(Sequence.Start,   "");
-      _GridDirection                = StringConcatenate(GridDirection,    "");
+      _Sequence.ID                  = StringConcatenate(Sequence.ID,         "");   // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
+      _Sequence.StatusFile          = StringConcatenate(Sequence.StatusFile, "");
+      _GridDirection                = StringConcatenate(GridDirection,       "");
       _GridSize                     = GridSize;
       _LotSize                      = LotSize;
-      _StartConditions              = StringConcatenate(StartConditions,  "");
-      _StopConditions               = StringConcatenate(StopConditions,   "");
-      _OrderDisplayMode             = StringConcatenate(OrderDisplayMode, "");
+      _StartConditions              = StringConcatenate(StartConditions,     "");
+      _StopConditions               = StringConcatenate(StopConditions,      "");
+      _OrderDisplayMode             = StringConcatenate(OrderDisplayMode,    "");
       _Breakeven.Color              = Breakeven.Color;
 
       _grid.direction               = grid.direction;
@@ -2992,7 +2994,7 @@ void StoreConfiguration(bool save=true) {
    }
    else {
       Sequence.ID                   = _Sequence.ID;
-      Sequence.Start                = _Sequence.Start;
+      Sequence.StatusFile           = _Sequence.StatusFile;
       GridDirection                 = _GridDirection;
       GridSize                      = _GridSize;
       LotSize                       = _LotSize;

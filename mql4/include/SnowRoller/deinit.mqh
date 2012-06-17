@@ -83,15 +83,15 @@ int onDeinitRecompile() {
  */
 int onDeinitParameterChange() {
    // alte Parameter für Vergleich mit neuen Parametern zwischenspeichern
-   last.Sequence.ID      = StringConcatenate(Sequence.ID,      "");
-   last.GridDirection    = StringConcatenate(GridDirection,    "");  // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
-   last.GridSize         = GridSize;
-   last.LotSize          = LotSize;
-   last.StartConditions  = StringConcatenate(StartConditions,  "");
-   last.StopConditions   = StringConcatenate(StopConditions,   "");
-   last.OrderDisplayMode = StringConcatenate(OrderDisplayMode, "");
-   last.Breakeven.Color  = Breakeven.Color;
-   last.Sequence.Start   = StringConcatenate(Sequence.Start,   "");
+   last.Sequence.ID         = StringConcatenate(Sequence.ID,         "");     // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
+   last.Sequence.StatusFile = StringConcatenate(Sequence.StatusFile, "");
+   last.GridDirection       = StringConcatenate(GridDirection,       "");
+   last.GridSize            = GridSize;
+   last.LotSize             = LotSize;
+   last.StartConditions     = StringConcatenate(StartConditions,     "");
+   last.StopConditions      = StringConcatenate(StopConditions,      "");
+   last.OrderDisplayMode    = StringConcatenate(OrderDisplayMode,    "");
+   last.Breakeven.Color     = Breakeven.Color;
    return(-1);
 
 }
