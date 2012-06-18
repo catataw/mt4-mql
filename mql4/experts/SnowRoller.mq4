@@ -48,7 +48,7 @@
  *
  *  - Build 419 silently crashes
  *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
- *  - Alpari: StopOrder-Slippage EUR/USD bis 3.9 pip, GBP/AUD bis 6 pip, GBP/JPY bis 21.4 pip
+ *  - Alpari: StopOrder-Slippage EUR/USD bis 4.1 pip, GBP/AUD bis 6 pip, GBP/JPY bis 21.4 pip
  *  - FxPro: zu viele Traderequests in zu kurzer Zeit => ERR_TRADE_TIMEOUT
  *
  *
@@ -3212,7 +3212,6 @@ bool SaveStatus() {
 
    ArrayResize(lines,  0);
    ArrayResize(values, 0);
-
    return(IsNoError(catch("SaveStatus(4)")));
 }
 
@@ -3802,7 +3801,7 @@ bool SynchronizeStatus() {
    if (__STATUS__CANCELLED || IsLastError())
       return(false);
 
-   bool pendingOrder, openPosition, closedPosition, closedBySL;
+   bool permStatusChange, permTicketChange, pendingOrder, openPosition, closedPosition, closedBySL;
 
    int  orphanedPendingOrders  []; ArrayResize(orphanedPendingOrders,   0);
    int  orphanedOpenPositions  []; ArrayResize(orphanedOpenPositions,   0);
@@ -3816,12 +3815,17 @@ bool SynchronizeStatus() {
       if (orders.closeTime[i] == 0) {
          if (!OrderSelectByTicket(orders.ticket[i], "SynchronizeStatus(1)   cannot synchronize "+ OperationTypeDescription(ifInt(orders.type[i]==OP_UNDEFINED, orders.pendingType[i], orders.type[i])) +" order (#"+ orders.ticket[i] +" not found)"))
             return(false);
-         if (!Sync.UpdateOrder(i))
+
+         if (!Sync.UpdateOrder(i, permTicketChange))
             return(false);
+         if (permTicketChange)
+            permStatusChange = true;
+
          if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]!=0) {
             if (!Grid.DropTicket(orders.ticket[i]))
                return(false);
             sizeOfTickets--;
+            permStatusChange = true;
          }
       }
    }
@@ -3881,6 +3885,7 @@ bool SynchronizeStatus() {
          __STATUS__CANCELLED = true;
          return(_false(catch("SynchronizeStatus(6)")));
       }
+      // TODO: Orphans in Statusfile speichern
    }
 
 
@@ -3932,8 +3937,11 @@ bool SynchronizeStatus() {
       closedPosition = !pendingOrder && !openPosition;
       closedBySL     = closedPosition && orders.closedBySL[i];
 
+
+      // TODO: Was ist das für ein Nonsense hier???
       if (closedPosition && !closedBySL)
          if (ArraySize(openLevels) != 0)                 return(_false(catch("SynchronizeStatus(5)   illegal sequence status, both open (#?) and closed (#"+ orders.ticket[i] +") positions found", ERR_RUNTIME_ERROR)));
+
 
       if (!pendingOrder) {
          Sync.PushEvent(events, orders.openTime[i], EV_POSITION_OPEN, NULL, i);
@@ -3964,7 +3972,7 @@ bool SynchronizeStatus() {
 
    // (3) Breakeven-Verlauf und Laufzeitvariablen restaurieren
    datetime time, lastTime, nextTime;
-   int      minute, lastMinute, type, lastType, nextType, iOrder, iOrderMax, reopenedPositions;
+   int      minute, lastMinute, type, lastType, nextType, iOrder, nextiOrder, iOrderMax, ticket, lastTicket, nextTicket, closedPositions, reopenedPositions;
    bool     recalcBreakeven, breakevenVisible;
    int sizeOfEvents = ArrayRange(events, 0);
 
@@ -3975,13 +3983,16 @@ bool SynchronizeStatus() {
    }
 
    for (i=0; i < sizeOfEvents; i++) {
-      time      = events[i][0] +0.1;                                    // (datetime) double
-      type      = events[i][1] +0.1;                                    //      (int) double
-      gridBase  = events[i][2];
-      iOrder    = events[i][3] + Sign(events[i][3]) * 0.1;              //      (int) double
-      iOrderMax = Max(iOrderMax, iOrder);
-      if (i < sizeOfEvents-1) { nextTime = events[i+1][0]+0.1; nextType = events[i+1][1]+0.1; }
-      else                    { nextTime = 0;                  nextType = 0;                  }
+      time       = events[i][0] +0.1;                                   // (datetime) double
+      type       = events[i][1] +0.1;                                   //      (int) double
+      gridBase   = events[i][2];
+      iOrder     = events[i][3] + Sign(events[i][3]) * 0.1;             //      (int) double
+      iOrderMax  = Max(iOrderMax, iOrder);
+
+      ticket     = 0; if (iOrder != -1) ticket = orders.ticket[iOrder];
+      nextTicket = 0;
+      if (i < sizeOfEvents-1) { nextTime = events[i+1][0]+0.1; nextType = events[i+1][1]+0.1; nextiOrder = events[i+1][3] + Sign(events[i+1][3]) * 0.1; if (nextiOrder != -1) nextTicket = orders.ticket[nextiOrder]; }
+      else                    { nextTime = 0;                  nextType = 0;                                                                                                  nextTicket = 0; }
 
       // (3.1) zwischen den Breakeven-Events liegende BarOpen(M1)-Events simulieren
       if (breakevenVisible) {
@@ -3996,19 +4007,20 @@ bool SynchronizeStatus() {
       // (3.2) Breakeven-Events auswerten
       // -- EV_SEQUENCE_START --------------
       if (type == EV_SEQUENCE_START) {
-         if (i!=0 && status!=STATUS_STOPPED && status!=STATUS_STARTING)     return(_false(catch("SynchronizeStatus(10)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
-         if (time==lastTime || time==nextTime)                              return(_false(catch("SynchronizeStatus(11)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") and before "+ BreakevenEventToStr(nextType) +" (time="+ nextTime +", "+ TimeToStr(nextTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
-         if (status==STATUS_STARTING && reopenedPositions!=Abs(grid.level)) return(_false(catch("SynchronizeStatus(12)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") and before "+ BreakevenEventToStr(nextType) +" (time="+ nextTime +", "+ TimeToStr(nextTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
-         status          = STATUS_PROGRESSING;
-         recalcBreakeven = (i != 0);
+         if (i!=0 && status!=STATUS_STOPPED && status!=STATUS_STARTING)     return(_false(catch("SynchronizeStatus(10)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (time==lastTime || time==nextTime)                              return(_false(catch("SynchronizeStatus(11)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") and before "+ BreakevenEventToStr(nextType) +" ("+ ifString(nextTicket, "#"+ nextTicket +", ", "") +"time="+ nextTime +", "+ TimeToStr(nextTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (status==STATUS_STARTING && reopenedPositions!=Abs(grid.level)) return(_false(catch("SynchronizeStatus(12)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") and before "+ BreakevenEventToStr(nextType) +" ("+ ifString(nextTicket, "#"+ nextTicket +", ", "") +"time="+ nextTime +", "+ TimeToStr(nextTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         reopenedPositions = 0;
+         status            = STATUS_PROGRESSING;
+         recalcBreakeven   = (i != 0);
       }
       // -- EV_GRIDBASE_CHANGE -------------
       else if (type == EV_GRIDBASE_CHANGE) {
-         if (status!=STATUS_PROGRESSING && status!=STATUS_STOPPED)          return(_false(catch("SynchronizeStatus(13)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
-         if (time==lastTime || time==nextTime)                              return(_false(catch("SynchronizeStatus(14)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") and before "+ BreakevenEventToStr(nextType) +" (time="+ nextTime +", "+ TimeToStr(nextTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (status!=STATUS_PROGRESSING && status!=STATUS_STOPPED)          return(_false(catch("SynchronizeStatus(13)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (time==lastTime || time==nextTime)                              return(_false(catch("SynchronizeStatus(14)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") and before "+ BreakevenEventToStr(nextType) +" ("+ ifString(nextTicket, "#"+ nextTicket +", ", "") +"time="+ nextTime +", "+ TimeToStr(nextTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
          grid.base = gridBase;
          if (status == STATUS_PROGRESSING) {
-            if (grid.level != 0)                                            return(_false(catch("SynchronizeStatus(15)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+            if (grid.level != 0)                                            return(_false(catch("SynchronizeStatus(15)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
             recalcBreakeven = (grid.maxLevelLong-grid.maxLevelShort > 0);
          }
          else { // STATUS_STOPPED
@@ -4020,7 +4032,7 @@ bool SynchronizeStatus() {
       }
       // -- EV_POSITION_OPEN ---------------
       else if (type == EV_POSITION_OPEN) {
-         if (status!=STATUS_PROGRESSING && status!=STATUS_STARTING)         return(_false(catch("SynchronizeStatus(16)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (status!=STATUS_PROGRESSING && status!=STATUS_STARTING)         return(_false(catch("SynchronizeStatus(16)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
          if (status == STATUS_PROGRESSING) {                                // nicht bei PositionReopen
             grid.level        += Sign(orders.level[iOrder]);
             grid.maxLevelLong  = Max(grid.level, grid.maxLevelLong );
@@ -4034,7 +4046,7 @@ bool SynchronizeStatus() {
       }
       // -- EV_POSITION_STOPOUT ------------
       else if (type == EV_POSITION_STOPOUT) {
-         if (status!=STATUS_PROGRESSING)                                    return(_false(catch("SynchronizeStatus(17)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (status != STATUS_PROGRESSING)                                  return(_false(catch("SynchronizeStatus(17)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
          grid.level      -= Sign(orders.level[iOrder]);
          grid.stops++;
          grid.stopsPL    += orders.swap[iOrder] + orders.commission[iOrder] + orders.profit[iOrder];
@@ -4043,22 +4055,27 @@ bool SynchronizeStatus() {
       }
       // -- EV_POSITION_CLOSE --------------
       else if (type == EV_POSITION_CLOSE) {
-         if (status!=STATUS_PROGRESSING && status!=STATUS_STOPPING)         return(_false(catch("SynchronizeStatus(18)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (status!=STATUS_PROGRESSING && status!=STATUS_STOPPING)         return(_false(catch("SynchronizeStatus(18)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
          grid.closedPL  += orders.swap[iOrder] + orders.commission[iOrder] + orders.profit[iOrder];
+         if (status == STATUS_PROGRESSING)
+            closedPositions = 0;
+         closedPositions++;
          status          = STATUS_STOPPING;
          recalcBreakeven = false;
       }
       // -- EV_SEQUENCE_STOP ---------------
       else if (type == EV_SEQUENCE_STOP) {
-         if (status!=STATUS_PROGRESSING && status!=STATUS_STOPPING)         return(_false(catch("SynchronizeStatus(19)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
-         if (time==lastTime || time==nextTime)                              return(_false(catch("SynchronizeStatus(20)   illegal break-even event "+ BreakevenEventToStr(type) +" (time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" (time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") and before "+ BreakevenEventToStr(nextType) +" (time="+ nextTime +", "+ TimeToStr(nextTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (status!=STATUS_PROGRESSING && status!=STATUS_STOPPING)         return(_false(catch("SynchronizeStatus(19)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (time==lastTime || time==nextTime)                              return(_false(catch("SynchronizeStatus(20)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") and before "+ BreakevenEventToStr(nextType) +" ("+ ifString(nextTicket, "#"+ nextTicket +", ", "") +"time="+ nextTime +", "+ TimeToStr(nextTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         if (closedPositions!=Abs(grid.level))                              return(_false(catch("SynchronizeStatus(21)   illegal break-even event "+ BreakevenEventToStr(type) +" ("+ ifString(ticket, "#"+ ticket +", ", "") +"time="+ time +", "+ TimeToStr(time, TIME_FULL) +") after "+ BreakevenEventToStr(lastType) +" ("+ ifString(lastTicket, "#"+ lastTicket +", ", "") +"time="+ lastTime +", "+ TimeToStr(lastTime, TIME_FULL) +") and before "+ BreakevenEventToStr(nextType) +" ("+ ifString(nextTicket, "#"+ nextTicket +", ", "") +"time="+ nextTime +", "+ TimeToStr(nextTime, TIME_FULL) +") in "+ StatusToStr(status) +" at level "+ grid.level, ERR_RUNTIME_ERROR)));
+         closedPositions = 0;
          status          = STATUS_STOPPED;
          recalcBreakeven = false;
       }
       // -----------------------------------
       grid.valueAtRisk = -grid.stopsPL + grid.activeRisk;
 
-      //debug("SynchronizeStatus()   time="+ time +"  "+ StringRightPad(BreakevenEventToStr(type), 19, " ") +"  grid.level="+ grid.level +"  iOrder="+ iOrder +"  reopenedPositions="+reopenedPositions +"  recalcBE="+recalcBreakeven +"  visibleBE="+ breakevenVisible);
+      //debug("SynchronizeStatus()   "+ ifString(ticket, "#"+ ticket, "") +"  "+ TimeToStr(time, TIME_FULL) +" ("+ time +")  "+ StringRightPad(StatusToStr(status), 20, " ") + StringRightPad(BreakevenEventToStr(type), 19, " ") +"  grid.level="+ grid.level +"  iOrder="+ iOrder +"  closed="+ closedPositions +"  reopened="+ reopenedPositions +"  recalcBE="+recalcBreakeven +"  visibleBE="+ breakevenVisible);
 
 
       // (3.3) Breakeven ggf. neuberechnen und zeichnen
@@ -4073,9 +4090,46 @@ bool SynchronizeStatus() {
          breakevenVisible = (status != STATUS_STOPPED);
       }
 
-      lastTime = time;
-      lastType = type;
+      lastTime   = time;
+      lastType   = type;
+      lastTicket = ticket;
    }
+
+
+   // (4) Wurde die Sequenz außerhalb gestoppt, fehlen die Stop-Daten (EV_SEQUENCE_STOP)
+   if (status == STATUS_STOPPING) {
+      if (closedPositions == Abs(grid.level)) {
+
+         // Stopdaten ermitteln und hinzufügen
+         double price;
+         for (i=sizeOfEvents-Abs(grid.level); i < sizeOfEvents; i++) {
+            time   = events[i][0] +0.1;                                    // (datetime) double
+            type   = events[i][1] +0.1;                                    //      (int) double
+            iOrder = events[i][3] + Sign(events[i][3]) * 0.1;              //      (int) double
+            if (type != EV_POSITION_CLOSE)
+               return(_false(catch("SynchronizeStatus(22)  unexpected "+ BreakevenEventToStr(type) +" at index "+ i, ERR_SOME_ARRAY_ERROR)));
+            price += orders.closePrice[iOrder];
+         }
+         time  += 1;                                                       // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehrdeutigkeiten
+         price /= Abs(grid.level);                                         // bei der nächsten Sortierung der Breakeven-Events zu vermeiden.
+
+         int n = ArraySize(sequenceStopTimes) - 1;
+         if (sequenceStopTimes[n] != 0)
+            return(_false(catch("SynchronizeStatus(23)  unexpected sequenceStopTimes="+ IntsToStr(sequenceStopTimes, NULL), ERR_RUNTIME_ERROR)));
+         sequenceStopTimes [n] = time;
+         sequenceStopPrices[n] = NormalizeDouble(price, Digits);
+
+         permStatusChange = true;
+         closedPositions  = 0;
+         status           = STATUS_STOPPED;
+         recalcBreakeven  = false;
+
+         if (!Grid.DrawBreakeven(time))
+            return(false);
+         breakevenVisible = false;
+      }
+   }
+
 
    grid.stopsPL     = NormalizeDouble(grid.stopsPL,                                   2);
    grid.closedPL    = NormalizeDouble(grid.closedPL,                                  2);
@@ -4087,6 +4141,12 @@ bool SynchronizeStatus() {
    RedrawStartStop();
    RedrawOrders();
 
+
+   // (5) Status ggf. speichern
+   if (permStatusChange)
+      if (!SaveStatus())
+         return(false);
+
    /*
    debug("SynchronizeStatus() level="      + grid.level
                           +"  stops="      + grid.stops
@@ -4097,16 +4157,18 @@ bool SynchronizeStatus() {
                           +"  activeRisk=" + DoubleToStr(grid.activeRisk,  2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
    */
+
    ArrayResize(openLevels, 0);
    ArrayResize(events,     0);
-   return(IsNoError(catch("SynchronizeStatus(21)")));
+   return(IsNoError(catch("SynchronizeStatus(24)")));
 }
 
 
 /**
- * Aktualisiert die Daten des lokal als *offen* markierten Tickets mit den Online-Daten.
+ * Aktualisiert die Daten des lokal als offen markierten Tickets mit den Online-Daten.
  *
- * @param  int i - Ticketindex
+ * @param  int   i            - Ticketindex
+ * @param  bool& lpPermChange - Zeiger auf Variable, die anzeigt, ob dauerhafte Ticketänderungen vorliegen
  *
  * @return bool - Erfolgsstatus
  *
@@ -4114,16 +4176,17 @@ bool SynchronizeStatus() {
  *  NOTE: Wird nur in SynchronizeStatus() verwendet.
  *  -----
  */
-bool Sync.UpdateOrder(int i) {
+bool Sync.UpdateOrder(int i, bool& lpPermChange) {
    if (i < 0 || i > ArraySize(orders.ticket)-1) return(_false(catch("Sync.UpdateOrder(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    if (orders.closeTime[i] != 0)                return(_false(catch("Sync.UpdateOrder(2)   cannot update ticket #"+ orders.ticket[i] +" (marked as closed in grid arrays)", ERR_RUNTIME_ERROR)));
 
    // das Ticket ist selektiert
-   bool wasPending = orders.type[i] == OP_UNDEFINED;
-   bool wasOpen    = !wasPending;
-   bool isPending  = IsPendingTradeOperation(OrderType());
-   bool isClosed   = OrderCloseTime() != 0;
-   bool isOpen     = !isPending && !isClosed;
+   bool   wasPending = orders.type[i] == OP_UNDEFINED;                              // vormals PendingOrder
+   bool   wasOpen    = !wasPending;                                                 // vormals offene Position
+   bool   isPending  = IsPendingTradeOperation(OrderType());                        // jetzt PendingOrder
+   bool   isClosed   = OrderCloseTime() != 0;                                       // jetzt geschlossen oder gestrichen
+   bool   isOpen     = !isPending && !isClosed;                                     // jetzt offene Position
+   double lastSwap   = orders.swap[i];
 
 
    // (1) Ticketdaten aktualisieren
@@ -4156,20 +4219,12 @@ bool Sync.UpdateOrder(int i) {
       orders.profit    [i] = OrderProfit();
    }
 
+   // (2) Variable lpPermChange aktualisieren
+   if      (wasPending) lpPermChange = isOpen || isClosed;
+   else if (  isClosed) lpPermChange = true;
+   else                 lpPermChange = NE(lastSwap, OrderSwap());
 
-   // (2) Sequenzdaten aktualisieren (falls Sequenz außerhalb geschlossen wird)     // TODO: StopTime korrigieren (+ 1)
-   if (isClosed && !orders.closedBySL[i]) {
-
-      return(_false(catch("Sync.UpdateOrder(3)   update of sequenceStopTime/sequenceStopPrice not yet implemented", ERR_RUNTIME_ERROR)));
-
-      int n = ArraySize(sequenceStartTimes) - 1;                                    // Wir setzen sequenceStartTime 1 sec. in die Vergangenheit, um Uneindeutigkeiten
-      if (sequenceStopTimes[n]==0 || orders.closeTime[i] < sequenceStopTimes[n]) {  // bei der Sortierung der Breakeven-Events zu vermeiden.
-         sequenceStopTimes [n] = orders.closeTime [i];
-         sequenceStopPrices[n] = orders.closePrice[i];                              // TODO: bei Schließen Stück-für-Stück muß avg(stopPrice) berechnet werden
-      }
-   }
-
-   return(!IsLastError() && IsNoError(catch("Sync.UpdateOrder(4)")));
+   return(!IsLastError() && IsNoError(catch("Sync.UpdateOrder(3)")));
 }
 
 
