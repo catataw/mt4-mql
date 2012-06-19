@@ -160,8 +160,10 @@ int onInitParameterChange() {
    else {
       // Parameteränderung einer laufenden Sequenz
       if (SaveStatus()) {
-         if (OrderDisplayMode != last.OrderDisplayMode) { RedrawOrders();                                        }
-         if ( Breakeven.Color != last.Breakeven.Color ) {                 RedrawStartStop(); RecolorBreakeven(); }
+         if (Breakeven.Color != last.Breakeven.Color) {
+            RedrawStartStop();
+            RecolorBreakeven();
+         }
       }
    }
    return(last_error);
@@ -178,15 +180,14 @@ int onInitChartChange() {
       return(NO_ERROR);
 
    // nur die nicht-statischen Input-Parameter restaurieren
-   Sequence.ID         = last.Sequence.ID;
-   Sequence.StatusFile = last.Sequence.StatusFile;
-   GridDirection       = last.GridDirection;
-   GridSize            = last.GridSize;
-   LotSize             = last.LotSize;
-   StartConditions     = last.StartConditions;
-   StopConditions      = last.StopConditions;
-   OrderDisplayMode    = last.OrderDisplayMode;
-   Breakeven.Color     = last.Breakeven.Color;
+   Sequence.ID             = last.Sequence.ID;
+   Sequence.StatusLocation = last.Sequence.StatusLocation;
+   GridDirection           = last.GridDirection;
+   GridSize                = last.GridSize;
+   LotSize                 = last.LotSize;
+   StartConditions         = last.StartConditions;
+   StopConditions          = last.StopConditions;
+   Breakeven.Color         = last.Breakeven.Color;
 
    // TODO: Symbolwechsel behandeln
    return(NO_ERROR);

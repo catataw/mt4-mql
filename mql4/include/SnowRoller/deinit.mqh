@@ -32,7 +32,7 @@ int onDeinitChartClose() {
       __STATUS__CANCELLED = true;                                    // Vorsicht: der EA-Status ist undefined
 
       // Statusfile löschen
-      FileDelete("presets\\"+ StringToLower(StdSymbol()) +".SR."+ sequenceId +".set");
+      FileDelete(GetStatusFileName());
       GetLastError();
 
       // Titelzeile des Testers kann nicht zurückgesetzt werden, SendMessage() führt in deinit() zu Deadlock
@@ -45,7 +45,7 @@ int onDeinitChartClose() {
       UpdateStatus();
       SaveStatus();
    }
-   StoreTransientStatus();                                           // für evt. Terminal-Restart
+   StoreTransientStatus();                                           // für Terminal-Restart oder Profile-Wechsel
    return(last_error);
 }
 
@@ -83,15 +83,14 @@ int onDeinitRecompile() {
  */
 int onDeinitParameterChange() {
    // alte Parameter für Vergleich mit neuen Parametern zwischenspeichern
-   last.Sequence.ID         = StringConcatenate(Sequence.ID,         "");     // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
-   last.Sequence.StatusFile = StringConcatenate(Sequence.StatusFile, "");
-   last.GridDirection       = StringConcatenate(GridDirection,       "");
-   last.GridSize            = GridSize;
-   last.LotSize             = LotSize;
-   last.StartConditions     = StringConcatenate(StartConditions,     "");
-   last.StopConditions      = StringConcatenate(StopConditions,      "");
-   last.OrderDisplayMode    = StringConcatenate(OrderDisplayMode,    "");
-   last.Breakeven.Color     = Breakeven.Color;
+   last.Sequence.ID             = StringConcatenate(Sequence.ID,             "");   // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
+   last.Sequence.StatusLocation = StringConcatenate(Sequence.StatusLocation, "");
+   last.GridDirection           = StringConcatenate(GridDirection,           "");
+   last.GridSize                = GridSize;
+   last.LotSize                 = LotSize;
+   last.StartConditions         = StringConcatenate(StartConditions,         "");
+   last.StopConditions          = StringConcatenate(StopConditions,          "");
+   last.Breakeven.Color         = Breakeven.Color;
    return(-1);
 
 }
