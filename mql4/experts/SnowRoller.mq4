@@ -12,7 +12,6 @@
  *
  *  TODO:
  *  -----
- *  - Statusdateien müssen auch in presets-Unterordnern gefunden werden                            *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                     *
  *  - Start/StopConditions vervollständigen                                                        *
  *  - ResumeCondition implementieren                                                               *
