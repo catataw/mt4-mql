@@ -32,7 +32,7 @@ int onDeinitChartClose() {
       __STATUS__CANCELLED = true;                                    // Vorsicht: der EA-Status ist undefined
 
       // Statusfile löschen
-      FileDelete(GetStatusFileName());
+      FileDelete(GetMqlStatusFileName());
       GetLastError();
 
       // Titelzeile des Testers kann nicht zurückgesetzt werden, SendMessage() führt in deinit() zu Deadlock

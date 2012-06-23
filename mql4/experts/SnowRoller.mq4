@@ -13,7 +13,6 @@
  *  TODO:
  *  -----
  *  - Statusdateien müssen auch in presets-Unterordnern gefunden werden                            *
- *  - Sounds abschaltbar machen                                                                    *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                     *
  *  - Start/StopConditions vervollständigen                                                        *
  *  - ResumeCondition implementieren                                                               *
@@ -26,6 +25,7 @@
  *  - beidseitig unidirektionales Grid implementieren                                              *
  *  - Laufzeitumgebung auf Server auslagern                                                        *
  *
+ *  - Sounds abschaltbar machen
  *  - Änderungen der Gridbasis während Auszeit erkennen
  *  - maxProfit/Loss analog zu PendingOrders regelmäßig speichern
  *  - bidirektionales Grid entfernen
@@ -105,7 +105,7 @@ extern            double LotSize                 = 0.1;
 extern            string StartConditions         = "";                        // @limit(1.33) && @time(2012.03.12 12:00)
 extern            string StopConditions          = "@profit(20%)";            // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
 extern /*sticky*/ color  Breakeven.Color         = Blue;
-extern /*sticky*/ string Sequence.StatusLocation = "(read-only)";             // Datumsverzeichnis: "2012-06-05"
+extern /*sticky*/ string Sequence.StatusLocation = "(read-only)";             // Datumsverzeichnis: "2012.06.05"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -129,10 +129,12 @@ string   last.StartConditions         = "";
 string   last.StopConditions          = "";
 color    last.Breakeven.Color;
 
-int      status = STATUS_UNINITIALIZED;
-
 int      sequenceId;
-bool     test = false;                                // ob dies eine Testsequenz ist (im Tester oder im Online-Chart)
+bool     test;                                        // ob dies eine Testsequenz ist (im Tester oder im Online-Chart)
+
+int      status = STATUS_UNINITIALIZED;
+string   status.directory;                            // MQL-Verzeichnis der Statusdatei (unterhalb ".\files\")
+string   status.fileName;                             // einfacher Dateiname der Statusdatei
 
 datetime instanceStartTime;                           // Start des EA's
 double   instanceStartPrice;
@@ -371,9 +373,9 @@ bool StartSequence() {
    datetime startTime  = TimeCurrent();
    double   startPrice = NormalizeDouble((Bid + Ask)/2, Digits);
 
-   ArrayPushInt   (sequenceStartTimes, startTime-1);                 // Wir setzen startTime 1 sec. in die Vergangenheit. Ansonsten wäre es möglich, daß
-   ArrayPushDouble(sequenceStartPrices, startPrice);                 // startTime und OpenTime() des nächsten Tickets denselben Timestamp haben, wodurch eine
-   ArrayPushInt   (sequenceStopTimes,            0);                 // eindeutige Sortierung der Breakeven-Events für den Breakeven-Indikator unmöglich wäre.
+   ArrayPushInt   (sequenceStartTimes, startTime-1);                 // Wir setzen startTime 1 sec. in die Vergangenheit, um Mehrdeutigkeiten
+   ArrayPushDouble(sequenceStartPrices, startPrice);                 // bei der Sortierung der Breakeven-Events zu vermeiden.
+   ArrayPushInt   (sequenceStopTimes,            0);
    ArrayPushDouble(sequenceStopPrices,           0);
 
    sequenceStartEquity = NormalizeDouble(AccountEquity()-AccountCredit(), 2);
@@ -383,7 +385,6 @@ bool StartSequence() {
 
    // (2) Gridbasis setzen
    Grid.BaseReset(startTime, startPrice);                            // zeitlich immer nach sequenceStartTime
-
 
 
    // (3) Stop-Orders in den Markt legen
@@ -488,7 +489,7 @@ bool StopSequence() {
        //grid.valueAtRisk ändert sich nicht bei StopSequence()
       }
       /*
-      grid.floatingPL      = ...          // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte dort automatisch aktualisiert.
+      grid.floatingPL      = ...                                                 // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte dort automatisch aktualisiert.
       grid.totalPL         = ...
       grid.maxProfit       = ...
       grid.maxProfitTime   = ...
@@ -660,7 +661,7 @@ bool UpdateStatus() {
 
    grid.floatingPL = 0;
 
-   bool wasPending, isClosed, openPositions, recalcBreakeven;
+   bool wasPending, isClosed, openPositions, recalcBreakeven, updateStatusLocation;
    int  sizeOfTickets = ArraySize(orders.ticket);
 
 
@@ -670,7 +671,7 @@ bool UpdateStatus() {
          if (!OrderSelectByTicket(orders.ticket[i], "UpdateStatus(2)"))
             return(false);
 
-         wasPending = orders.type[i] == OP_UNDEFINED;                                           // ob das Ticket beim letzten Aufruf "pending" war
+         wasPending = orders.type[i] == OP_UNDEFINED;
 
          if (wasPending) {
             // beim letzten Aufruf Pending-Order
@@ -684,12 +685,13 @@ bool UpdateStatus() {
                orders.profit    [i] = OrderProfit();
                ChartMarker.OrderFilled(i);
 
-               grid.level        += Sign(orders.level[i]);
-               grid.maxLevelLong  = Max(grid.level, grid.maxLevelLong );
-               grid.maxLevelShort = Min(grid.level, grid.maxLevelShort); SS.Grid.MaxLevel();
-               grid.activeRisk   += orders.risk[i];
-               grid.valueAtRisk  += orders.risk[i]; SS.Grid.ValueAtRisk();                      // valueAtRisk = -stopsPL + activeRisk
-               recalcBreakeven    = true;
+               grid.level          += Sign(orders.level[i]);
+               updateStatusLocation = updateStatusLocation || (grid.maxLevelLong-grid.maxLevelShort==0);
+               grid.maxLevelLong    = Max(grid.level, grid.maxLevelLong );
+               grid.maxLevelShort   = Min(grid.level, grid.maxLevelShort); SS.Grid.MaxLevel();
+               grid.activeRisk     += orders.risk[i];
+               grid.valueAtRisk    += orders.risk[i]; SS.Grid.ValueAtRisk();                    // valueAtRisk = -stopsPL + activeRisk
+               recalcBreakeven      = true;
             }
          }
          else {
@@ -704,7 +706,8 @@ bool UpdateStatus() {
             orders.profit    [i] = OrderProfit();
          }
 
-         isClosed = OrderCloseTime() != 0;                                                      // ob das Ticket jetzt geschlossen ist
+
+         isClosed = OrderCloseTime() != 0;
 
          if (!isClosed) {                                                                       // weiterhin offenes Ticket
             grid.floatingPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
@@ -793,6 +796,11 @@ bool UpdateStatus() {
          else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                                  // nur onBarOpen     //       (langlaufendes UpdateStatus() überspringt evt. Event)
       }
    }
+
+
+   // (6) ggf. Ort der Statusdatei aktualisieren
+   if (updateStatusLocation)
+      UpdateStatusLocation();
 
    return(!IsLastError() && IsNoError(catch("UpdateStatus(3)")));
 }
@@ -2650,7 +2658,7 @@ bool ValidateConfiguration.ID(bool interactive) {
 
 
 /**
- * Validiert die gesamte aktuelle Konfiguration.
+ * Validiert die aktuelle Konfiguration.
  *
  * @param bool interactive - ob fehlerhafte Parameter interaktiv korrigiert werden können
  *
@@ -3016,74 +3024,200 @@ void RestoreConfiguration() {
 
 
 /**
- * Gibt den relativen Namen der Statusdatei der Sequenz zurück (für MQL-Dateifunktionen).
+ * Initialisiert die Dateinamensvariablen der Statusdatei mit den Ausgangswerten einer neuen Sequenz.
  *
- * - außerhalb des Testers: relativ zu "{terminal-dir}\experts\files\"
- * - im Tester:             relativ zu "{terminal-dir}\tester\files\"
- *
- * @return string - Dateiname oder Leerstring, falls ein Fehler auftrat
+ * @return bool - Erfolgsstatus
  */
-string GetStatusFileName() {
-   if (sequenceId == 0)
-      return(_empty(catch("GetStatusFileName()   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+bool InitStatusLocation() {
+   if (__STATUS__CANCELLED || IsLastError()) return( false);
+   if (sequenceId == 0)                      return(_false(catch("InitStatusLocation(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
-   string directory;
-      if      (IsTesting()) directory = "presets\\";
-      else if (IsTest())    directory = "presets\\tester\\";
-      else                  directory = "presets\\"+ ShortAccountCompany() +"\\";
+   if      (IsTesting()) status.directory = "presets\\";
+   else if (IsTest())    status.directory = "presets\\tester\\";
+   else                  status.directory = "presets\\"+ ShortAccountCompany() +"\\";
 
-   string fileName = StringConcatenate(directory, StringToLower(StdSymbol()), ".SR.", sequenceId, ".set");
-   return (fileName);
+   status.fileName = StringConcatenate(StringToLower(StdSymbol()), ".SR.", sequenceId, ".set");
 
-
-   // lokale Statusdatei suchen
-
-   // ID ist vorhanden
-
-   // immer Datei in Basisverzeichnis suchen
-   // - wenn gefunden, Datei in Datumsverzeichnis verschieben und Link ins Basisverzeichnis legen
-
-   // immer Link in Basisverzeichnis suchen
-
-   // mit Datum Unterverzeichnis dieses Datums durchsuchen
-
-   // ohne Datum alle Unterverzeichnisse absteigend nach Datum durchsuchen
+   Sequence.StatusLocation = "(read-only)";
+   return(true);
+}
 
 
-   /*
-   //string name, pattern=StringConcatenate(filesDir, subDir, "*SR.5324.*set");     // .set-Dateien des Ausgangsverzeichnisses einlesen
-   string name, pattern=StringConcatenate(filesDir, subDir, "*");
-   WIN32_FIND_DATA int wfd[]; InitializeBuffer(wfd, WIN32_FIND_DATA.size);
-   int hSearch = FindFirstFileA(pattern, wfd), result=hSearch;
+/**
+ * Aktualisiert die Dateinamensvariablen der Statusdatei.  Nur die Variablen werden modifiziert, nicht die Datei.
+ * SaveStatus() erkennt die Änderung selbst und verschiebt die Datei automatisch.
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool UpdateStatusLocation() {
+   if (__STATUS__CANCELLED || IsLastError()) return( false);
+   if (sequenceId == 0)                      return(_false(catch("UpdateStatusLocation(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
-   while (result > 0) {
-      name = wfd.FileName(wfd);
-      //debug("RestoreStatus()   \""+ name +"\"   "+ wfd.FileAttributesToStr(wfd));
-      //if (!wfd.FileAttribute.Directory(wfd)) {
-      //}
-      result = FindNextFileA(hSearch, wfd);
+   // TODO: Prüfen, ob status.fileName existiert und ggf. aktualisieren
+
+   string startDate = "";
+
+   if      (IsTesting()) status.directory = "presets\\";
+   else if (IsTest())    status.directory = "presets\\tester\\";
+   else {
+      status.directory = "presets\\"+ ShortAccountCompany() +"\\";
+
+      if (grid.maxLevelLong-grid.maxLevelShort > 0) {
+         startDate        = TimeToStr(orders.openTime[0], TIME_DATE);
+         status.directory = status.directory + startDate +"\\";
+      }
    }
-   if (hSearch == INVALID_HANDLE_VALUE) return(_false(catch("RestoreStatus(2) ->kernel32::FindFirstFileA(filename=\""+ pattern +"\")   INVALID_HANDLE_VALUE, error="+ RtlGetLastWin32Error(), ERR_WIN32_ERROR)));
-   if (!FindClose(hSearch))             return(_false(catch("RestoreStatus(3) ->kernel32::FindClose() failed, error="+ RtlGetLastWin32Error(), ERR_WIN32_ERROR)));
-   ArrayResize(wfd, 0);
-   */
 
-   return("");
+   Sequence.StatusLocation = StringTrimLeft(startDate +" (read-only)");
+   return(true);
+}
+
+
+/**
+ * Restauriert anhand der verfügbaren Informationen Ort und Namen der Statusdatei (wird nur aus RestoreStatus() heraus aufgerufen).
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool ResolveStatusLocation() {
+   if (__STATUS__CANCELLED || IsLastError()) return( false);
+
+
+   // (1) Sequence.StatusLocation parsen
+   Sequence.StatusLocation = StringTrim(Sequence.StatusLocation);
+   string location = ifString(StringIEndsWith(Sequence.StatusLocation, "(read-only)"), StringTrim(StringLeft(Sequence.StatusLocation, -StringLen("(read-only)"))), "");
+   //debug("ResolveStatusLocation()   Sequence.StatusLocation=\""+ location +"\"");
+
+
+   // (2) Location-Variablen mit Defaultwerten nitialisieren
+   InitStatusLocation();
+
+   string filesDirectory  = StringConcatenate(TerminalPath(), ifString(IsTesting(), "\\tester", "\\experts"), "\\files\\");
+   string statusDirectory = GetMqlStatusDirectory();
+   string directory, subdirs[], subdir, file="";
+
+
+   while (true) {
+      // (3.1) mit StatusLocation: das angegebene Unterverzeichnis durchsuchen
+      if (location != "") {
+         directory = StringConcatenate(filesDirectory, statusDirectory, StdSymbol(), "\\", location, "\\");
+         if (ResolveStatusLocation.FindFile(directory, file))
+            break;
+         if (IsLastError()) return( false);
+                            return(_false(catch("ResolveStatusLocation(1)   invalid Sequence.StatusLocation = \""+ location +"\" (status file not found)", ERR_FILE_NOT_FOUND)));
+      }
+
+      // (3.2) ohne StatusLocation: zuerst Basisverzeichnis durchsuchen...
+      directory = StringConcatenate(filesDirectory, statusDirectory);
+      if (ResolveStatusLocation.FindFile(directory, file))
+         break;
+      if (IsLastError()) return(false);
+
+      // (3.3) ohne StatusLocation: ...dann Unterverzeichnisse des jeweiligen Symbols durchsuchen
+      directory = StringConcatenate(directory, StdSymbol(), "\\");
+      int size = FindFileNames(directory +"*", subdirs, FF_DIRSONLY);
+      if (size == -1)
+         return(_false(SetLastError(stdlib_PeekLastError())));
+
+      for (int i=0; i < size; i++) {
+         subdir = StringConcatenate(directory, subdirs[i], "\\");
+         if (ResolveStatusLocation.FindFile(subdir, file)) {
+            directory = subdir;
+            location  = subdirs[i];
+            break;
+         }
+         if (IsLastError()) return(false);
+      }
+      if (StringLen(file) > 0)
+         break;
+      return(_false(catch("ResolveStatusLocation(2)   status file not found", ERR_FILE_NOT_FOUND)));
+   }
+   //debug("ResolveStatusLocation()  directory=\""+ directory +"\"  location=\""+ location +"\"  file=\""+ file +"\"");
+
+   status.directory        = StringRight(directory, -StringLen(filesDirectory));
+   status.fileName         = file;
+   Sequence.StatusLocation = StringTrim(location +" (read-only)");
+   //debug("ResolveStatusLocation()  status.directory=\""+ status.directory +"\"  Sequence.StatusLocation=\""+ Sequence.StatusLocation +"\"  status.fileName=\""+ status.fileName +"\"");
+   return(true);
+}
+
+
+/**
+ * Durchsucht das angegebene Verzeichnis nach einer passenden Statusdatei und schreibt das Ergebnis in die angegebene Variable.
+ *
+ * @param  string directory - vollständiger Name des zu durchsuchenden Verzeichnisses
+ * @param  string lpFile    - Zeiger auf Variable zur Aufnahme des gefundenen Dateinamens
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool ResolveStatusLocation.FindFile(string directory, string& lpFile) {
+   if (__STATUS__CANCELLED || IsLastError()) return( false);
+   if (sequenceId == 0)                      return(_false(catch("ResolveStatusLocation.FindFile(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+
+   if (!StringEndsWith(directory, "\\"))
+      directory = StringConcatenate(directory, "\\");
+
+   string sequenceName = StringConcatenate("SR.", sequenceId, ".");
+   string pattern      = StringConcatenate(directory, "*", sequenceName, "*set");
+   string files[];
+
+   int size = FindFileNames(pattern, files, FF_FILESONLY);                       // Dateien suchen, die den Sequenznamen enthalten und mit "set" enden
+   if (size == -1)
+      return(_false(SetLastError(stdlib_PeekLastError())));
+
+   for (int i=0; i < size; i++) {
+      if (!StringIStartsWith(files[i], sequenceName))
+         if (!StringIContains(files[i], StringConcatenate(".", sequenceName)))
+            continue;
+      if (StringIEndsWith(files[i], ".set")) {
+         lpFile = files[i];                                                      // Abbruch nach Fund der ersten .set-Datei
+         return(true);
+      }
+   }
+
+   lpFile = "";
+   return(false);
+}
+
+
+/**
+ * Gibt den MQL-Namen der Statusdatei der Sequenz zurück (unterhalb ".\files\").
+ *
+ * @return string
+ */
+string GetMqlStatusFileName() {
+   return(StringConcatenate(status.directory, status.fileName));
 }
 
 
 /**
  * Gibt den vollständigen Namen der Statusdatei der Sequenz zurück (für Windows-Dateifunktionen).
  *
- * @return string - Dateiname oder Leerstring, falls ein Fehler auftrat
+ * @return string
  */
 string GetFullStatusFileName() {
-   string fileName = GetStatusFileName();
-   if (StringLen(fileName) == 0)
-      return("");
+   if (IsTesting()) return(StringConcatenate(TerminalPath(), "\\tester\\files\\",  GetMqlStatusFileName()));
+   else             return(StringConcatenate(TerminalPath(), "\\experts\\files\\", GetMqlStatusFileName()));
+}
 
-   if (This.IsTesting()) return(StringConcatenate(TerminalPath(), "\\tester\\files\\",  fileName));
-   else                  return(StringConcatenate(TerminalPath(), "\\experts\\files\\", fileName));
+
+/**
+ * Gibt den MQL-Namen des Statusverzeichnisses der Sequenz zurück (unterhalb ".\files\").
+ *
+ * @return string - Verzeichnisname (mit einem Back-Slash endend)
+ */
+string GetMqlStatusDirectory() {
+   return(status.directory);
+}
+
+
+/**
+ * Gibt den vollständigen Namen des Statusverzeichnisses der Sequenz zurück (für Windows-Dateifunktionen).
+ *
+ * @return string - Verzeichnisname (mit einem Back-Slash endend)
+ */
+string GetFullStatusDirectory() {
+   if (IsTesting()) return(StringConcatenate(TerminalPath(), "\\tester\\files\\",  GetMqlStatusDirectory()));
+   else             return(StringConcatenate(TerminalPath(), "\\experts\\files\\", GetMqlStatusDirectory()));
 }
 
 
@@ -3236,9 +3370,9 @@ bool SaveStatus() {
 
 
    // (2) Daten speichern
-   int hFile = FileOpen(GetStatusFileName(), FILE_CSV|FILE_WRITE);
+   int hFile = FileOpen(GetMqlStatusFileName(), FILE_CSV|FILE_WRITE);
    if (hFile < 0)
-      return(_false(catch("SaveStatus(2) ->FileOpen(\""+ GetStatusFileName() +"\")")));
+      return(_false(catch("SaveStatus(2) ->FileOpen(\""+ GetMqlStatusFileName() +"\")")));
 
    for (i=0; i < ArraySize(lines); i++) {
       if (FileWrite(hFile, lines[i]) < 0) {
@@ -3314,7 +3448,9 @@ bool RestoreStatus() {
 
 
    // (1) Pfade und Dateinamen bestimmen
-   string fileName     = GetStatusFileName();
+   if (!ResolveStatusLocation())
+      return(false);
+   string fileName     = GetMqlStatusFileName();
    string fullFileName = GetFullStatusFileName();
 
    /*
@@ -4837,6 +4973,10 @@ int ResizeArrays(int size, bool reset=false) {
    // Dummy-Calls, unterdrücken unnütze Compilerwarnungen
    BreakevenEventToStr(NULL);
    DistanceToProfit(NULL);
+   GetFullStatusDirectory();
+   GetFullStatusFileName();
+   GetMqlStatusDirectory();
+   GetMqlStatusFileName();
    GridDirectionToStr(NULL);
    OrderDisplayModeToStr(NULL);
    StatusToStr(NULL);

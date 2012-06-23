@@ -87,6 +87,7 @@ int onInitChartClose() {
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
+      InitStatusLocation();
 
       if (start.conditions)                                                            // Ohne StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
          SaveStatus();                                                                 // wird erst danach gespeichert.
@@ -152,6 +153,7 @@ int onInitParameterChange() {
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
+      InitStatusLocation();
 
       if (start.conditions)                                                            // Ohne StartConditions erfolgt sofortiger Sequenzstart, der Status automatisch speichert.
          SaveStatus();
