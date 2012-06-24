@@ -45,13 +45,13 @@ int onDeinitChartClose() {
       UpdateStatus();
       SaveStatus();
    }
-   StoreTransientStatus();                                           // für Terminal-Restart oder Profile-Wechsel
+   StoreStickyStatus();                                              // für Terminal-Restart oder Profile-Wechsel
    return(last_error);
 }
 
 
 /**
- * EA von Hand entfernt (Chart ->Expert ->Remove)
+ * EA von Hand entfernt (Chart ->Expert ->Remove) oder neuer EA drübergeladen
  *
  * @return int - Fehlerstatus
  */
@@ -71,7 +71,7 @@ int onDeinitRemove() {
  * @return int - Fehlerstatus
  */
 int onDeinitRecompile() {
-   StoreTransientStatus();
+   StoreStickyStatus();
    return(-1);
 }
 

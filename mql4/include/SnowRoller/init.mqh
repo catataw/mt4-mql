@@ -12,11 +12,11 @@ int onInitUndefined() {
    last_error = NO_ERROR;
 
    // Prüfen, ob im Chart Statusdaten existieren
-   if (!RestoreTransientStatus())
+   if (!RestoreStickyStatus())
       if (IsLastError())
          return(last_error);
 
-   bool data = (ObjectFind(StringConcatenate(__NAME__, ".transient.Sequence.ID")) == 0);
+   bool data = (ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0);
 
    if (data) return(onInitRecompile());   // ja   -> alter EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
    else      return(onInitChartClose());  // nein -> neuer EA -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
@@ -119,12 +119,12 @@ int onInitRecompile() {
       return(NO_ERROR);
 
    // im Chart gespeicherte Sequenz restaurieren
-   if (RestoreTransientStatus()) {
+   if (RestoreStickyStatus()) {
       if (RestoreStatus())
          if (ValidateConfiguration(false))
             SynchronizeStatus();
    }
-   ClearTransientStatus();
+   ClearStickyStatus();
    return(last_error);
 }
 
