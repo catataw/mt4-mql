@@ -599,8 +599,8 @@ bool ResumeSequence() {
       else if (grid.base > lastStopPrice) startPrice = Bid;
       startPrice = NormalizeDouble(startPrice, Digits);
 
-      Grid.BaseChange(startTime-1, grid.base + startPrice - lastStopPrice);   // Wir setzen grid.base.time 1 sec. in die Vergangenheit, damit EV_GRIDBASE_CHANGE
-   }                                                                          // zeitlich immer vor folgenden Tickets liegt (Sortierung der Breakeven-Events).
+      Grid.BaseChange(startTime-1, grid.base + startPrice - lastStopPrice);   // Wir setzen grid.base.time 1 sec. in die Vergangenheit, um Mehrdeutigkeiten
+   }                                                                          // bei der Sortierung der Breakeven-Events zu vermeiden.
    else {
       grid.base = NormalizeDouble(gridBase, Digits);                          // Gridbasis der vorhandenen Positionen übernehmen (sollte schon so gesetzt sein, aber wer weiß...)
    }
@@ -1731,6 +1731,10 @@ int SubmitMarketOrder(int type, int level, double& execution[]) {
 
    if (IsLastError())
       return(-1);
+
+
+   // TODO: in ResumeSequence() kann STOPLEVEL-Verletzung auftreten
+
 
    int ticket = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, execution);
    if (ticket == -1)
@@ -4170,15 +4174,15 @@ bool SynchronizeStatus() {
 
    if (sizeOfEvents > 0) {
       ArraySort(events);                                                // Breakeven-Events zeitlich sortieren
-      int  firstType = events[0][1] +0.1;                               // (int) double
+      int  firstType = Round(events[0][1]);
       if (firstType != EV_SEQUENCE_START)    return(_false(catch("SynchronizeStatus(9)   illegal first break-even event = "+ BreakevenEventToStr(firstType) +" (time="+ (events[0][0]+0.1) +")", ERR_RUNTIME_ERROR)));
    }
 
    for (i=0; i < sizeOfEvents; i++) {
-      time       = events[i][0] +0.1;                                   // (datetime) double
-      type       = events[i][1] +0.1;                                   //      (int) double
-      gridBase   = events[i][2];
-      iOrder     = events[i][3] + Sign(events[i][3]) * 0.1;             //      (int) double
+      time       = Round(events[i][0]);
+      type       = Round(events[i][1]);
+      gridBase   =       events[i][2];
+      iOrder     = Round(events[i][3]);
       iOrderMax  = Max(iOrderMax, iOrder);
 
       ticket     = 0; if (iOrder != -1) ticket = orders.ticket[iOrder];
@@ -4295,9 +4299,9 @@ bool SynchronizeStatus() {
          // Stopdaten ermitteln und hinzufügen
          double price;
          for (i=sizeOfEvents-Abs(grid.level); i < sizeOfEvents; i++) {
-            time   = events[i][0] +0.1;                                    // (datetime) double
-            type   = events[i][1] +0.1;                                    //      (int) double
-            iOrder = events[i][3] + Sign(events[i][3]) * 0.1;              //      (int) double
+            time   = Round(events[i][0]);
+            type   = Round(events[i][1]);
+            iOrder = Round(events[i][3]);
             if (type != EV_POSITION_CLOSE)
                return(_false(catch("SynchronizeStatus(22)  unexpected "+ BreakevenEventToStr(type) +" at index "+ i, ERR_SOME_ARRAY_ERROR)));
             price += orders.closePrice[iOrder];
