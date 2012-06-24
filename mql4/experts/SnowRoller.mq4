@@ -460,10 +460,11 @@ bool StopSequence() {
    // (4) offene Positionen schließen                                            // TODO: Wurde eine PendingOrder inzwischen getriggert, muß sie hier mit verarbeitet werden.
    int    sizeOfOpenPositions = ArraySize(openPositions);
    int    n = ArraySize(sequenceStopTimes) - 1;
+   int    flags       = NULL;
    double execution[] = {NULL};
 
    if (sizeOfOpenPositions > 0) {
-      if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, execution))
+      if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, flags, execution))
          return(_false(SetLastError(stdlib_PeekLastError())));
 
       sequenceStopTimes [n] = 1 +             execution[EXEC_TIME ] +0.1;        // (datetime)(double) datetime   // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehr-
@@ -1408,12 +1409,13 @@ bool Grid.TrailPendingOrder(int i) {
    double stopPrice   = grid.base +      orders.level[i]  * GridSize * Pips;
    double stopLoss    = stopPrice - Sign(orders.level[i]) * GridSize * Pips;
    color  markerColor = CLR_PENDING;
+   int    flags       = NULL;
    double execution[] = {NULL};
 
    if (EQ(orders.pendingPrice[i], stopPrice)) /*&&*/ if (EQ(orders.stopLoss[i], stopLoss))
       return(_false(catch("Grid.TrailPendingOrder(7)   nothing to modify for #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
-   if (!OrderModifyEx(orders.ticket[i], stopPrice, stopLoss, NULL, NULL, markerColor, execution))
+   if (!OrderModifyEx(orders.ticket[i], stopPrice, stopLoss, NULL, NULL, markerColor, flags, execution))
       return(_false(SetLastError(stdlib_PeekLastError())));
 
    orders.gridBase    [i] = NormalizeDouble(grid.base, Digits);
@@ -1455,8 +1457,10 @@ bool Grid.DeleteOrder(int ticket) {
    }
    firstTickConfirmed = true;
 
+   int    flags       = NULL;
    double execution[] = {NULL};
-   if (!OrderDeleteEx(ticket, CLR_NONE, execution))
+
+   if (!OrderDeleteEx(ticket, CLR_NONE, flags, execution))
       return(_false(SetLastError(stdlib_PeekLastError())));
 
    if (!Grid.DropTicket(ticket))
@@ -1662,6 +1666,7 @@ int SubmitStopOrder(int type, int level, double& execution[]) {
    datetime expires     = NULL;
    string   comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
    color    markerColor = CLR_PENDING;
+   int      flags       = NULL;
 
    /*
    #define ODM_NONE     0     // - keine Anzeige -
@@ -1675,7 +1680,7 @@ int SubmitStopOrder(int type, int level, double& execution[]) {
    if (IsLastError())
       return(-1);
 
-   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, execution);
+   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, flags, execution);
    if (ticket == -1)
       return(_int(-1, SetLastError(stdlib_PeekLastError())));
 
@@ -1719,6 +1724,7 @@ int SubmitMarketOrder(int type, int level, double& execution[]) {
    datetime expires     = NULL;
    string   comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
    color    markerColor = ifInt(level > 0, CLR_LONG, CLR_SHORT);
+   int      flags       = NULL;
 
    /*
    #define ODM_NONE     0     // - keine Anzeige -
@@ -1736,7 +1742,7 @@ int SubmitMarketOrder(int type, int level, double& execution[]) {
    // TODO: in ResumeSequence() kann STOPLEVEL-Verletzung auftreten
 
 
-   int ticket = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, execution);
+   int ticket = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, flags, execution);
    if (ticket == -1)
       return(_int(-1, SetLastError(stdlib_PeekLastError())));
 
