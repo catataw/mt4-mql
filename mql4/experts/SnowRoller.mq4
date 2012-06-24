@@ -3,26 +3,23 @@
  *  -------------------------------------
  *
  *
- *  Breakeven
- *  ---------
- *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment
- *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren
- *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird
- *
- *
  *  TODO:
  *  -----
- *  - STOPLEVEL-Verletzung bei Resume abfangen                                                     *
- *  - Start/StopConditions vervollständigen                                                        *
- *  - ResumeCondition implementieren                                                               *
- *  - automatisches Pause/Resume an Wochenenden                                                    *
- *  - StartCondition @level() implementieren                                                       *
- *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen              *
- *  - PendingOrders nicht per Tick trailen                                                         *
- *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                   *
- *  - Equity-Charts generieren                                                                     *
- *  - beidseitig unidirektionales Grid implementieren                                              *
- *  - Laufzeitumgebung auf Server auslagern                                                        *
+ *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
+ *
+ *  - Start/StopConditions vervollständigen                                                           *
+ *  - ResumeCondition implementieren                                                                  *
+ *  - automatisches Pause/Resume an Wochenenden                                                       *
+ *  - StartCondition @level() implementieren                                                          *
+ *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
+ *  - PendingOrders nicht per Tick trailen                                                            *
+ *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
+ *  - Equity-Charts generieren                                                                        *
+ *  - beidseitig unidirektionales Grid implementieren                                                 *
+ *  - Laufzeitumgebung auf Server auslagern                                                           *
+ *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment                                         *
+ *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
+ *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird   *
  *
  *  - Sounds abschaltbar machen
  *  - Änderungen der Gridbasis während Auszeit erkennen
