@@ -5,15 +5,24 @@
  *
  *  TODO:
  *  -----
+ *  - Sequenz-ID in Logmessages integrieren                                                           *
+ *  - ein Logfile je Instanz                                                                          *
+ *                                                                                                    *
+ *  - execution[] als Struct implementieren                                                           *
+ *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeProfit() erweitern                    *
+ *  - Logging aller Trade-Operationen, Traderequest-Fehler, Slippage                                  *
+ *                                                                                                    *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
- *
+ *  - Sounds in Tradefunktionen abschaltbar machen                                                    *
+ *                                                                                                    *
+ *                                                                                                    *
  *  - Start/StopConditions vervollständigen                                                           *
  *  - ResumeCondition implementieren                                                                  *
  *  - automatisches Pause/Resume an Wochenenden                                                       *
  *  - StartCondition @level() implementieren                                                          *
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
- *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
+ *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Equity-Charts generieren                                                                        *
  *  - beidseitig unidirektionales Grid implementieren                                                 *
  *  - Laufzeitumgebung auf Server auslagern                                                           *
@@ -21,18 +30,14 @@
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird   *
  *
- *  - Sounds abschaltbar machen
  *  - Änderungen der Gridbasis während Auszeit erkennen
  *  - maxProfit/Loss analog zu PendingOrders regelmäßig speichern
  *  - bidirektionales Grid entfernen
- *  - Sequenz-ID in Logmessages integrieren
- *  - ein Logfile je Instanz
  *
  *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
- *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeProfit() erweitern
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
- *  - Logging: alle Trade-Operationen und Traderequest-Fehler, Slippage, MessageBoxen
+ *  - Logging aller MessageBoxen
  *  - Logging im Tester reduzieren
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
  *  - Upload der Statusdatei implementieren
@@ -92,24 +97,24 @@ int __DEINIT_FLAGS__[];
 #include <SnowRoller/define.mqh>
 
 
-//////////////////////////////////////////////////////////////////////// Konfiguration ////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////
 
-extern /*sticky*/ string Sequence.ID                   = "";
-extern            string GridDirection                 = "Bidirectional* | Long | Short | Long+Short";
-extern            int    GridSize                      = 20;
-extern            double LotSize                       = 0.1;
-extern            string StartConditions               = "";                     // @limit(1.33) && @time(2012.03.12 12:00)
-extern            string StopConditions                = "@profit(20%)";         // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
-extern /*sticky*/ color  Breakeven.Color               = Blue;
-extern /*sticky*/ string Sequence.StatusLocation       = "";                     // Unterverzeichnis
+extern /*sticky*/ string Sequence.ID             = "";
+extern            string GridDirection           = "Bidirectional* | Long | Short | Long+Short";
+extern            int    GridSize                = 20;
+extern            double LotSize                 = 0.1;
+extern            string StartConditions         = "";                     // @limit(1.33) && @time(2012.03.12 12:00)
+extern            string StopConditions          = "@profit(20%)";         // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
+extern /*sticky*/ color  Breakeven.Color         = Blue;
+extern /*sticky*/ string Sequence.StatusLocation = "";                     // Unterverzeichnis
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-       /*sticky*/ int    startStopDisplayMode          = SDM_PRICE;              // sticky-Variablen werden im Chart zwischengespeichert, sie überleben
-       /*sticky*/ int    orderDisplayMode              = ODM_NONE;               // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
-       /*sticky*/ int    breakeven.Width               = 1;
+       /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;              // sticky-Variablen werden im Chart zwischengespeichert, sie überleben
+       /*sticky*/ int    orderDisplayMode        = ODM_NONE;               // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
+       /*sticky*/ int    breakeven.Width         = 0;
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 string   last.Sequence.ID             = "";           // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
@@ -460,21 +465,21 @@ bool StopSequence() {
    // (4) offene Positionen schließen                                            // TODO: Wurde eine PendingOrder inzwischen getriggert, muß sie hier mit verarbeitet werden.
    int    sizeOfOpenPositions = ArraySize(openPositions);
    int    n = ArraySize(sequenceStopTimes) - 1;
-   int    flags       = NULL;
-   double execution[] = {NULL};
+   int    flags = NULL;
+   double execution[];
 
    if (sizeOfOpenPositions > 0) {
       if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, flags, execution))
          return(_false(SetLastError(stdlib_PeekLastError())));
 
-      sequenceStopTimes [n] = 1 +             execution[EXEC_TIME ] +0.1;        // (datetime)(double) datetime   // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehr-
-      sequenceStopPrices[n] = NormalizeDouble(execution[EXEC_PRICE], Digits);                                     // deutigkeiten bei der Sortierung der Breakeven-Events zu vermeiden.
+      sequenceStopTimes [n] =           Round(execution[EXEC_TIME ] + 1);        // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehrdeutigkeiten
+      sequenceStopPrices[n] = NormalizeDouble(execution[EXEC_PRICE], Digits);    // bei der Sortierung der Breakeven-Events zu vermeiden.
 
       for (i=0; i < sizeOfOpenPositions; i++) {
          int pos = SearchIntArray(orders.ticket, openPositions[i]);
 
-         orders.closeTime [pos] = execution[9*i+EXEC_TIME      ] +0.1;           // (datetime)(double) datetime   // entspricht execution[EXEC_TIME ]
-         orders.closePrice[pos] = execution[9*i+EXEC_PRICE     ];                                                 // entspricht execution[EXEC_PRICE]
+         orders.closeTime [pos] = Round(execution[9*i+EXEC_TIME ]);              // entspricht execution[EXEC_TIME ]
+         orders.closePrice[pos] =       execution[9*i+EXEC_PRICE];               // entspricht execution[EXEC_PRICE]
          orders.closedBySL[pos] = false;
 
          orders.swap      [pos] = execution[9*i+EXEC_SWAP      ];
@@ -1273,7 +1278,7 @@ bool Grid.AddOrder(int type, int level) {
 
 
    // (1) Order in den Markt legen
-   double execution[] = {NULL};
+   double execution[];
    int ticket = SubmitStopOrder(type, level, execution);
    if (ticket == -1)
       return(false);
@@ -1288,8 +1293,8 @@ bool Grid.AddOrder(int type, int level) {
    //double grid.base    = grid.base;
 
    int      pendingType  = type;
-   datetime pendingTime  = execution[EXEC_TIME ];
-   double   pendingPrice = execution[EXEC_PRICE];
+   datetime pendingTime  = Round(execution[EXEC_TIME ]);
+   double   pendingPrice =       execution[EXEC_PRICE];
 
    /*int*/  type         = OP_UNDEFINED;
    datetime openTime     = NULL;
@@ -1298,7 +1303,7 @@ bool Grid.AddOrder(int type, int level) {
 
    datetime closeTime    = NULL;
    double   closePrice   = NULL;
-   double   stopLoss     = OrderStopLoss();                          // TODO: StopLoss in execution[]-Struct auslagern
+   double   stopLoss     = OrderStopLoss();                          // TODO: StopLoss in execution[] aufnehmen
    bool     closedBySL   = false;
 
    double   swap         = NULL;
@@ -1339,7 +1344,7 @@ bool Grid.AddPosition(int type, int level) {
 
 
    // (1) Position öffnen
-   double execution[] = {NULL};
+   double execution[];
    int ticket = SubmitMarketOrder(type, level, execution);
    if (ticket == -1)
       return(false);
@@ -1358,8 +1363,8 @@ bool Grid.AddPosition(int type, int level) {
    double   pendingPrice = NULL;
 
    //int    type         = ...                                       // unverändert
-   datetime openTime     = execution[EXEC_TIME ];
-   double   openPrice    = execution[EXEC_PRICE];
+   datetime openTime     = Round(execution[EXEC_TIME ]);
+   double   openPrice    =       execution[EXEC_PRICE];
    double   risk         = CalculateActiveRisk(level, ticket, openPrice, execution[EXEC_SWAP], execution[EXEC_COMMISSION]);
 
    datetime closeTime    = NULL;
@@ -1410,7 +1415,7 @@ bool Grid.TrailPendingOrder(int i) {
    double stopLoss    = stopPrice - Sign(orders.level[i]) * GridSize * Pips;
    color  markerColor = CLR_PENDING;
    int    flags       = NULL;
-   double execution[] = {NULL};
+   double execution[];
 
    if (EQ(orders.pendingPrice[i], stopPrice)) /*&&*/ if (EQ(orders.stopLoss[i], stopLoss))
       return(_false(catch("Grid.TrailPendingOrder(7)   nothing to modify for #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
@@ -1419,7 +1424,7 @@ bool Grid.TrailPendingOrder(int i) {
       return(_false(SetLastError(stdlib_PeekLastError())));
 
    orders.gridBase    [i] = NormalizeDouble(grid.base, Digits);
-   orders.pendingTime [i] = execution[EXEC_TIME];
+   orders.pendingTime [i] = Round(execution[EXEC_TIME]);
    orders.pendingPrice[i] = NormalizeDouble(stopPrice, Digits);
    orders.stopLoss    [i] = NormalizeDouble(stopLoss,  Digits);
 
@@ -1654,10 +1659,6 @@ int SubmitStopOrder(int type, int level, double& execution[]) {
    }
    else               return(_int(-1, catch("SubmitStopOrder(5)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   if (ArraySize(execution) < 1)
-      ArrayResize(execution, 1);
-   execution[EXEC_FLAGS] = NULL;
-
    double   stopPrice   = grid.base +      level  * GridSize * Pips;
    double   slippage    = NULL;
    double   stopLoss    = stopPrice - Sign(level) * GridSize * Pips;
@@ -1711,10 +1712,6 @@ int SubmitMarketOrder(int type, int level, double& execution[]) {
       if (level >= 0) return(_int(-1, catch("SubmitMarketOrder(4)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
    }
    else               return(_int(-1, catch("SubmitMarketOrder(5)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
-
-   if (ArraySize(execution) < 1)
-      ArrayResize(execution, 1);
-   execution[EXEC_FLAGS] = NULL;
 
    double   price       = NULL;
    double   slippage    = 0.1;
@@ -3466,13 +3463,15 @@ bool RestoreStatus() {
 
 
    // (1) Pfade und Dateinamen bestimmen
-   if (!ResolveStatusLocation())
-      return(false);
    string fileName = GetMqlStatusFileName();
+   if (!IsMqlFile(fileName))
+      if (!ResolveStatusLocation())
+         return(false);
+   fileName = GetMqlStatusFileName();
 
    /*
    // (2) bei nicht existierender Datei die Datei vom Server laden
-   if (!IsFile(fullFileName)) {
+   if (!IsMqlFile(fileName)) {
       if (IsTest())
          return(_false(catch("RestoreStatus(2)   status file \""+ subDir + fileName +"\" for test sequence T"+ sequenceId +" not found", ERR_FILE_NOT_FOUND)));
 
@@ -4181,7 +4180,7 @@ bool SynchronizeStatus() {
    if (sizeOfEvents > 0) {
       ArraySort(events);                                                // Breakeven-Events zeitlich sortieren
       int  firstType = Round(events[0][1]);
-      if (firstType != EV_SEQUENCE_START)    return(_false(catch("SynchronizeStatus(9)   illegal first break-even event = "+ BreakevenEventToStr(firstType) +" (time="+ (events[0][0]+0.1) +")", ERR_RUNTIME_ERROR)));
+      if (firstType != EV_SEQUENCE_START)    return(_false(catch("SynchronizeStatus(9)   illegal first break-even event = "+ BreakevenEventToStr(firstType) +" (time="+ Round(events[0][0]) +")", ERR_RUNTIME_ERROR)));
    }
 
    for (i=0; i < sizeOfEvents; i++) {
@@ -4193,8 +4192,8 @@ bool SynchronizeStatus() {
 
       ticket     = 0; if (iOrder != -1) ticket = orders.ticket[iOrder];
       nextTicket = 0;
-      if (i < sizeOfEvents-1) { nextTime = events[i+1][0]+0.1; nextType = events[i+1][1]+0.1; nextiOrder = events[i+1][3] + Sign(events[i+1][3]) * 0.1; if (nextiOrder != -1) nextTicket = orders.ticket[nextiOrder]; }
-      else                    { nextTime = 0;                  nextType = 0;                                                                                                  nextTicket = 0; }
+      if (i < sizeOfEvents-1) { nextTime = Round(events[i+1][0]); nextType = Round(events[i+1][1]); nextiOrder = Round(events[i+1][3]); if (nextiOrder != -1) nextTicket = orders.ticket[nextiOrder]; }
+      else                    { nextTime = 0;                     nextType = 0;                                                                               nextTicket = 0;                         }
 
       // (3.1) zwischen den Breakeven-Events liegende BarOpen(M1)-Events simulieren
       if (breakevenVisible) {
