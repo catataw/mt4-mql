@@ -8,6 +8,13 @@
  *  - Sequenz-ID in Logmessages integrieren                                                           *
  *  - ein Logfile je Instanz                                                                          *
  *                                                                                                    *
+ *
+ * [SnowRoller]
+ * Log.Tester      = 0    ; enable/disable logging in Tester
+ * Log.InstanceID  = 1    ; log the instance id               => @see Expert::InstanceId()
+ * Log.PerInstance = 1    ; one log file per instance         => @see Expert::LogfileName()
+ *
+ *
  *  - execution[] als Struct implementieren                                                           *
  *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeProfit() erweitern                    *
  *  - Logging aller Trade-Operationen, Traderequest-Fehler, Slippage                                  *
@@ -2404,12 +2411,14 @@ int StoreStickyStatus() {
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
    ObjectSetText(label, ifString(sequenceId==0, "0", Sequence.ID), 1);        // String: "0" (STATUS_UNINITIALIZED) oder Sequence.ID (enthält ggf. "T")
 
-   label = StringConcatenate(__NAME__, ".sticky.Sequence.StatusLocation");
-   if (ObjectFind(label) == 0)
-      ObjectDelete(label);
-   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
-   ObjectSetText(label, Sequence.StatusLocation, 1);
+   if (StringLen(StringTrim(Sequence.StatusLocation)) > 0) {
+      label = StringConcatenate(__NAME__, ".sticky.Sequence.StatusLocation");
+      if (ObjectFind(label) == 0)
+         ObjectDelete(label);
+      ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+      ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                        // hidden on all timeframes
+      ObjectSetText(label, Sequence.StatusLocation, 1);
+   }
 
    label = StringConcatenate(__NAME__, ".sticky.startStopDisplayMode");
    if (ObjectFind(label) == 0)
