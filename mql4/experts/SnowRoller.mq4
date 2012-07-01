@@ -5,11 +5,10 @@
  *
  *  TODO:
  *  -----
- *  - ein Logfile je Instanz                                                                          *
+ *  - ein Logfile je Instanz @see Expert::LogfileName()                                               *
  *                                                                                                    *
  *    [SnowRoller]
- *    Log.Tester      = 0    ; enable/disable logging in Tester
- *    Log.PerInstance = 1    ; one log file per instance         => @see Expert::LogfileName()
+ *    Log.Tester = 0 ; enable/disable logging in Tester
  *
  *
  *  - execution[] als Struct implementieren                                                           *
@@ -94,7 +93,7 @@
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
-int   __INIT_FLAGS__[] = {INIT_TICKVALUE, LOGFILE_PER_INSTANCE, LOG_INSTANCE_ID};
+int   __INIT_FLAGS__[] = {INIT_TICKVALUE, LOG_INSTANCE_ID, LOGFILE_PER_INSTANCE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 #include <win32api.mqh>
