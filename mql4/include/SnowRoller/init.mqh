@@ -55,7 +55,7 @@ int onInitChartClose() {
          button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Running sequence"+ ifString(sizeOfIds==1, " ", "s ") + JoinInts(ids, ", ") +" found.\n\nDo you want to load "+ ifString(sizeOfIds==1, "it", ids[i]) +"?", __NAME__, MB_ICONQUESTION|MB_YESNOCANCEL);
          if (button == IDYES) {
             test        = false; SS.Test();
-            sequenceId  = ids[i];
+            sequenceId  = InstanceId(ids[i]);
             Sequence.ID = sequenceId; SS.SequenceId();
             status      = STATUS_WAITING;
             if (RestoreStatus())                                                       // TODO: erkennen, ob einer der anderen Parameter von Hand geändert wurde und
@@ -84,7 +84,7 @@ int onInitChartClose() {
       instanceStartTime  = TimeCurrent() - 1;                                          // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erläuterungen siehe dort),
       instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // entsprechend wird auch instanceStartTime zurückgesetzt.
       test               = IsTesting(); SS.Test();
-      sequenceId         = CreateSequenceId();
+      sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
       InitStatusLocation();
@@ -150,7 +150,7 @@ int onInitParameterChange() {
       instanceStartTime  = TimeCurrent() - 1;                                          // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erläuterungen siehe dort),
       instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // entsprechend wird auch instanceStartTime zurückgesetzt.
       test               = IsTesting(); SS.Test();
-      sequenceId         = CreateSequenceId();
+      sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
       InitStatusLocation();

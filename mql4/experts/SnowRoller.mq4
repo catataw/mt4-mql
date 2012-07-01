@@ -5,14 +5,11 @@
  *
  *  TODO:
  *  -----
- *  - Sequenz-ID in Logmessages integrieren                                                           *
  *  - ein Logfile je Instanz                                                                          *
  *                                                                                                    *
- *
- * [SnowRoller]
- * Log.Tester      = 0    ; enable/disable logging in Tester
- * Log.InstanceID  = 1    ; log the instance id               => @see Expert::InstanceId()
- * Log.PerInstance = 1    ; one log file per instance         => @see Expert::LogfileName()
+ *    [SnowRoller]
+ *    Log.Tester      = 0    ; enable/disable logging in Tester
+ *    Log.PerInstance = 1    ; one log file per instance         => @see Expert::LogfileName()
  *
  *
  *  - execution[] als Struct implementieren                                                           *
@@ -97,7 +94,7 @@
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
-int   __INIT_FLAGS__[] = {INIT_TICKVALUE};
+int   __INIT_FLAGS__[] = {INIT_TICKVALUE, LOGFILE_PER_INSTANCE, LOG_INSTANCE_ID};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 #include <win32api.mqh>
@@ -2493,7 +2490,7 @@ bool RestoreStickyStatus() {
          return(_false(catch("RestoreStickyStatus(2)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
       }
       else {
-         sequenceId  = iValue; SS.SequenceId();
+         sequenceId  = InstanceId(iValue); SS.SequenceId();
          Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
          status      = STATUS_WAITING;
          idFound     = true;
@@ -2662,7 +2659,7 @@ bool ValidateConfiguration.ID(bool interactive) {
    if (iValue < 1000 || iValue > 16383)
       return(_false(HandleConfigError("ValidateConfiguration.ID(2)", "Illegal input parameter Sequence.ID = \""+ Sequence.ID +"\"", interactive)));
 
-   sequenceId  = iValue; SS.SequenceId();
+   sequenceId  = InstanceId(iValue); SS.SequenceId();
    Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
 
    return(true);
@@ -4367,7 +4364,6 @@ bool SynchronizeStatus() {
                           +"  activeRisk=" + DoubleToStr(grid.activeRisk,  2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
    */
-
    ArrayResize(openLevels, 0);
    ArrayResize(events,     0);
    return(IsNoError(catch("SynchronizeStatus(24)")));
@@ -4803,11 +4799,6 @@ int ToggleOrderDisplayMode() {
  * @return int - Fehlerstatus
  */
 int ToggleBreakevenDisplayMode() {
-   /*
-   if      (breakeven.Width == 0) breakeven.Width = 1;
-   else if (breakeven.Width == 1) breakeven.Width = 2;
-   else                           breakeven.Width = 0;
-   */
    if (breakeven.Width == 0) breakeven.Width = 1;
    else                      breakeven.Width = 0;
 
