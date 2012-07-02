@@ -93,7 +93,7 @@
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
-int   __INIT_FLAGS__[] = {INIT_TICKVALUE, LOG_INSTANCE_ID, LOGFILE_PER_INSTANCE};
+int   __INIT_FLAGS__[] = {INIT_TICKVALUE, LOG_INSTANCE_ID, LOG_PER_INSTANCE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 #include <win32api.mqh>

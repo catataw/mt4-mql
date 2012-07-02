@@ -45,7 +45,7 @@ int onStart() {
       // (3) Bestätigung einholen
       for (i=0; i < sizeOfIds; i++) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo() && !ScriptIsTesting(), "- Live Account -\n\n", "") +"Do you really want to stop sequence "+ ids[i] +"?", __NAME__, MB_ICONQUESTION|ifInt(sizeOfIds==1, MB_OKCANCEL, MB_YESNOCANCEL));
+         int button = ForceMessageBox(__NAME__, ifString(!IsDemo() && !ScriptIsTesting(), "- Live Account -\n\n", "") +"Do you really want to stop sequence "+ ids[i] +"?", MB_ICONQUESTION|ifInt(sizeOfIds==1, MB_OKCANCEL, MB_YESNOCANCEL));
          if (button == IDCANCEL)
             break;
          if (button == IDNO)
@@ -78,7 +78,7 @@ int onStart() {
    if (!IsLastError()) {
       if (sizeOfIds == 0) {
          ForceSound("chord.wav");
-         ForceMessageBox("No sequence to stop found.", __NAME__, MB_ICONEXCLAMATION|MB_OK);
+         ForceMessageBox(__NAME__, "No sequence to stop found.", MB_ICONEXCLAMATION|MB_OK);
       }
       catch("onStart(3)");
    }
