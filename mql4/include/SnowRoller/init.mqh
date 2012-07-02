@@ -52,7 +52,7 @@ int onInitChartClose() {
       int sizeOfIds = ArraySize(ids);
       for (int i=0; i < sizeOfIds; i++) {
          ForceSound("notify.wav");
-         button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Running sequence"+ ifString(sizeOfIds==1, " ", "s ") + JoinInts(ids, ", ") +" found.\n\nDo you want to load "+ ifString(sizeOfIds==1, "it", ids[i]) +"?", __NAME__, MB_ICONQUESTION|MB_YESNOCANCEL);
+         button = ForceMessageBox(__NAME__, ifString(!IsDemo(), "- Live Account -\n\n", "") +"Running sequence"+ ifString(sizeOfIds==1, " ", "s ") + JoinInts(ids, ", ") +" found.\n\nDo you want to load "+ ifString(sizeOfIds==1, "it", ids[i]) +"?", MB_ICONQUESTION|MB_YESNOCANCEL);
          if (button == IDYES) {
             test        = false; SS.Test();
             sequenceId  = InstanceId(ids[i]);
@@ -70,7 +70,7 @@ int onInitChartClose() {
       }
 
       ForceSound("notify.wav");
-      button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you want to start a new sequence?", __NAME__, MB_ICONQUESTION|MB_OKCANCEL);
+      button = ForceMessageBox(__NAME__, ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you want to start a new sequence?", MB_ICONQUESTION|MB_OKCANCEL);
       if (button == IDCANCEL) {
          __STATUS__CANCELLED = true;
          return(last_error);

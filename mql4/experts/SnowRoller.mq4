@@ -359,7 +359,7 @@ bool StartSequence() {
    if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new sequence now?", __NAME__ +" - StartSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+         int button = ForceMessageBox(__NAME__ +" - StartSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
             return(_false(catch("StartSequence(3)")));
@@ -414,7 +414,7 @@ bool StopSequence() {
    if (firstTick && !firstTickConfirmed) {                                       // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", __NAME__ +" - StopSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+         int button = ForceMessageBox(__NAME__ +" - StopSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
             return(_false(catch("StopSequence(3)")));
@@ -554,7 +554,7 @@ bool ResumeSequence() {
    if (firstTick && !firstTickConfirmed) {                                    // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to resume the sequence now?", __NAME__ +" - ResumeSequence()", MB_ICONQUESTION|MB_OKCANCEL);
+         int button = ForceMessageBox(__NAME__ +" - ResumeSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to resume the sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
             return(_false(catch("ResumeSequence(3)")));
@@ -1269,7 +1269,7 @@ bool Grid.AddOrder(int type, int level) {
    if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a new "+ OperationTypeDescription(type) +" order now?", __NAME__ +" - Grid.AddOrder()", MB_ICONQUESTION|MB_OKCANCEL);
+         int button = ForceMessageBox(__NAME__ +" - Grid.AddOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a new "+ OperationTypeDescription(type) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
             return(_false(catch("Grid.AddOrder(3)")));
@@ -1335,7 +1335,7 @@ bool Grid.AddPosition(int type, int level) {
    if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a Market "+ OperationTypeDescription(type) +" order now?", __NAME__ +" - Grid.AddPosition()", MB_ICONQUESTION|MB_OKCANCEL);
+         int button = ForceMessageBox(__NAME__ +" - Grid.AddPosition()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a Market "+ OperationTypeDescription(type) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
             return(_false(catch("Grid.AddPosition(3)")));
@@ -1404,7 +1404,7 @@ bool Grid.TrailPendingOrder(int i) {
    if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to modify the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ orders.ticket[i] +" now?", __NAME__ +" - Grid.TrailPendingOrder()", MB_ICONQUESTION|MB_OKCANCEL);
+         int button = ForceMessageBox(__NAME__ +" - Grid.TrailPendingOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to modify the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ orders.ticket[i] +" now?", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
             return(_false(catch("Grid.TrailPendingOrder(6)")));
@@ -1455,7 +1455,7 @@ bool Grid.DeleteOrder(int ticket) {
    if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ ticket +" now?", __NAME__ +" - Grid.DeleteOrder()", MB_ICONQUESTION|MB_OKCANCEL);
+         int button = ForceMessageBox(__NAME__ +" - Grid.DeleteOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ ticket +" now?", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
             return(_false(catch("Grid.DeleteOrder(4)")));
@@ -2918,7 +2918,7 @@ int HandleConfigError(string location, string msg, bool interactive) {
    log(location +"   "+ msg, ERR_INVALID_INPUT);
 
    ForceSound("chord.wav");
-   int button = ForceMessageBox(msg, __NAME__ +" - ValidateConfiguration()", MB_ICONERROR|MB_RETRYCANCEL);
+   int button = ForceMessageBox(__NAME__ +" - ValidateConfiguration()", msg, MB_ICONERROR|MB_RETRYCANCEL);
 
    __STATUS__INVALID_INPUT = true;
 
@@ -4063,7 +4063,7 @@ bool SynchronizeStatus() {
       return(_false(catch("SynchronizeStatus(2)   unknown pending orders found: #"+ JoinInts(orphanedPendingOrders, ", #"), ERR_RUNTIME_ERROR)));
       //ArraySort(orphanedPendingOrders);
       //ForceSound("notify.wav");
-      //int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned pending order"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedPendingOrders, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", __NAME__ +" - SynchronizeStatus()", MB_ICONWARNING|MB_OKCANCEL);
+      //int button = ForceMessageBox(__NAME__ +" - SynchronizeStatus()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned pending order"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedPendingOrders, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", MB_ICONWARNING|MB_OKCANCEL);
       //if (button != IDOK) {
       //   __STATUS__CANCELLED = true;
       //   return(_false(catch("SynchronizeStatus(3)")));
@@ -4074,7 +4074,7 @@ bool SynchronizeStatus() {
       return(_false(catch("SynchronizeStatus(4)   unknown open positions found: #"+ JoinInts(orphanedOpenPositions, ", #"), ERR_RUNTIME_ERROR)));
       //ArraySort(orphanedOpenPositions);
       //ForceSound("notify.wav");
-      //button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned open position"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedPendingOrders, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", __NAME__ +" - SynchronizeStatus()", MB_ICONWARNING|MB_OKCANCEL);
+      //button = ForceMessageBox(__NAME__ +" - SynchronizeStatus()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned open position"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedPendingOrders, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", MB_ICONWARNING|MB_OKCANCEL);
       //if (button != IDOK) {
       //   __STATUS__CANCELLED = true;
       //   return(_false(catch("SynchronizeStatus(5)")));
@@ -4084,7 +4084,7 @@ bool SynchronizeStatus() {
    if (size > 0) {
       ArraySort(orphanedClosedPositions);
       ForceSound("notify.wav");
-      int button = ForceMessageBox(ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned closed position"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedClosedPositions, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", __NAME__ +" - SynchronizeStatus()", MB_ICONWARNING|MB_OKCANCEL);
+      int button = ForceMessageBox(__NAME__ +" - SynchronizeStatus()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned closed position"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedClosedPositions, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", MB_ICONWARNING|MB_OKCANCEL);
       if (button != IDOK) {
          __STATUS__CANCELLED = true;
          return(_false(catch("SynchronizeStatus(6)")));
