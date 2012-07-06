@@ -12,7 +12,6 @@
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
  *  - Sounds in Tradefunktionen abschaltbar machen                                                    *
  *                                                                                                    *
- *                                                                                                    *
  *  - Start/StopConditions vervollständigen                                                           *
  *  - ResumeCondition implementieren                                                                  *
  *  - automatisches Pause/Resume an Wochenenden                                                       *
@@ -31,11 +30,9 @@
  *  - maxProfit/Loss analog zu PendingOrders regelmäßig speichern
  *  - bidirektionales Grid entfernen
  *
- *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Logging aller MessageBoxen
- *  - Logging im Tester reduzieren
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
  *  - Upload der Statusdatei implementieren
  *  - Heartbeat implementieren
@@ -43,8 +40,9 @@
  *  - Client-Side-Limits implementieren
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *  - orders.stopLoss[] in open-Block verschieben
+ *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
  *
- *  - Build 419 silently crashes
+ *  - Build 419 silently crashes (1 mal)
  *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
  *  - Alpari: StopOrder-Slippage EUR/USD bis 4.1 pip, GBP/AUD bis 6 pip, GBP/JPY bis 21.4 pip
  *  - FxPro: zu viele Traderequests in zu kurzer Zeit => ERR_TRADE_TIMEOUT
