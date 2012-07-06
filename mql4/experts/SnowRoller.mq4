@@ -5,12 +5,6 @@
  *
  *  TODO:
  *  -----
- *  - ein Logfile je Instanz @see Expert::LogfileName()                                               *
- *                                                                                                    *
- *    [SnowRoller]
- *    Log.Tester = 0 ; enable/disable logging in Tester
- *
- *
  *  - execution[] als Struct implementieren                                                           *
  *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeProfit() erweitern                    *
  *  - Logging aller Trade-Operationen, Traderequest-Fehler, Slippage                                  *
@@ -2914,9 +2908,7 @@ int HandleConfigError(string location, string msg, bool interactive) {
    if (!interactive)
       return(catch(location +"   "+ msg, ERR_INVALID_CONFIG_PARAMVALUE));
 
-
-   log(location +"   "+ msg, ERR_INVALID_INPUT);
-
+   if (__LOG) log(location +"   "+ msg, ERR_INVALID_INPUT);
    ForceSound("chord.wav");
    int button = ForceMessageBox(__NAME__ +" - ValidateConfiguration()", msg, MB_ICONERROR|MB_RETRYCANCEL);
 
