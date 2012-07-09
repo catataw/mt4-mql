@@ -6,7 +6,6 @@
  *  TODO:
  *  -----
  *  - execution[] als Struct implementieren                                                           *
- *  - execution[] um tatsächlichen OrderStopLoss() und OrderTakeProfit() erweitern                    *
  *  - Logging aller Trade-Operationen, Traderequest-Fehler, Slippage                                  *
  *                                                                                                    *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
