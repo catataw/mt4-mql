@@ -12,25 +12,34 @@ bool done;
 
 
 /**
- *
- * @return int - Fehlerstatus
- */
-int onInit() {
-   done = false;
-   return(catch("onInit()"));
-}
-
-
-/**
  * Main-Funktion
  *
  * @return int - Fehlerstatus
  */
 int onTick() {
    if (!done) {
-      debug("onTick()   stdSymbol="+ StdSymbol());
+
+      /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
+      oe.setSymbol    (oe, Symbol());
+      oe.setDigits    (oe, Digits);
+      oe.setBid       (oe, Bid);
+      oe.setAsk       (oe, Ask);
+      oe.setTime      (oe, TimeCurrent());
+      oe.setTicket    (oe, 12345678);
+      oe.setPrice     (oe, (Bid+Ask)/2);
+      oe.setStopLoss  (oe, Bid-100*Pip);
+      oe.setTakeProfit(oe, Bid+100*Pip);
+      oe.setSwap      (oe, 0.19);
+      oe.setCommission(oe, 8.00);
+      oe.setProfit    (oe, -7.77);
+      oe.setDuration  (oe, 234);
+      oe.setRequotes  (oe, 2);
+      oe.setSlippage  (oe, 1.1);
+
+      ORDER_EXECUTION.toStr(oe, true);
+
       done = true;
    }
    return(catch("onTick()"));
-   //debug("onTick()   string="+ StaticString() +"  bool="+ StaticBool() +"  int="+ StaticInt() +"  double="+ NumberToStr(StaticDouble(), ".1+"));
 }
+
