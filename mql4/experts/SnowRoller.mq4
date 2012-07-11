@@ -1115,8 +1115,8 @@ bool UpdatePendingOrders() {
 /**
  * Öffnet neue bzw. vervollständigt fehlende der zuletzt offenen Positionen der Sequenz.
  *
- * @param  datetime& lpOpenTime  - Zeiger auf Variable, die die OpenTime der zuletzt geöffneten Position aufnimmt
- * @param  double&   lpOpenPrice - Zeiger auf Variable, die den durchschnittlichen OpenPrice aufnimmt
+ * @param  datetime lpOpenTime  - Zeiger auf Variable, die die OpenTime der zuletzt geöffneten Position aufnimmt
+ * @param  double   lpOpenPrice - Zeiger auf Variable, die den durchschnittlichen OpenPrice aufnimmt
  *
  * @return bool - Erfolgsstatus
  *
@@ -1124,7 +1124,7 @@ bool UpdatePendingOrders() {
  *  NOTE:  Im Level 0 (keine Positionen zu öffnen) werden die Variablen, auf die die Parameter zeigen, nicht modifiziert.
  *  -----
  */
-bool UpdateOpenPositions(datetime& lpOpenTime, double& lpOpenPrice) {
+bool UpdateOpenPositions(datetime &lpOpenTime, double &lpOpenPrice) {
    if (__STATUS__CANCELLED || IsLastError()) return( false);
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_false(catch("UpdateOpenPositions(1)", ERR_ILLEGAL_STATE)));
    if (status != STATUS_STARTING)            return(_false(catch("UpdateOpenPositions(2)   cannot update positions of "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
@@ -1272,23 +1272,20 @@ bool Grid.AddOrder(int type, int level) {
 
 
    // (1) Order in den Markt legen
-   double execution[];
-   int ticket = SubmitStopOrder(type, level, execution);
+   /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
+   int ticket = SubmitStopOrder(type, level, oe);
    if (ticket == -1)
       return(false);
 
 
    // (2) Daten speichern
-   if (!OrderSelectByTicket(ticket, "Grid.AddOrder(4)"))
-      return(false);
-
-   //int    ticket       = OrderTicket();
+   //int    ticket       = oe.Ticket(oe);
    //int    level        = level;
    //double grid.base    = grid.base;
 
    int      pendingType  = type;
-   datetime pendingTime  = Round(execution[EXEC_TIME ]);
-   double   pendingPrice =       execution[EXEC_PRICE];
+   datetime pendingTime  = oe.Time (oe);
+   double   pendingPrice = oe.Price(oe);
 
    /*int*/  type         = OP_UNDEFINED;
    datetime openTime     = NULL;
@@ -1297,7 +1294,7 @@ bool Grid.AddOrder(int type, int level) {
 
    datetime closeTime    = NULL;
    double   closePrice   = NULL;
-   double   stopLoss     = OrderStopLoss();                          // TODO: StopLoss in execution[] aufnehmen
+   double   stopLoss     = oe.StopLoss(oe);
    bool     closedBySL   = false;
 
    double   swap         = NULL;
@@ -1338,16 +1335,13 @@ bool Grid.AddPosition(int type, int level) {
 
 
    // (1) Position öffnen
-   double execution[];
-   int ticket = SubmitMarketOrder(type, level, execution);
+   /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
+   int ticket = SubmitMarketOrder(type, level, oe);
    if (ticket == -1)
       return(false);
 
 
    // (2) Daten speichern
-   if (!OrderSelectByTicket(ticket, "Grid.AddPosition(4)"))
-      return(false);
-
    //int    ticket       = ...                                       // unverändert
    //int    level        = ...                                       // unverändert
    //double grid.base    = ...                                       // unverändert
@@ -1357,18 +1351,18 @@ bool Grid.AddPosition(int type, int level) {
    double   pendingPrice = NULL;
 
    //int    type         = ...                                       // unverändert
-   datetime openTime     = Round(execution[EXEC_TIME ]);
-   double   openPrice    =       execution[EXEC_PRICE];
-   double   risk         = CalculateActiveRisk(level, ticket, openPrice, execution[EXEC_SWAP], execution[EXEC_COMMISSION]);
+   datetime openTime     = oe.Time (oe);
+   double   openPrice    = oe.Price(oe);
 
    datetime closeTime    = NULL;
    double   closePrice   = NULL;
-   double   stopLoss     = OrderStopLoss();
+   double   stopLoss     = oe.StopLoss(oe);
    bool     closedBySL   = false;
 
-   double   swap         = execution[EXEC_SWAP      ];               // falls Swap bereits bei OrderOpen gesetzt sein sollte
-   double   commission   = execution[EXEC_COMMISSION];
+   double   swap         = oe.Swap      (oe);                        // falls Swap bereits bei OrderOpen gesetzt sein sollte
+   double   commission   = oe.Commission(oe);
    double   profit       = NULL;
+   double   risk         = CalculateActiveRisk(level, ticket, openPrice, swap, commission);
 
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, closedBySL, swap, commission, profit))
       return(false);
@@ -1634,13 +1628,13 @@ int Grid.FindOpenPosition(int level) {
 /**
  * Legt eine Stop-Order in den Markt.
  *
- * @param  int    type        - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
- * @param  int    level       - Gridlevel der Order
- * @param  double execution[] - ausführungsspezifische Daten
+ * @param  int type  - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
+ * @param  int level - Gridlevel der Order
+ * @param  int oe[]  - Ausführungsdetails
  *
  * @return int - Ticket der Order oder -1, falls ein Fehler auftrat
  */
-int SubmitStopOrder(int type, int level, double& execution[]) {
+int SubmitStopOrder(int type, int level, int oe[]) {
    if (__STATUS__CANCELLED || IsLastError())                  return(-1);
    if (IsTest()) /*&&*/ if (!IsTesting())                     return(_int(-1, catch("SubmitStopOrder(1)", ERR_ILLEGAL_STATE)));
    if (status!=STATUS_PROGRESSING && status!=STATUS_STARTING) return(_int(-1, catch("SubmitStopOrder(2)   cannot submit stop order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
@@ -1661,7 +1655,7 @@ int SubmitStopOrder(int type, int level, double& execution[]) {
    datetime expires     = NULL;
    string   comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
    color    markerColor = CLR_PENDING;
-   int      flags       = NULL;
+   int      oeFlags     = NULL;
 
    /*
    #define ODM_NONE     0     // - keine Anzeige -
@@ -1675,7 +1669,7 @@ int SubmitStopOrder(int type, int level, double& execution[]) {
    if (IsLastError())
       return(-1);
 
-   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, flags, execution);
+   int ticket = OrderSendEx(Symbol(), type, LotSize, stopPrice, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
    if (ticket == -1)
       return(_int(-1, SetLastError(stdlib_PeekLastError())));
 
@@ -1688,13 +1682,13 @@ int SubmitStopOrder(int type, int level, double& execution[]) {
 /**
  * Öffnet eine Position zum aktuellen Preis.
  *
- * @param  int    type        - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
- * @param  int    level       - Gridlevel der Order
- * @param  double execution[] - ausführungsspezifische Daten
+ * @param  int type  - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
+ * @param  int level - Gridlevel der Order
+ * @param  int oe[]  - Ausführungsdetails
  *
  * @return int - Ticket der Order oder -1, falls ein Fehler auftrat
  */
-int SubmitMarketOrder(int type, int level, double& execution[]) {
+int SubmitMarketOrder(int type, int level, int oe[]) {
    if (__STATUS__CANCELLED || IsLastError()) return(-1);
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_int(-1, catch("SubmitMarketOrder(1)", ERR_ILLEGAL_STATE)));
    if (status != STATUS_STARTING)            return(_int(-1, catch("SubmitMarketOrder(2)   cannot submit market order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
@@ -1715,7 +1709,7 @@ int SubmitMarketOrder(int type, int level, double& execution[]) {
    datetime expires     = NULL;
    string   comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
    color    markerColor = ifInt(level > 0, CLR_LONG, CLR_SHORT);
-   int      flags       = NULL;
+   int      oeFlags     = NULL;
 
    /*
    #define ODM_NONE     0     // - keine Anzeige -
@@ -1729,11 +1723,9 @@ int SubmitMarketOrder(int type, int level, double& execution[]) {
    if (IsLastError())
       return(-1);
 
-
    // TODO: in ResumeSequence() kann STOPLEVEL-Verletzung auftreten
 
-
-   int ticket = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, flags, execution);
+   int ticket = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
    if (ticket == -1)
       return(_int(-1, SetLastError(stdlib_PeekLastError())));
 
@@ -3143,7 +3135,7 @@ bool ResolveStatusLocation() {
  *
  * @return bool - Erfolgsstatus
  */
-bool ResolveStatusLocation.FindFile(string directory, string& lpFile) {
+bool ResolveStatusLocation.FindFile(string directory, string &lpFile) {
    if (__STATUS__CANCELLED || IsLastError()) return( false);
    if (sequenceId == 0)                      return(_false(catch("ResolveStatusLocation.FindFile(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
 
@@ -4361,8 +4353,8 @@ bool SynchronizeStatus() {
 /**
  * Aktualisiert die Daten des lokal als offen markierten Tickets mit den Online-Daten.
  *
- * @param  int   i            - Ticketindex
- * @param  bool& lpPermChange - Zeiger auf Variable, die anzeigt, ob dauerhafte Ticketänderungen vorliegen
+ * @param  int  i            - Ticketindex
+ * @param  bool lpPermChange - Zeiger auf Variable, die anzeigt, ob dauerhafte Ticketänderungen vorliegen
  *
  * @return bool - Erfolgsstatus
  *
@@ -4370,7 +4362,7 @@ bool SynchronizeStatus() {
  *  NOTE: Wird nur in SynchronizeStatus() verwendet.
  *  -----
  */
-bool Sync.UpdateOrder(int i, bool& lpPermChange) {
+bool Sync.UpdateOrder(int i, bool &lpPermChange) {
    if (i < 0 || i > ArraySize(orders.ticket)-1) return(_false(catch("Sync.UpdateOrder(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    if (orders.closeTime[i] != 0)                return(_false(catch("Sync.UpdateOrder(2)   cannot update ticket #"+ orders.ticket[i] +" (marked as closed in grid arrays)", ERR_RUNTIME_ERROR)));
 
@@ -4431,7 +4423,7 @@ bool Sync.UpdateOrder(int i, bool& lpPermChange) {
  * @param  double   gridBase - Gridbasis des Events
  * @param  int      order    - Index der Order, falls das Event zu einer Order in den Gridarrays gehört
  */
-void Sync.PushEvent(double& events[][], datetime time, int type, double gridBase, int order) {
+void Sync.PushEvent(double &events[][], datetime time, int type, double gridBase, int order) {
    if (type==EV_SEQUENCE_STOP) /*&&*/ if (time==0)
       return;                                                        // undefinierte Sequenz-Stops ignorieren (wenn, dann immer der letzte Stop)
 
@@ -4496,11 +4488,11 @@ double CalculateActiveRisk(int level, int ticket, double openPrice, double swap,
  * @param  bool     checkOpenPositions - ob die Open-Preise schon offener Positionen berücksichtigen werden sollen (um aufgetretene Slippage mit einzukalkulieren)
  * @param  datetime time               - wenn checkOpenPositions=TRUE: Zeitpunkt innerhalb der Sequenz (nur zu diesem Zeitpunkt offene Positionen werden berücksichtigt)
  * @param  int      i                  - wenn checkOpenPositions=TRUE: Orderindex innerhalb der Gridarrays (offene Positionen bis zu diesem Index werden berücksichtigt)
- * @param  double&  lpRisk             - wenn checkOpenPositions=TRUE: Zeiger auf Variable, die das Risiko derjeniger aller offenen Position aufnimmt, deren Stoploss als erster getriggert werden würde
+ * @param  double   lpRisk             - wenn checkOpenPositions=TRUE: Zeiger auf Variable, die das Risiko derjeniger aller offenen Position aufnimmt, deren Stoploss als erster getriggert werden würde
  *
  * @return double - Durchschnittspreis oder NULL, falls ein Fehler auftrat
  */
-double CalculateAverageOpenPrice(int level, bool checkOpenPositions, datetime time, int i, double& lpRisk) {
+double CalculateAverageOpenPrice(int level, bool checkOpenPositions, datetime time, int i, double &lpRisk) {
    if (level == 0)
       return(_NULL(catch("CalculateAverageOpenPrice(1)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
 

@@ -24,14 +24,17 @@ int onTick() {
       oe.setDigits    (oe, Digits);
       oe.setBid       (oe, Bid);
       oe.setAsk       (oe, Ask);
-      oe.setTime      (oe, TimeCurrent());
+      oe.setType      (oe, OP_BUY);
+      oe.setLots      (oe, 0.01);
       oe.setTicket    (oe, 12345678);
+      oe.setTime      (oe, TimeCurrent());
       oe.setPrice     (oe, (Bid+Ask)/2);
       oe.setStopLoss  (oe, Bid-100*Pip);
       oe.setTakeProfit(oe, Bid+100*Pip);
       oe.setSwap      (oe, 0.19);
       oe.setCommission(oe, 8.00);
       oe.setProfit    (oe, -7.77);
+      oe.setComment   (oe, "SR.12345.+5");
       oe.setDuration  (oe, 234);
       oe.setRequotes  (oe, 2);
       oe.setSlippage  (oe, 1.1);
