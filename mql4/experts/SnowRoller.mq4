@@ -1301,6 +1301,8 @@ bool Grid.AddOrder(int type, int level) {
    double   commission   = NULL;
    double   profit       = NULL;
 
+   ArrayResize(oe, 0);
+
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, closedBySL, swap, commission, profit))
       return(false);
    return(IsNoError(catch("Grid.AddOrder(5)")));
@@ -1364,9 +1366,10 @@ bool Grid.AddPosition(int type, int level) {
    double   profit       = NULL;
    double   risk         = CalculateActiveRisk(level, ticket, openPrice, swap, commission);
 
+   ArrayResize(oe, 0);
+
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, closedBySL, swap, commission, profit))
       return(false);
-
    return(IsNoError(catch("Grid.AddPosition(5)")));
 }
 
@@ -1402,20 +1405,21 @@ bool Grid.TrailPendingOrder(int i) {
    double stopPrice   = grid.base +      orders.level[i]  * GridSize * Pips;
    double stopLoss    = stopPrice - Sign(orders.level[i]) * GridSize * Pips;
    color  markerColor = CLR_PENDING;
-   int    flags       = NULL;
-   double execution[];
+   int    oeFlags     = NULL;
 
    if (EQ(orders.pendingPrice[i], stopPrice)) /*&&*/ if (EQ(orders.stopLoss[i], stopLoss))
       return(_false(catch("Grid.TrailPendingOrder(7)   nothing to modify for #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
-   if (!OrderModifyEx(orders.ticket[i], stopPrice, stopLoss, NULL, NULL, markerColor, flags, execution))
+   /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
+   if (!OrderModifyEx(orders.ticket[i], stopPrice, stopLoss, NULL, NULL, markerColor, oeFlags, oe))
       return(_false(SetLastError(stdlib_PeekLastError())));
 
    orders.gridBase    [i] = NormalizeDouble(grid.base, Digits);
-   orders.pendingTime [i] = Round(execution[EXEC_TIME]);
+   orders.pendingTime [i] = TimeCurrent();
    orders.pendingPrice[i] = NormalizeDouble(stopPrice, Digits);
    orders.stopLoss    [i] = NormalizeDouble(stopLoss,  Digits);
 
+   ArrayResize(oe, 0);
    return(IsNoError(catch("Grid.TrailPendingOrder(8)")));
 }
 

@@ -39,7 +39,7 @@ int onTick() {
       oe.setRequotes  (oe, 2);
       oe.setSlippage  (oe, 1.1);
 
-      ORDER_EXECUTION.toStr(oe, true);
+      ORDER_EXECUTION.toStr(oe, true); ArrayResize(oe, 0);
 
       done = true;
    }
