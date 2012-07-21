@@ -222,8 +222,8 @@ string   str.grid.maxDrawdown  = "0.00";
 string   str.grid.valueAtRisk  = "0.00";
 string   str.grid.plStatistics = "";
 
-bool     firstTick                      = true;
-bool     firstTickConfirmed             = false;
+bool     firstTick             = true;
+bool     firstTickConfirmed    = false;
 
 
 #include <SnowRoller/init.mqh>
