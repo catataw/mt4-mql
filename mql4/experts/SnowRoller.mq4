@@ -1284,8 +1284,8 @@ bool Grid.AddOrder(int type, int level) {
    //double grid.base    = grid.base;
 
    int      pendingType  = type;
-   datetime pendingTime  = oe.Time (oe);
-   double   pendingPrice = oe.Price(oe);
+   datetime pendingTime  = oe.OpenTime (oe);
+   double   pendingPrice = oe.OpenPrice(oe);
 
    /*int*/  type         = OP_UNDEFINED;
    datetime openTime     = NULL;
@@ -1353,8 +1353,8 @@ bool Grid.AddPosition(int type, int level) {
    double   pendingPrice = NULL;
 
    //int    type         = ...                                       // unverändert
-   datetime openTime     = oe.Time (oe);
-   double   openPrice    = oe.Price(oe);
+   datetime openTime     = oe.OpenTime (oe);
+   double   openPrice    = oe.OpenPrice(oe);
 
    datetime closeTime    = NULL;
    double   closePrice   = NULL;
@@ -1454,15 +1454,16 @@ bool Grid.DeleteOrder(int ticket) {
    }
    firstTickConfirmed = true;
 
-   int    flags       = NULL;
-   double execution[] = {NULL};
+   int oeFlags = NULL;
+   /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
 
-   if (!OrderDeleteEx(ticket, CLR_NONE, flags, execution))
+   if (!OrderDeleteEx(ticket, CLR_NONE, oeFlags, oe))
       return(_false(SetLastError(stdlib_PeekLastError())));
 
    if (!Grid.DropTicket(ticket))
       return(false);
 
+   ArrayResize(oe, 0);
    return(IsNoError(catch("Grid.DeleteOrder(5)")));
 }
 
