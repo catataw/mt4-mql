@@ -207,7 +207,7 @@ string ORDER_EXECUTION.toStr(/*ORDER_EXECUTION*/int oe[], bool debugOutput=false
    int    digits, pipDigits;
    string priceFormat, output="";
 
-   // Parameter oe ist einzelner Struct ORDER_EXECUTION (eine Dimension)
+   // oe ist struct ORDER_EXECUTION (eine Dimension)
    if (dimensions == 1) {
       digits      = oe.Digits(oe);
       pipDigits   = digits & (~1);
@@ -236,7 +236,7 @@ string ORDER_EXECUTION.toStr(/*ORDER_EXECUTION*/int oe[], bool debugOutput=false
                                       ", remainingLots="  ,              NumberToStr(oe.RemainingLots  (oe), ".+"), "}");
    }
    else {
-      // Parameter oe ist Struct-Array ORDER_EXECUTION[] (zwei Dimensionen)
+      // oe ist struct ORDER_EXECUTION[] (zwei Dimensionen)
       int size = ArrayRange(oe, 0);
       for (int i=0; i < size; i++) {
          digits      = oe.Digits(oe, i); catch("ORDER_EXECUTION.toStr(0.1)");
