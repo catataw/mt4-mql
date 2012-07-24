@@ -5,7 +5,6 @@
  *
  *  TODO:
  *  -----
- *  - execution[] als Struct implementieren                                                           *
  *  - Logging aller Trade-Operationen, Traderequest-Fehler, Slippage                                  *
  *                                                                                                    *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
@@ -457,28 +456,29 @@ bool StopSequence() {
 
 
    // (4) offene Positionen schließen                                            // TODO: Wurde eine PendingOrder inzwischen getriggert, muß sie hier mit verarbeitet werden.
-   int    sizeOfOpenPositions = ArraySize(openPositions);
-   int    n = ArraySize(sequenceStopTimes) - 1;
-   int    flags = NULL;
-   double execution[];
+   int sizeOfOpenPositions = ArraySize(openPositions);
+   int n = ArraySize(sequenceStopTimes) - 1;
 
    if (sizeOfOpenPositions > 0) {
-      if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, flags, execution))
+      int oeFlags = NULL;
+      /*ORDER_EXECUTION*/int oes[][ORDER_EXECUTION.length]; ArrayResize(oes, sizeOfOpenPositions); InitializeBuffer(oes, ORDER_EXECUTION.size);
+
+      if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, oeFlags, oes))
          return(_false(SetLastError(stdlib_PeekLastError())));
 
-      sequenceStopTimes [n] =           Round(execution[EXEC_TIME ] + 1);        // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehrdeutigkeiten
-      sequenceStopPrices[n] = NormalizeDouble(execution[EXEC_PRICE], Digits);    // bei der Sortierung der Breakeven-Events zu vermeiden.
+      sequenceStopTimes [n] = oes.CloseTime (oes, 0) + 1;                        // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehrdeutigkeiten
+      sequenceStopPrices[n] = oes.ClosePrice(oes, 0);                            // bei der Sortierung der Breakeven-Events zu vermeiden.
 
       for (i=0; i < sizeOfOpenPositions; i++) {
          int pos = SearchIntArray(orders.ticket, openPositions[i]);
 
-         orders.closeTime [pos] = Round(execution[9*i+EXEC_TIME ]);              // entspricht execution[EXEC_TIME ]
-         orders.closePrice[pos] =       execution[9*i+EXEC_PRICE];               // entspricht execution[EXEC_PRICE]
+         orders.closeTime [pos] = oes.CloseTime (oes, i);                        // bei allen Tickets gleich
+         orders.closePrice[pos] = oes.ClosePrice(oes, i);
          orders.closedBySL[pos] = false;
 
-         orders.swap      [pos] = execution[9*i+EXEC_SWAP      ];
-         orders.commission[pos] = execution[9*i+EXEC_COMMISSION];
-         orders.profit    [pos] = execution[9*i+EXEC_PROFIT    ];
+         orders.swap      [pos] = oes.Swap      (oes, i);
+         orders.commission[pos] = oes.Commission(oes, i);
+         orders.profit    [pos] = oes.Profit    (oes, i);
 
          grid.closedPL += orders.swap[pos] + orders.commission[pos] + orders.profit[pos];
        //grid.activeRisk  ändert sich nicht bei StopSequence()
