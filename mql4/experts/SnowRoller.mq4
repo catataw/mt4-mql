@@ -5,7 +5,7 @@
  *
  *  TODO:
  *  -----
- *  - Logging aller Trade-Operationen, Traderequest-Fehler, Slippage                                  *
+ *  - Logging aller Trade-Operationen, Traderequest-Fehler                                            *
  *                                                                                                    *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
  *  - Sounds in Tradefunktionen abschaltbar machen                                                    *
