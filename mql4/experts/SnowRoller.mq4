@@ -361,6 +361,7 @@ bool StartSequence() {
 
 
    status = STATUS_STARTING;
+   if (__LOG) log("StartSequence()   starting sequence");
 
 
    // (1) Startvariablen setzen
@@ -425,6 +426,7 @@ bool StopSequence() {
 
 
    status = STATUS_STOPPING;
+   if (__LOG) log("StopSequence()   stopping sequence");
 
 
    // (2) PendingOrders und OpenPositions einlesen
@@ -557,6 +559,7 @@ bool ResumeSequence() {
 
 
    status = STATUS_STARTING;
+   if (__LOG) log("ResumeSequence()   resuming sequence");
 
 
    datetime startTime;
@@ -736,6 +739,7 @@ bool UpdateStatus() {
                }
                else {                                                                           // Sequenzstop im STATUS_MONITORING oder autom. Close bei Beenden des Testers
                   status = STATUS_STOPPING;
+                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", LogMessage.PositionClosed()));
                   grid.closedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
             }
@@ -5015,6 +5019,22 @@ string LogMessage.StopLossExecuted(int i) {
       message = StringConcatenate(message, " at ", NumberToStr(OrderClosePrice(), PriceFormat), " (", strSlippage, ")");
    }
    return(message);
+}
+
+
+/**
+ * Logmessage für geschlossene Position (Ticket muß selektiert sein).
+ *
+ * @return string
+ */
+string LogMessage.PositionClosed() {
+   // #1 Sell 0.1 GBPUSD at 1.5457'2 closed at 1.5457'2
+
+   string strType       = OperationTypeDescription(OrderType());
+   string strOpenPrice  = NumberToStr(OrderOpenPrice(), PriceFormat);
+   string strClosePrice = NumberToStr(OrderClosePrice(), PriceFormat);
+
+   return(StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, " closed at ", strClosePrice));
 }
 
 
