@@ -672,6 +672,7 @@ bool UpdateStatus() {
          if (wasPending) {
             // beim letzten Aufruf Pending-Order
             if (OrderType() != orders.pendingType[i]) {                                         // Order wurde ausgeführt
+               if (__LOG) log(StringConcatenate("UpdateStatus()   ", LogMessage.PendingOrderFilled(i)));
                orders.type      [i] = OrderType();
                orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
@@ -725,12 +726,13 @@ bool UpdateStatus() {
                ChartMarker.PositionClosed(i);
 
                if (orders.closedBySL[i]) {                                                      // ausgestoppt
+                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", LogMessage.StopLossExecuted(i)));
                   grid.level      -= Sign(orders.level[i]);
                   grid.stops++;
                   grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
                   grid.activeRisk -= orders.risk[i];
                   grid.valueAtRisk = grid.activeRisk - grid.stopsPL; SS.Grid.ValueAtRisk();     // valueAtRisk = -stopsPL + activeRisk
-                  recalcBreakeven = true;
+                  recalcBreakeven  = true;
                }
                else {                                                                           // Sequenzstop im STATUS_MONITORING oder autom. Close bei Beenden des Testers
                   status = STATUS_STOPPING;
@@ -4956,6 +4958,63 @@ bool ChartMarker.PositionClosed(int i) {
  */
 bool IsTest() {
    return(test || IsTesting());
+}
+
+
+/**
+ * Logmessage für ausgeführte PendingOrder. Die ausgeführte Order muß selektiert sein.
+ *
+ * @param  int i - Index der Order in den Grid-Arrays
+ *
+ * @return string
+ */
+string LogMessage.PendingOrderFilled(int i) {
+   // #1 Stop Sell 0.1 GBPUSD at 1.5457'2 is filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+
+   string strType         = OperationTypeDescription(orders.pendingType[i]);
+   string strPendingPrice = NumberToStr(orders.pendingPrice[i], PriceFormat);
+
+   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strPendingPrice, " filled");
+
+   if (NE(orders.pendingPrice[i], OrderOpenPrice())) {
+      double slippage = (OrderOpenPrice() - orders.pendingPrice[i])/Pip;
+         if (OrderType() == OP_SELL)
+            slippage = -slippage;
+      string strSlippage;
+      if (slippage > 0) strSlippage = StringConcatenate(DoubleToStr( slippage, Digits<<31>>31), " pip slippage");
+      else              strSlippage = StringConcatenate(DoubleToStr(-slippage, Digits<<31>>31), " pip positive slippage");
+      message = StringConcatenate(message, " at ", NumberToStr(OrderOpenPrice(), PriceFormat), " (", strSlippage, ")");
+   }
+   return(message);
+}
+
+
+/**
+ * Logmessage für ausgeführten StopLoss. Die ausgestoppte Order muß selektiert sein.
+ *
+ * @param  int i - Index der Order in den Grid-Arrays
+ *
+ * @return string
+ */
+string LogMessage.StopLossExecuted(int i) {
+   // #1 Sell 0.1 GBPUSD at 1.5457'2, stop loss 1.5457'2 executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+
+   string strType      = OperationTypeDescription(OrderType());
+   string strOpenPrice = NumberToStr(OrderOpenPrice(), PriceFormat);
+   string strStopLoss  = NumberToStr(OrderStopLoss(), PriceFormat);
+
+   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, ", stop loss ", strStopLoss, " executed");
+
+   if (NE(OrderClosePrice(), orders.stopLoss[i])) {
+      double slippage = (orders.stopLoss[i] - OrderClosePrice())/Pip;
+         if (OrderType() == OP_SELL)
+            slippage = -slippage;
+      string strSlippage;
+      if (slippage > 0) strSlippage = StringConcatenate(DoubleToStr( slippage, Digits<<31>>31), " pip slippage");
+      else              strSlippage = StringConcatenate(DoubleToStr(-slippage, Digits<<31>>31), " pip positive slippage");
+      message = StringConcatenate(message, " at ", NumberToStr(OrderClosePrice(), PriceFormat), " (", strSlippage, ")");
+   }
+   return(message);
 }
 
 
