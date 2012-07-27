@@ -20,6 +20,7 @@ int onTick() {
    if (!done) {
 
       /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
+      oe.setError          (oe, ERR_RUNTIME_ERROR);
       oe.setSymbol         (oe, Symbol());
       oe.setDigits         (oe, Digits);
       oe.setBid            (oe, Bid);
@@ -43,7 +44,6 @@ int onTick() {
       oe.setRemainingTicket(oe, 0);
       oe.setRemainingLots  (oe, 0.01);
       ORDER_EXECUTION.toStr(oe, true);
-
 
       done = true;
    }
