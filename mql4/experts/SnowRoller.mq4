@@ -1788,8 +1788,11 @@ int CreateMagicNumber(int level) {
  * @return int - Fehlerstatus
  */
 int ShowStatus() {
-   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+   if (IsTesting()) /*&&*/ if (!IsVisualMode()) {
+      if (IsLastError())
+         status = STATUS_DISABLED;
       return(NO_ERROR);
+   }
 
    string msg, str.error;
 
@@ -3220,7 +3223,8 @@ string GetFullStatusDirectory() {
 
 /**
  * Speichert den aktuellen Status der Instanz, um später die nahtlose Re-Initialisierung im selben oder einem anderen Terminal
- * zu ermöglichen.
+ * zu ermöglichen.  Im Tester wird der Status zur Performancesteigerung nur beim ersten und letzten Aufruf gespeichert, es sei denn,
+ * das Logging ist aktiviert.
  *
  * @return bool - Erfolgsstatus
  */
@@ -3229,10 +3233,12 @@ bool SaveStatus() {
    if (sequenceId == 0)                      return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
    if (IsTest()) /*&&*/ if (!IsTesting())    return(true);
 
-   static int counter;
-   if (IsTesting()) /*&&*/ if (counter > 0) /*&&*/ if (status!=STATUS_STOPPED)   // im Tester Ausführung nur beim ersten Aufruf und nach Stop
-      return(true);                                                              // TODO: STATUS_STOPPED mit Check for deinit ersetzen
-   counter++;
+   if (IsTesting()) /*&&*/ if (!__LOG) {
+      static bool firstCall = true;
+      if (!firstCall) /*&&*/ if (__WHEREAMI__!=FUNC_DEINIT)
+         return(true);                                                        // "Speichern" überspringen
+      firstCall = false;
+   }
 
    /*
    Speichernotwendigkeit der einzelnen Variablen
