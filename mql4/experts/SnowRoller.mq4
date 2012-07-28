@@ -5,10 +5,10 @@
  *
  *  TODO:
  *  -----
- *  - Logging aller Traderequest-Fehler                                                               *
- *                                                                                                    *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
+ *                                                                                                    *
  *  - Sounds in Tradefunktionen abschaltbar machen                                                    *
+ *  - Logging aller Traderequest-Fehler                                                               *
  *                                                                                                    *
  *  - Start/StopConditions vervollständigen                                                           *
  *  - ResumeCondition implementieren                                                                  *
