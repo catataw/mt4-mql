@@ -5,14 +5,13 @@
  *
  *  TODO:
  *  -----
+ *  - automatisches Pause/Resume an Wochenenden                                                       *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
  *                                                                                                    *
- *  - Sounds in Tradefunktionen abschaltbar machen                                                    *
  *  - Logging aller Traderequest-Fehler                                                               *
  *                                                                                                    *
  *  - Start/StopConditions vervollständigen                                                           *
  *  - ResumeCondition implementieren                                                                  *
- *  - automatisches Pause/Resume an Wochenenden                                                       *
  *  - StartCondition @level() implementieren                                                          *
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
@@ -23,6 +22,7 @@
  *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment                                         *
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird   *
+ *  - Sounds in Tradefunktionen abschaltbar machen                                                    *
  *
  *  - Änderungen der Gridbasis während Auszeit erkennen
  *  - maxProfit/Loss analog zu PendingOrders regelmäßig speichern
