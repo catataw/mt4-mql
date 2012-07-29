@@ -15,36 +15,22 @@ bool done;
 
 
 /**
- *
- * @return int - Fehlerstatus
- */
-int onInit() {
-   done = false;
-   //debug("onInit()   string="+ StaticString() +"  bool="+ StaticBool() +"  int="+ StaticInt() +"  double="+ NumberToStr(StaticDouble(), ".1+"));
-   return(catch("onInit()"));
-}
-
-
-/**
  * Main-Funktion
  *
  * @return int - Fehlerstatus
  */
 int onTick() {
-
    if (!done) {
-      //debug("onTick()   string="+ StaticString() +"  bool="+ StaticBool() +"  int="+ StaticInt() +"  double="+ NumberToStr(StaticDouble(), ".1+"));
       done = true;
    }
-   return(catch("onTick()"));
-}
+
+   int hWndTester = GetTesterWindow();
+   if (hWndTester == 0)
+      return(_int(catch("onTick(1)"), debug("onTick()   hWndTester=0x"+ IntToHexStr(hWndTester))));
 
 
-/**
- *
- * @return int - Fehlerstatus
- */
-int onDeinit() {
-   done = false;
-   return(catch("onDeinit()"));
+   debug("onTick()   hWndTester=0x"+ IntToHexStr(hWndTester));
+
+
+   return(catch("onTick(2)"));
 }
