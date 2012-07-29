@@ -37,11 +37,10 @@
  *  - STATUS_MONITORING implementieren
  *  - Client-Side-Limits implementieren
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
- *  - orders.stopLoss[] in open-Block verschieben
  *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
  *
  *  - Build 419 silently crashes (1 mal)
- *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec.
+ *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec. (TCP-Socket Timeout???)
  *  - Alpari: StopOrder-Slippage EUR/USD bis 4.1 pip, GBP/AUD bis 6 pip, GBP/JPY bis 21.4 pip
  *  - FxPro: zu viele Traderequests in zu kurzer Zeit => ERR_TRADE_TIMEOUT
  *
@@ -244,9 +243,12 @@ int onTick() {
    // (1) Commands verarbeiten
    HandleEvent(EVENT_CHART_CMD);
 
+
+   // (2) ResumeSignal auswerten
    if (status == STATUS_STOPPED) {
-      firstTick = false;
-      return(last_error);
+      //if (IsResumeSignal()) ResumeSequence();
+      //else
+      { firstTick = false; return(last_error); }
    }
 
 
@@ -361,7 +363,7 @@ bool StartSequence() {
 
 
    status = STATUS_STARTING;
-   if (__LOG) log("StartSequence()   starting sequence");
+   if (__LOG) log("StartSequence()   starting sequence (STATUS_STARTING)");
 
 
    // (1) Startvariablen setzen
@@ -387,6 +389,8 @@ bool StartSequence() {
       return(false);
 
    RedrawStartStop();
+
+   if (__LOG) log("StartSequence()   sequence started (STATUS_PROGRESSING)");
    return(IsNoError(catch("StartSequence(4)")));
 }
 
@@ -426,7 +430,7 @@ bool StopSequence() {
 
 
    status = STATUS_STOPPING;
-   if (__LOG) log("StopSequence()   stopping sequence");
+   if (__LOG) log("StopSequence()   stopping sequence (STATUS_STOPPING)");
 
 
    // (2) PendingOrders und OpenPositions einlesen
@@ -446,7 +450,7 @@ bool StopSequence() {
    }
 
 
-   // (3) zuerst Pending-Orders streichen (ansonsten werden während OrderClose() u.U. die Stops/Limits getriggert)
+   // (3) zuerst Pending-Orders streichen (ansonsten könnten sie während OrderClose() getriggert werden)
    bool ordersChanged;
    int  sizeOfPendingOrders = ArraySize(pendingOrders);
 
@@ -457,7 +461,7 @@ bool StopSequence() {
    }
 
 
-   // (4) offene Positionen schließen                                            // TODO: Wurde eine PendingOrder inzwischen getriggert, muß sie hier mit verarbeitet werden.
+   // (4) dann offene Positionen schließen                                       // TODO: Wurde eine PendingOrder inzwischen getriggert, muß sie hier mit verarbeitet werden.
    int sizeOfOpenPositions = ArraySize(openPositions);
    int n = ArraySize(sequenceStopTimes) - 1;
 
@@ -506,9 +510,15 @@ bool StopSequence() {
 
 
    status = STATUS_STOPPED;
+   if (__LOG) log("StopSequence()   sequence stopped (STATUS_STOPPED)");
 
 
-   // (5) Daten aktualisieren und speichern
+   // (5) StartConditions deaktivieren, um nicht ein sofortiges Resume-Signal zu triggern
+   start.conditions = false; StartConditions = "";
+   SS.StartStopConditions();
+
+
+   // (6) Daten aktualisieren und speichern
    if (ordersChanged) {
       if (!UpdateStatus()) return(false);
       if (  !SaveStatus()) return(false);
@@ -516,10 +526,9 @@ bool StopSequence() {
    RedrawStartStop();
 
 
-   // (6) ggf. Tester stoppen
+   // (7) ggf. Tester stoppen
    if (IsTesting())
       Tester.Pause();
-
    /*
    debug("StopSequence()      level="      + grid.level
                           +"  stops="      + grid.stops
@@ -559,20 +568,13 @@ bool ResumeSequence() {
 
 
    status = STATUS_STARTING;
-   if (__LOG) log("ResumeSequence()   resuming sequence");
-
+   if (__LOG) log("ResumeSequence()   resuming sequence (STATUS_STARTING)");
 
    datetime startTime;
    double   startPrice, lastStopPrice, gridBase;
 
 
-   // (1) Start-/StopConditions deaktivieren
-   start.conditions = false; StartConditions = "";
-   stop.conditions  = false; StopConditions  = "";
-   SS.StartStopConditions();
-
-
-   // (2) Wird ResumeSequence() nach einem Fehler erneut aufgerufen, kann es sein, daß einige Level bereits offen sind und andere noch fehlen.
+   // (1) Wird ResumeSequence() nach einem Fehler erneut aufgerufen, kann es sein, daß einige Level bereits offen sind und andere noch fehlen.
    if (grid.level > 0) {
       for (int level=1; level <= grid.level; level++) {
          int i = Grid.FindOpenPosition(level);
@@ -593,7 +595,7 @@ bool ResumeSequence() {
    }
 
 
-   // (3) Neue Gridbasis nur dann setzen, wenn noch keine offenen Positionen existieren.
+   // (2) Neue Gridbasis nur dann setzen, wenn noch keine offenen Positionen existieren.
    if (EQ(gridBase, 0)) {
       startTime     = TimeCurrent();
       startPrice    = (Bid + Ask)/2;
@@ -609,12 +611,12 @@ bool ResumeSequence() {
    }
 
 
-   // (4) vorherige Positionen wieder in den Markt legen und letzte OrderOpenTime abfragen
+   // (3) vorherige Positionen wieder in den Markt legen und letzte OrderOpenTime abfragen
    if (!UpdateOpenPositions(startTime, startPrice))
       return(false);
 
 
-   // (5) neuen Sequenzstart speichern
+   // (4) neuen Sequenzstart speichern
    ArrayPushInt   (sequenceStartTimes, startTime+1);                          // zeitlich immer nach der letzten OrderOpenTime()
    ArrayPushDouble(sequenceStartPrices, startPrice);
    ArrayPushInt   (sequenceStopTimes,            0);
@@ -622,6 +624,7 @@ bool ResumeSequence() {
 
 
    status = STATUS_PROGRESSING;
+   if (__LOG) log("ResumeSequence()   sequence resumed (STATUS_PROGRESSING)");
 
 
    // (5) Stop-Orders vervollständigen
@@ -738,7 +741,8 @@ bool UpdateStatus() {
                   recalcBreakeven  = true;
                }
                else {                                                                           // Sequenzstop im STATUS_MONITORING oder autom. Close bei Beenden des Testers
-                  status = STATUS_STOPPING;
+                  if (status != STATUS_STOPPED)
+                     status = STATUS_STOPPING;
                   if (__LOG) log(StringConcatenate("UpdateStatus()   ", LogMessage.PositionClosed()));
                   grid.closedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
@@ -765,6 +769,7 @@ bool UpdateStatus() {
    if (status == STATUS_STOPPING) {
       if (!openPositions) {                                                                     // StopSequence() in STATUS_MONITORING: alle offenen Positionen geschlossen
          status = STATUS_STOPPED;
+         if (__LOG) log("UpdateStatus()   STATUS_STOPPED");
 
          int n = ArraySize(sequenceStopTimes) - 1;
          sequenceStopTimes [n] = CalculateSequenceStopTime() + 1;                               // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehrdeutigkeiten
@@ -1789,8 +1794,10 @@ int CreateMagicNumber(int level) {
  */
 int ShowStatus() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) {
-      if (IsLastError())
+      if (IsLastError()) {
          status = STATUS_DISABLED;
+         if (__LOG) log("ShowStatus()   last_error="+ last_error + " (STATUS_DISABLED)");
+      }
       return(NO_ERROR);
    }
 
@@ -1802,6 +1809,7 @@ int ShowStatus() {
    else if (IsLastError()) {
       status    = STATUS_DISABLED;
       str.error = StringConcatenate("  [", ErrorDescription(last_error), "]");
+      if (__LOG) log("ShowStatus()   last_error="+ last_error + " (STATUS_DISABLED)");
    }
    else if (__STATUS__INVALID_INPUT) {
       str.error = StringConcatenate("  [", ErrorDescription(ERR_INVALID_INPUT), "]");
@@ -1847,6 +1855,7 @@ int ShowStatus() {
 
    if (IsError(catch("ShowStatus(3)"))) {
       status = STATUS_DISABLED;
+      if (__LOG) log("ShowStatus()   last_error="+ last_error + " (STATUS_DISABLED)");
       return(last_error);
    }
    return(NO_ERROR);
@@ -1946,11 +1955,8 @@ void SS.StartStopConditions() {
    str.startConditions = "";
    str.stopConditions  = "";
 
-   if (start.conditions) /*&&*/ if (ArraySize(orders.ticket)==0)
-      str.startConditions = StringConcatenate("Start:           ", StartConditions, NL);
-
-   if (stop.conditions)
-      str.stopConditions  = StringConcatenate("Stop:            ", StopConditions,  NL);
+   if (start.conditions) str.startConditions = StringConcatenate("Start:           ", StartConditions, NL);
+   if (stop.conditions ) str.stopConditions  = StringConcatenate("Stop:            ", StopConditions,  NL);
 }
 
 
@@ -2761,6 +2767,7 @@ bool ValidateConfiguration(bool interactive) {
 
    // (5.2) jeden Ausdruck parsen und validieren
    for (int i=0; i < sizeOfExprs; i++) {
+      start.conditions = false;                    // im Fehlerfall ist start.conditions zurückgesetzt
       expr = StringToLower(StringTrim(exprs[i]));
       if (StringLen(expr) == 0) {
          if (sizeOfExprs > 1)                      return(_false(HandleConfigError("ValidateConfiguration(17)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
@@ -2819,6 +2826,7 @@ bool ValidateConfiguration(bool interactive) {
 
    // (6.2) jeden Ausdruck parsen und validieren
    for (i=0; i < sizeOfExprs; i++) {
+      stop.conditions = false;                     // im Fehlerfall ist stop.conditions zurückgesetzt
       expr = StringToLower(StringTrim(exprs[i]));
       if (StringLen(expr) == 0) {
          if (sizeOfExprs > 1)                      return(_false(HandleConfigError("ValidateConfiguration(27)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
@@ -4978,7 +4986,7 @@ string LogMessage.PendingOrderFilled(int i) {
    string strType         = OperationTypeDescription(orders.pendingType[i]);
    string strPendingPrice = NumberToStr(orders.pendingPrice[i], PriceFormat);
 
-   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strPendingPrice, " filled");
+   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strPendingPrice, " is filled");
 
    if (NE(orders.pendingPrice[i], OrderOpenPrice())) {
       double slippage = (OrderOpenPrice() - orders.pendingPrice[i])/Pip;
@@ -5001,13 +5009,13 @@ string LogMessage.PendingOrderFilled(int i) {
  * @return string
  */
 string LogMessage.StopLossExecuted(int i) {
-   // #1 Sell 0.1 GBPUSD at 1.5457'2, stop loss 1.5457'2 executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+   // #1 Sell 0.1 GBPUSD at 1.5457'2, stop loss 1.5457'2 is executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
 
    string strType      = OperationTypeDescription(OrderType());
    string strOpenPrice = NumberToStr(OrderOpenPrice(), PriceFormat);
    string strStopLoss  = NumberToStr(OrderStopLoss(), PriceFormat);
 
-   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, ", stop loss ", strStopLoss, " executed");
+   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, ", stop loss ", strStopLoss, " is executed");
 
    if (NE(OrderClosePrice(), orders.stopLoss[i])) {
       double slippage = (orders.stopLoss[i] - OrderClosePrice())/Pip;
@@ -5028,13 +5036,13 @@ string LogMessage.StopLossExecuted(int i) {
  * @return string
  */
 string LogMessage.PositionClosed() {
-   // #1 Sell 0.1 GBPUSD at 1.5457'2 closed at 1.5457'2
+   // #1 Sell 0.1 GBPUSD at 1.5457'2 is closed at 1.5457'2
 
    string strType       = OperationTypeDescription(OrderType());
    string strOpenPrice  = NumberToStr(OrderOpenPrice(), PriceFormat);
    string strClosePrice = NumberToStr(OrderClosePrice(), PriceFormat);
 
-   return(StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, " closed at ", strClosePrice));
+   return(StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, " is closed at ", strClosePrice, " (", StatusToStr(status), ")"));
 }
 
 
