@@ -21,10 +21,13 @@ int onTick() {
    if (!done) {
 
       if (TimeCurrent() > D'2012-07-20 09:30') {
-         //catch("onTick()", ERR_INVALID_STOP);
+         catch("onTick()", ERR_INVALID_STOP);
+
          done = true;
       }
-
    }
-   return(catch("onTick()"));
+
+   return(last_error + catch("onTick()"));
 }
+
+
