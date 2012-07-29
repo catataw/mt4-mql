@@ -1892,13 +1892,7 @@ void SS.Test() {
  */
 void SS.SequenceId() {
    if (IsTesting()) {
-      int hWndTester = GetTesterWindow();
-      if (hWndTester == 0)
-         return(_ZERO(SetLastError(stdlib_PeekLastError())));
-
-      string text = StringConcatenate("Tester - SR.", sequenceId);
-
-      if (!SetWindowTextA(hWndTester, text))
+      if (!SetWindowTextA(GetTesterWindow(), StringConcatenate("Tester - SR.", sequenceId)))
          catch("SS.SequenceId() ->user32::SetWindowTextA()   error="+ RtlGetLastWin32Error(), ERR_WIN32_ERROR);
    }
 }
