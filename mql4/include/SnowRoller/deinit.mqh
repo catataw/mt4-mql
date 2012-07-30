@@ -22,20 +22,24 @@ int onDeinitUndefined() {
  * - Chart geschlossen                       -oder-
  * - Template wird neu geladen               -oder-
  * - Terminal-Shutdown                       -oder-
- * - im Tester nach gewaltsamen Beenden der start()-Funktion (Stop-Button oder Chart ->Close)
+ * - im Tester nach Auslösen des "Stop"-Buttons oder nach Chart ->Close
  *
  * @return int - Fehlerstatus
+ *
+ *
+ * NOTE: Der "Stop"-Button kann bei Fehler oder nach Testabschluß automatisch ausgelöst worden sein.
+ * -----
  */
 int onDeinitChartClose() {
    // (1) Tester
    if (IsTesting()) {
       __STATUS__CANCELLED = true;                                    // Vorsicht: der EA-Status ist undefined
 
-      // Statusfile löschen
-      FileDelete(GetMqlStatusFileName());
-      GetLastError();
-
-      // Titelzeile des Testers kann nicht zurückgesetzt werden, SendMessage() führt in deinit() zu Deadlock
+      if (IsLastError() || (status!=STATUS_WAITING && status!=STATUS_STOPPED)) {
+         // Statusfile löschen (der Fenstertitel des Testers kann nicht zurückgesetzt werden: SendMessage() führt in deinit() zu Deadlock)
+         FileDelete(GetMqlStatusFileName());
+         GetLastError();                                             // falls in FileDelete() ein Fehler auftrat
+      }
       return(last_error);
    }
 

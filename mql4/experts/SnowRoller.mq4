@@ -527,8 +527,10 @@ bool StopSequence() {
 
 
    // (7) ggf. Tester stoppen
-   if (IsTesting())
-      Tester.Pause();
+   if (IsTesting()) {
+      if (IsVisualMode()) Tester.Pause();
+      else                Tester.Stop();
+   }
    /*
    debug("StopSequence()      level="      + grid.level
                           +"  stops="      + grid.stops
