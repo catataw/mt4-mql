@@ -18,7 +18,6 @@
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Equity-Charts generieren                                                                        *
  *  - beidseitig unidirektionales Grid implementieren                                                 *
- *  - Laufzeitumgebung auf Server auslagern                                                           *
  *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment                                         *
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird   *
@@ -28,13 +27,15 @@
  *  - maxProfit/Loss analog zu PendingOrders regelmäßig speichern
  *  - bidirektionales Grid entfernen
  *
+ *  - Upload der Statusdatei implementieren
+ *  - Laufzeitumgebung auf Server auslagern
+ *  - STATUS_MONITORING implementieren
+ *  - Heartbeat implementieren
+ *
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Logging aller MessageBoxen
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
- *  - Upload der Statusdatei implementieren
- *  - Heartbeat implementieren
- *  - STATUS_MONITORING implementieren
  *  - Client-Side-Limits implementieren
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
@@ -150,6 +151,9 @@ bool     stop.profitAbs.condition;
 double   stop.profitAbs.value;
 bool     stop.profitPercent.condition;
 double   stop.profitPercent.value;
+
+datetime weekend.stop.time   = D'1970.01.01 23:37';   // StopSequence()-Zeit vor Wochenend-Pause (Freitags abend)
+datetime weekend.resume.time = D'1970.01.01 01:10';   // späteste ResumeSequence()-Zeit nach Wochenend-Pause (Montags morgen)
 
 int      grid.direction = D_BIDIR;
 
@@ -378,6 +382,7 @@ bool StartSequence() {
    sequenceStartEquity = NormalizeDouble(AccountEquity()-AccountCredit(), 2);
 
    status = STATUS_PROGRESSING;
+   UpdateWeekendStopConditions();
 
 
    // (2) Gridbasis setzen
@@ -513,9 +518,10 @@ bool StopSequence() {
    if (__LOG) log("StopSequence()   sequence stopped (STATUS_STOPPED)");
 
 
-   // (5) StartConditions deaktivieren, um nicht evt. sofortiges Resume-Signal zu triggern
+   // (5) StartConditions aktualisieren, um nicht evt. sofortiges Resume-Signal zu triggern
    start.conditions = false; StartConditions = "";
    SS.StartStopConditions();
+   UpdateWeekendResumeConditions();
 
 
    // (6) Daten aktualisieren und speichern
@@ -626,7 +632,7 @@ bool ResumeSequence() {
 
 
    status = STATUS_PROGRESSING;
-   if (__LOG) log("ResumeSequence()   sequence resumed (STATUS_PROGRESSING)");
+   UpdateWeekendStopConditions();
 
 
    // (5) Stop-Orders vervollständigen
@@ -649,6 +655,7 @@ bool ResumeSequence() {
                           +"  activeRisk=" + DoubleToStr(grid.activeRisk,  2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
    */
+   if (__LOG) log("ResumeSequence()   sequence resumed (STATUS_PROGRESSING)");
    return(IsNoError(catch("ResumeSequence(4)")));
 }
 
@@ -1027,6 +1034,26 @@ bool IsStopSignal() {
 
    isTriggered = false;
    return(false);
+}
+
+
+/**
+ * Aktualisiert die Bedingungen für StopSequence() vor der Wochenend-Pause.
+ */
+void UpdateWeekendStopConditions() {
+   // weekend.stop.time = D'1970.01.01 23:37';
+   datetime now = TimeCurrent();
+   int dd = TimeDayOfWeek(now);
+   debug("UpdateWeekendStopConditions()   weekend.stop.time='"+ TimeToStr(weekend.stop.time, TIME_FULL) +"'");
+}
+
+
+/**
+ * Aktualisiert die Bedingungen für ResumeSequence() nach der Wochenend-Pause.
+ */
+void UpdateWeekendResumeConditions() {
+   // weekend.resume.time = D'1970.01.01 01:10';
+   debug("UpdateWeekendResumeConditions()   weekend.resume.time='"+ TimeToStr(weekend.resume.time, TIME_FULL) +"'");
 }
 
 
@@ -4293,9 +4320,7 @@ bool SynchronizeStatus() {
       }
       // -----------------------------------
       grid.valueAtRisk = -grid.stopsPL + grid.activeRisk;
-
       //debug("SynchronizeStatus()   "+ ifString(ticket, "#"+ ticket, "") +"  "+ TimeToStr(time, TIME_FULL) +" ("+ time +")  "+ StringRightPad(StatusToStr(status), 20, " ") + StringRightPad(BreakevenEventToStr(type), 19, " ") +"  grid.level="+ grid.level +"  iOrder="+ iOrder +"  closed="+ closedPositions +"  reopened="+ reopenedPositions +"  recalcBE="+recalcBreakeven +"  visibleBE="+ breakevenVisible);
-
 
       // (3.3) Breakeven ggf. neuberechnen und zeichnen
       if (recalcBreakeven) {
@@ -4315,7 +4340,7 @@ bool SynchronizeStatus() {
    }
 
 
-   // (4) Wurde die Sequenz außerhalb gestoppt, fehlen die Stop-Daten (EV_SEQUENCE_STOP)
+   // (4) Wurde die Sequenz außerhalb gestoppt, fehlende Stop-Daten vervollständigen (EV_SEQUENCE_STOP)
    if (status == STATUS_STOPPING) {
       if (closedPositions == Abs(grid.level)) {
 
@@ -4350,18 +4375,23 @@ bool SynchronizeStatus() {
    }
 
 
+   // (5) Daten für Wochenend-Pause aktualisieren
+   if      (status == STATUS_PROGRESSING) UpdateWeekendStopConditions();
+   else if (status == STATUS_STOPPED    ) UpdateWeekendResumeConditions();       // TODO: Weekend-Resume darf nur nach Weekend-Stop getriggert werden
+
+
+   // (6) Anzeigen aktualisieren (ShowStatus() wird später aufgerufen)
    grid.stopsPL     = NormalizeDouble(grid.stopsPL,                                   2);
    grid.closedPL    = NormalizeDouble(grid.closedPL,                                  2);
    grid.totalPL     = NormalizeDouble(grid.stopsPL + grid.closedPL + grid.floatingPL, 2);
    grid.activeRisk  = NormalizeDouble(grid.activeRisk,                                2);
    grid.valueAtRisk = NormalizeDouble(grid.valueAtRisk,                               2);
    SS.All();
-
    RedrawStartStop();
    RedrawOrders();
 
 
-   // (5) Status ggf. speichern
+   // (7) permanente Statusänderungen speichern
    if (permStatusChange)
       if (!SaveStatus())
          return(false);
