@@ -926,14 +926,14 @@ bool IsStartSignal() {
          lastBid = Bid;
          if (!result)
             return(false);
-         if (__LOG) log(StringConcatenate("IsStartSignal()   price condition \"", NumberToStr(start.limit.value, PriceFormat), "\" fulfilled"));
+         if (__LOG) log(StringConcatenate("IsStartSignal()   price condition \"", NumberToStr(start.limit.value, PriceFormat), "\" met"));
       }
 
       // -- start.time: zum angegebenen Zeitpunkt oder danach erfüllt ---------------------------------------------------
       if (start.time.condition) {
          if (TimeCurrent() < start.time.value)
             return(false);
-         if (__LOG) log(StringConcatenate("IsStartSignal()   time condition \"", TimeToStr(start.time.value, TIME_FULL), "\" fulfilled"));
+         if (__LOG) log(StringConcatenate("IsStartSignal()   time condition \"", TimeToStr(start.time.value, TIME_FULL), "\" met"));
       }
 
       // -- alle Bedingungen sind erfüllt (AND-Verknüpfung) -------------------------------------------------------------
@@ -987,7 +987,7 @@ bool IsStopSignal() {
 
          lastBid = Bid;
          if (result) {
-            if (__LOG) log(StringConcatenate("IsStopSignal()   price condition \"", NumberToStr(stop.limit.value, PriceFormat), "\" fulfilled"));
+            if (__LOG) log(StringConcatenate("IsStopSignal()   price condition \"", NumberToStr(stop.limit.value, PriceFormat), "\" met"));
             isTriggered = true;
             return(true);
          }
@@ -996,7 +996,7 @@ bool IsStopSignal() {
       // -- stop.time: zum angegebenen Zeitpunkt oder danach erfüllt ----------------------------------------------------
       if (stop.time.condition) {
          if (stop.time.value <= TimeCurrent()) {
-            if (__LOG) log(StringConcatenate("IsStopSignal()   time condition \"", TimeToStr(stop.time.value, TIME_FULL), "\" fulfilled"));
+            if (__LOG) log(StringConcatenate("IsStopSignal()   time condition \"", TimeToStr(stop.time.value, TIME_FULL), "\" met"));
             isTriggered = true;
             return(true);
          }
@@ -1005,7 +1005,7 @@ bool IsStopSignal() {
       // -- stop.profitAbs: ---------------------------------------------------------------------------------------------
       if (stop.profitAbs.condition) {
          if (GE(grid.totalPL, stop.profitAbs.value)) {
-            if (__LOG) log(StringConcatenate("IsStopSignal()   profit condition \"", DoubleToStr(stop.profitAbs.value, 2), "\" fulfilled"));
+            if (__LOG) log(StringConcatenate("IsStopSignal()   profit condition \"", DoubleToStr(stop.profitAbs.value, 2), "\" met"));
             isTriggered = true;
             return(true);
          }
@@ -1014,7 +1014,7 @@ bool IsStopSignal() {
       // -- stop.profitPercent: -----------------------------------------------------------------------------------------
       if (stop.profitPercent.condition) {
          if (GE(grid.totalPL, stop.profitPercent.value/100 * sequenceStartEquity)) {
-            if (__LOG) log(StringConcatenate("IsStopSignal()   profit condition \"", NumberToStr(stop.profitPercent.value, ".+"), "%\" fulfilled"));
+            if (__LOG) log(StringConcatenate("IsStopSignal()   profit condition \"", NumberToStr(stop.profitPercent.value, ".+"), "%\" met"));
             isTriggered = true;
             return(true);
          }
