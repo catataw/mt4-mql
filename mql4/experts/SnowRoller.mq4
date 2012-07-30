@@ -513,7 +513,7 @@ bool StopSequence() {
    if (__LOG) log("StopSequence()   sequence stopped (STATUS_STOPPED)");
 
 
-   // (5) StartConditions deaktivieren, um nicht ein sofortiges Resume-Signal zu triggern
+   // (5) StartConditions deaktivieren, um nicht evt. sofortiges Resume-Signal zu triggern
    start.conditions = false; StartConditions = "";
    SS.StartStopConditions();
 
@@ -898,8 +898,10 @@ bool IsStartSignal() {
 
 
    if (start.conditions) {
-      if (isTriggered)                                               // einmal getriggert, immer getriggert (solange start.conditions aktiviert sind)
+      if (isTriggered) {                                             // einmal getriggert, immer getriggert (solange start.conditions aktiviert ist)
+         warn("IsStartSignal()   repeated triggered state call");
          return(true);
+      }
 
       // -- start.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ---------------------------------------
       if (start.limit.condition) {
@@ -924,20 +926,23 @@ bool IsStartSignal() {
          lastBid = Bid;
          if (!result)
             return(false);
+         if (__LOG) log(StringConcatenate("IsStartSignal()   price condition \"", NumberToStr(start.limit.value, PriceFormat), "\" fulfilled"));
       }
 
       // -- start.time: zum angegebenen Zeitpunkt oder danach erfüllt ---------------------------------------------------
       if (start.time.condition) {
          if (TimeCurrent() < start.time.value)
             return(false);
+         if (__LOG) log(StringConcatenate("IsStartSignal()   time condition \"", TimeToStr(start.time.value, TIME_FULL), "\" fulfilled"));
       }
 
       // -- alle Bedingungen sind erfüllt (AND-Verknüpfung) -------------------------------------------------------------
       isTriggered = true;
    }
    else {
-      isTriggered = false;                                           // Keine Startbedingungen sind ebenfalls gültiges Startsignal,
-   }                                                                 // isTriggered wird jedoch zurückgesetzt (Startbedingungen könnten sich ändern).
+      if (__LOG) log("IsStartSignal()   no conditions defined");     // Keine Startbedingungen sind ebenfalls gültiges Startsignal,
+      isTriggered = false;                                           // isTriggered wird jedoch zurückgesetzt (Startbedingungen könnten sich ändern).
+   }
    return(true);
 }
 
@@ -955,8 +960,10 @@ bool IsStopSignal() {
 
 
    if (stop.conditions) {
-      if (isTriggered)                                               // einmal getriggert, immer getriggert (solange stop.conditions aktiviert ist)
+      if (isTriggered) {                                             // einmal getriggert, immer getriggert (solange stop.conditions aktiviert ist)
+         warn("IsStopSignal()   repeated triggered state call");
          return(true);
+      }
 
       // -- stop.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ----------------------------------------
       if (stop.limit.condition) {
@@ -980,6 +987,7 @@ bool IsStopSignal() {
 
          lastBid = Bid;
          if (result) {
+            if (__LOG) log(StringConcatenate("IsStopSignal()   price condition \"", NumberToStr(stop.limit.value, PriceFormat), "\" fulfilled"));
             isTriggered = true;
             return(true);
          }
@@ -988,6 +996,7 @@ bool IsStopSignal() {
       // -- stop.time: zum angegebenen Zeitpunkt oder danach erfüllt ----------------------------------------------------
       if (stop.time.condition) {
          if (stop.time.value <= TimeCurrent()) {
+            if (__LOG) log(StringConcatenate("IsStopSignal()   time condition \"", TimeToStr(stop.time.value, TIME_FULL), "\" fulfilled"));
             isTriggered = true;
             return(true);
          }
@@ -996,6 +1005,7 @@ bool IsStopSignal() {
       // -- stop.profitAbs: ---------------------------------------------------------------------------------------------
       if (stop.profitAbs.condition) {
          if (GE(grid.totalPL, stop.profitAbs.value)) {
+            if (__LOG) log(StringConcatenate("IsStopSignal()   profit condition \"", DoubleToStr(stop.profitAbs.value, 2), "\" fulfilled"));
             isTriggered = true;
             return(true);
          }
@@ -1004,6 +1014,7 @@ bool IsStopSignal() {
       // -- stop.profitPercent: -----------------------------------------------------------------------------------------
       if (stop.profitPercent.condition) {
          if (GE(grid.totalPL, stop.profitPercent.value/100 * sequenceStartEquity)) {
+            if (__LOG) log(StringConcatenate("IsStopSignal()   profit condition \"", NumberToStr(stop.profitPercent.value, ".+"), "%\" fulfilled"));
             isTriggered = true;
             return(true);
          }
@@ -3322,7 +3333,7 @@ bool SaveStatus() {
    ArrayPushString(lines, /*double*/   "LotSize="                + NumberToStr(LotSize, ".+")            );
    if (StringLen(StartConditions) > 0)
    ArrayPushString(lines, /*string*/   "StartConditions="        +             StartConditions           );
-   if (StringLen(StartConditions) > 0)
+   if (StringLen(StopConditions) > 0)
    ArrayPushString(lines, /*string*/   "StopConditions="         +             StopConditions            );
 
    // (1.2) Laufzeit-Variablen
