@@ -83,7 +83,7 @@
  */
 #include <types.mqh>
 #define     __TYPE__      T_EXPERT
-int   __INIT_FLAGS__[] = {INIT_TICKVALUE, LOG_INSTANCE_ID, LOG_PER_INSTANCE};
+int   __INIT_FLAGS__[] = {INIT_TICKVALUE, INIT_TIMEZONE, LOG_INSTANCE_ID, LOG_PER_INSTANCE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 #include <win32api.mqh>
@@ -110,39 +110,39 @@ extern /*sticky*/ string Sequence.StatusLocation = "";                     // Un
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-string   last.Sequence.ID             = "";           // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
-string   last.Sequence.StatusLocation = "";           // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
-string   last.GridDirection           = "";           // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
-int      last.GridSize;                               // in init() daraus restauriert.
+string   last.Sequence.ID             = "";                 // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
+string   last.Sequence.StatusLocation = "";                 // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
+string   last.GridDirection           = "";                 // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
+int      last.GridSize;                                     // in init() daraus restauriert.
 double   last.LotSize;
 string   last.StartConditions         = "";
 string   last.StopConditions          = "";
 color    last.Breakeven.Color;
 
 int      sequenceId;
-bool     test;                                        // ob dies eine Testsequenz ist (im Tester oder im Online-Chart)
+bool     test;                                              // ob dies eine Testsequenz ist (im Tester oder im Online-Chart)
 
 int      status = STATUS_UNINITIALIZED;
-string   status.directory;                            // MQL-Verzeichnis der Statusdatei (unterhalb ".\files\")
-string   status.fileName;                             // einfacher Dateiname der Statusdatei
+string   status.directory;                                  // MQL-Verzeichnis der Statusdatei (unterhalb ".\files\")
+string   status.fileName;                                   // einfacher Dateiname der Statusdatei
 
-datetime instanceStartTime;                           // Start des EA's
+datetime instanceStartTime;                                 // Start des EA's
 double   instanceStartPrice;
-double   sequenceStartEquity;                         // Equity bei Start der ersten Subsequenz
+double   sequenceStartEquity;                               // Equity bei Start der ersten Subsequenz
 
-datetime sequenceStartTimes [];                       // Start-Daten: bei Abschluß des Starts (Statuswechsel zu STATUS_PROGRESSING)
+datetime sequenceStartTimes [];                             // Start-Daten: bei Abschluß des Starts (Statuswechsel zu STATUS_PROGRESSING)
 double   sequenceStartPrices[];
 
-datetime sequenceStopTimes [];                        // Stop-Daten: bei Abschluß des Stops (Statuswechsel zu STATUS_STOPPED)
+datetime sequenceStopTimes [];                              // Stop-Daten: bei Abschluß des Stops (Statuswechsel zu STATUS_STOPPED)
 double   sequenceStopPrices[];
 
-bool     start.conditions;                            // ob mindestens eine StartCondition aktiv ist
+bool     start.conditions;                                  // ob mindestens eine StartCondition aktiv ist
 bool     start.limit.condition;
 double   start.limit.value;
 bool     start.time.condition;
 datetime start.time.value;
 
-bool     stop.conditions;                             // ob mindestens eine StopCondition aktiv ist
+bool     stop.conditions;                                   // ob mindestens eine StopCondition aktiv ist
 bool     stop.limit.condition;
 double   stop.limit.value;
 bool     stop.time.condition;
@@ -152,48 +152,51 @@ double   stop.profitAbs.value;
 bool     stop.profitPercent.condition;
 double   stop.profitPercent.value;
 
-datetime weekend.stop.time   = D'1970.01.01 23:37';   // StopSequence()-Zeit vor Wochenend-Pause (Freitags abend)
-datetime weekend.resume.time = D'1970.01.01 01:10';   // späteste ResumeSequence()-Zeit nach Wochenend-Pause (Montags morgen)
+datetime weekend.stop.condition   = D'1970.01.01 23:37';    // StopSequence()-Zeit vor Wochenend-Pause (Freitags abend)
+datetime weekend.stop.value;
+
+datetime weekend.resume.condition = D'1970.01.01 01:10';    // späteste ResumeSequence()-Zeit nach Wochenend-Pause (Montags morgen)
+datetime weekend.resume.value;
 
 int      grid.direction = D_BIDIR;
 
-datetime grid.base.time [];                           // Gridbasis-Daten
+datetime grid.base.time [];                                 // Gridbasis-Daten
 double   grid.base.value[];
-double   grid.base;                                   // aktuelle Gridbasis                                                         SS Grid:        Feld 2
+double   grid.base;                                         // aktuelle Gridbasis                                                         SS Grid:        Feld 2
 
-int      grid.level;                                  // aktueller Grid-Level                                                       SS Header:      Feld 2
-int      grid.maxLevelLong;                           // maximal erreichter Long-Level                                              SS Header:      Feld 3
-int      grid.maxLevelShort;                          // maximal erreichter Short-Level                                             SS Header:      Feld 4
-double   grid.commission;                             // Commission-Betrag je Level (falls zutreffend)
+int      grid.level;                                        // aktueller Grid-Level                                                       SS Header:      Feld 2
+int      grid.maxLevelLong;                                 // maximal erreichter Long-Level                                              SS Header:      Feld 3
+int      grid.maxLevelShort;                                // maximal erreichter Short-Level                                             SS Header:      Feld 4
+double   grid.commission;                                   // Commission-Betrag je Level (falls zutreffend)
 
-int      grid.stops;                                  // Anzahl der bisher getriggerten Stops                                       SS Stops:       Feld 1
-double   grid.stopsPL;                                // P/L der ausgestoppten Positionen (0 oder negativ)                          SS Stops:       Feld 2
-double   grid.closedPL;                               // P/L bei StopSequence() geschlossener Positionen (realizedPL = stopsPL + closedPL)
-double   grid.floatingPL;                             // P/L offener Positionen
-double   grid.totalPL;                                // Gesamt-P/L der Sequenz:  realizedPL + floatingPL                           SS Profit/Loss: Feld 1
-double   grid.activeRisk;                             // aktuelles Risiko der aktiven Level (0 oder positiv)
-double   grid.valueAtRisk;                            // aktuelles Gesamtrisiko:  -stopsPL + activeRisk (0 oder positiv)            SS Profit/Loss: Feld 4
+int      grid.stops;                                        // Anzahl der bisher getriggerten Stops                                       SS Stops:       Feld 1
+double   grid.stopsPL;                                      // P/L der ausgestoppten Positionen (0 oder negativ)                          SS Stops:       Feld 2
+double   grid.closedPL;                                     // P/L bei StopSequence() geschlossener Positionen (realizedPL = stopsPL + closedPL)
+double   grid.floatingPL;                                   // P/L offener Positionen
+double   grid.totalPL;                                      // Gesamt-P/L der Sequenz:  realizedPL + floatingPL                           SS Profit/Loss: Feld 1
+double   grid.activeRisk;                                   // aktuelles Risiko der aktiven Level (0 oder positiv)
+double   grid.valueAtRisk;                                  // aktuelles Gesamtrisiko:  -stopsPL + activeRisk (0 oder positiv)            SS Profit/Loss: Feld 4
 
-double   grid.maxProfit;                              // maximal erreichter Gesamtprofit (0 oder positiv)                           SS Profit/Loss: Feld 2
+double   grid.maxProfit;                                    // maximal erreichter Gesamtprofit (0 oder positiv)                           SS Profit/Loss: Feld 2
 datetime grid.maxProfitTime;
-double   grid.maxDrawdown;                            // maximal erreichter Drawdown (0 oder negativ)                               SS Profit/Loss: Feld 3
+double   grid.maxDrawdown;                                  // maximal erreichter Drawdown (0 oder negativ)                               SS Profit/Loss: Feld 3
 datetime grid.maxDrawdownTime;
 
-double   grid.breakevenLong;                          //                                                                            SS Breakeven:   Feld 1
-double   grid.breakevenShort;                         //                                                                            SS Breakeven:   Feld 2
+double   grid.breakevenLong;                                //                                                                            SS Breakeven:   Feld 1
+double   grid.breakevenShort;                               //                                                                            SS Breakeven:   Feld 2
 
 int      orders.ticket        [];
-int      orders.level         [];                     // Gridlevel der Order
-double   orders.gridBase      [];                     // Gridbasis der Order
+int      orders.level         [];                           // Gridlevel der Order
+double   orders.gridBase      [];                           // Gridbasis der Order
 
-int      orders.pendingType   [];                     // Pending-Orderdaten (falls zutreffend)
-datetime orders.pendingTime   [];                     // Zeitpunkt von OrderOpen() bzw. des letzten OrderModify()
+int      orders.pendingType   [];                           // Pending-Orderdaten (falls zutreffend)
+datetime orders.pendingTime   [];                           // Zeitpunkt von OrderOpen() bzw. des letzten OrderModify()
 double   orders.pendingPrice  [];
 
 int      orders.type          [];
 datetime orders.openTime      [];
 double   orders.openPrice     [];
-double   orders.risk          [];                     // Risiko des Levels (0, solange Order pending, danach positiv)
+double   orders.risk          [];                           // Risiko des Levels (0, solange Order pending, danach positiv)
 
 datetime orders.closeTime     [];
 double   orders.closePrice    [];
@@ -204,11 +207,11 @@ double   orders.swap          [];
 double   orders.commission    [];
 double   orders.profit        [];
 
-int      ignorePendingOrders  [];                     // orphaned tickets to ignore
+int      ignorePendingOrders  [];                           // orphaned tickets to ignore
 int      ignoreOpenPositions  [];
 int      ignoreClosedPositions[];
 
-string   str.test              = "";                  // Zwischenspeicher für schnellere Abarbeitung von ShowStatus()
+string   str.test              = "";                        // Zwischenspeicher für schnellere Abarbeitung von ShowStatus()
 string   str.LotSize           = "";
 string   str.startConditions   = "";
 string   str.stopConditions    = "";
@@ -1041,10 +1044,24 @@ bool IsStopSignal() {
  * Aktualisiert die Bedingungen für StopSequence() vor der Wochenend-Pause.
  */
 void UpdateWeekendStopConditions() {
-   // weekend.stop.time = D'1970.01.01 23:37';
-   datetime now = TimeCurrent();
-   int dd = TimeDayOfWeek(now);
-   debug("UpdateWeekendStopConditions()   weekend.stop.time='"+ TimeToStr(weekend.stop.time, TIME_FULL) +"'");
+   datetime friday, now=ServerToFXT(TimeCurrent());
+
+   switch (TimeDayOfWeek(now)) {
+      case SUNDAY   : friday = /*0*/now + 5*DAYS; break;
+      case MONDAY   : friday = /*1*/now + 4*DAYS; break;
+      case TUESDAY  : friday = /*2*/now + 3*DAYS; break;
+      case WEDNESDAY: friday = /*3*/now + 2*DAYS; break;
+      case THURSDAY : friday = /*4*/now + 1*DAY ; break;
+      case FRIDAY   : friday = /*5*/now + 0*DAYS; break;
+      case SATURDAY : friday = /*6*/now + 6*DAYS; break;
+   }
+   weekend.stop.value = (friday/DAYS)*DAYS + weekend.stop.condition%DAY;
+
+   if (weekend.stop.value < now)
+      weekend.stop.value = (friday/DAYS)*DAYS + D'1970.01.01 23:55'%DAY;      // 5 Minuten vor Schluß
+
+   weekend.stop.value = FXTToServerTime(weekend.stop.value);
+   //debug("UpdateWeekendStopConditions()   now='"+ GetDayOfWeek(now, false) +", "+ TimeToStr(now, TIME_FULL) +"'   weekend.stop='"+ GetDayOfWeek(weekend.stop.value, false) +", "+ TimeToStr(weekend.stop.value, TIME_FULL) +"'");
 }
 
 
@@ -1052,8 +1069,8 @@ void UpdateWeekendStopConditions() {
  * Aktualisiert die Bedingungen für ResumeSequence() nach der Wochenend-Pause.
  */
 void UpdateWeekendResumeConditions() {
-   // weekend.resume.time = D'1970.01.01 01:10';
-   debug("UpdateWeekendResumeConditions()   weekend.resume.time='"+ TimeToStr(weekend.resume.time, TIME_FULL) +"'");
+   // weekend.resume.value = D'1970.01.01 01:10';
+   debug("UpdateWeekendResumeConditions()   weekend.resume='"+ TimeToStr(weekend.resume.value, TIME_FULL) +"'");
 }
 
 

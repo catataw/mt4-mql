@@ -2,8 +2,8 @@
  * TestIndicator
  */
 #include <types.mqh>
-#define     __TYPE__    T_INDICATOR
-int   __INIT_FLAGS__[];
+#define     __TYPE__      T_INDICATOR
+int   __INIT_FLAGS__[] = {INIT_TIMEZONE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 
@@ -13,6 +13,12 @@ int __DEINIT_FLAGS__[];
 
 bool done;
 
+datetime weekend.stop.time.condition   = D'1970.01.01 23:37';     // StopSequence()-Zeit vor Wochenend-Pause (Freitags abend)
+datetime weekend.stop.time.value;
+
+datetime weekend.resume.time.condition = D'1970.01.01 01:10';     // späteste ResumeSequence()-Zeit nach Wochenend-Pause (Montags morgen)
+datetime weekend.resume.time.value;
+
 
 /**
  * Main-Funktion
@@ -21,16 +27,60 @@ bool done;
  */
 int onTick() {
    if (!done) {
+      datetime now;
+
+      now = ServerToFXT(D'2012.07.26 13:50'); UpdateWeekendStopConditions(now);
+      now = ServerToFXT(D'2012.07.27 13:50'); UpdateWeekendStopConditions(now);
+      now = ServerToFXT(D'2012.07.27 23:50'); UpdateWeekendStopConditions(now);
+      now = ServerToFXT(D'2012.07.28 23:50'); UpdateWeekendStopConditions(now);
+
+      //UpdateWeekendResumeConditions();
       done = true;
    }
-
-   int hWndTester = GetTesterWindow();
-   if (hWndTester == 0)
-      return(_int(catch("onTick(1)"), debug("onTick()   hWndTester=0x"+ IntToHexStr(hWndTester))));
+   return(catch("onTick()"+ now));
+}
 
 
-   debug("onTick()   hWndTester=0x"+ IntToHexStr(hWndTester));
+/**
+ * Aktualisiert die Bedingungen für StopSequence() vor der Wochenend-Pause.
+ */
+void UpdateWeekendStopConditions(datetime now) {
+   datetime friday;
+
+   switch (TimeDayOfWeek(now)) {
+      case SUNDAY   : friday = /*0*/now + 5*DAYS; break;
+      case MONDAY   : friday = /*1*/now + 4*DAYS; break;
+      case TUESDAY  : friday = /*2*/now + 3*DAYS; break;
+      case WEDNESDAY: friday = /*3*/now + 2*DAYS; break;
+      case THURSDAY : friday = /*4*/now + 1*DAY ; break;
+      case FRIDAY   : friday = /*5*/now + 0*DAYS; break;
+      case SATURDAY : friday = /*6*/now + 6*DAYS; break;
+   }
+   weekend.stop.time.value = (friday/DAYS)*DAYS + weekend.stop.time.condition%DAY;
+
+   if (weekend.stop.time.value < now)
+      weekend.stop.time.value = (friday/DAYS)*DAYS + D'1970.01.01 23:55'%DAY;       // 5 Minuten vor Schluß
+
+   weekend.stop.time.value = FXTToServerTime(weekend.stop.time.value);
+
+   debug("Stop()   now='"+ GetDayOfWeek(now, false) +", "+ TimeToStr(now, TIME_FULL) +"'   stop='"+ GetDayOfWeek(weekend.stop.time.value, false) +", "+ TimeToStr(weekend.stop.time.value, TIME_FULL) +"'");
+}
 
 
-   return(catch("onTick(2)"));
+/**
+ * Aktualisiert die Bedingungen für ResumeSequence() nach der Wochenend-Pause.
+ */
+void UpdateWeekendResumeConditions() {
+   debug("UpdateWeekendResumeConditions()   resume='"+ TimeToStr(weekend.resume.time.value, TIME_FULL) +"'");
+}
+
+
+/**
+ *
+ * @return int - Fehlerstatus
+ */
+int onDeinit() {
+   return(catch("onDeinit()"));
+   UpdateWeekendStopConditions(NULL);
+   UpdateWeekendResumeConditions();
 }
