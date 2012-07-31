@@ -154,9 +154,11 @@ double   stop.profitPercent.value;
 
 datetime weekend.stop.condition   = D'1970.01.01 23:37';    // StopSequence()-Zeit vor Wochenend-Pause (Freitags abend)
 datetime weekend.stop.value;
+bool     weekend.stop.triggered;
 
 datetime weekend.resume.condition = D'1970.01.01 01:10';    // späteste ResumeSequence()-Zeit nach Wochenend-Pause (Montags morgen)
 datetime weekend.resume.value;
+bool     weekend.resume.triggered;
 
 int      grid.direction = D_BIDIR;
 
@@ -385,7 +387,7 @@ bool StartSequence() {
    sequenceStartEquity = NormalizeDouble(AccountEquity()-AccountCredit(), 2);
 
    status = STATUS_PROGRESSING;
-   UpdateWeekendStopConditions();
+   UpdateWeekendStop();
 
 
    // (2) Gridbasis setzen
@@ -521,10 +523,12 @@ bool StopSequence() {
    if (__LOG) log("StopSequence()   sequence stopped (STATUS_STOPPED)");
 
 
-   // (5) StartConditions aktualisieren, um nicht evt. sofortiges Resume-Signal zu triggern
+   // (5) StartConditions zurücksetzen, um nicht evt. sofortiges Resume-Signal zu triggern
    start.conditions = false; StartConditions = "";
    SS.StartStopConditions();
-   UpdateWeekendResumeConditions();
+
+   if (IsWeekendStopSignal())                                                    // nach WeekendStop neue WeekendResume-Condition setzen
+      UpdateWeekendResume();
 
 
    // (6) Daten aktualisieren und speichern
@@ -537,9 +541,10 @@ bool StopSequence() {
 
    // (7) ggf. Tester stoppen
    if (IsTesting()) {
-      if (IsVisualMode()) Tester.Pause();
-      else                Tester.Stop();
+      if      (        IsVisualMode()) Tester.Pause();
+      else if (!IsWeekendStopSignal()) Tester.Stop();
    }
+
    /*
    debug("StopSequence()      level="      + grid.level
                           +"  stops="      + grid.stops
@@ -635,7 +640,7 @@ bool ResumeSequence() {
 
 
    status = STATUS_PROGRESSING;
-   UpdateWeekendStopConditions();
+   UpdateWeekendStop();
 
 
    // (5) Stop-Orders vervollständigen
@@ -962,20 +967,21 @@ bool IsStartSignal() {
 /**
  * Signalgeber für StopSequence(). Die einzelnen Bedingungen sind OR-verknüpft.
  *
+ * @param bool checkWeekend - ob auch auf das Wochenend-Stopsignal geprüft werden soll (default: ja)
+ *
  * @return bool - ob mindestens eine der konfigurierten Stopbedingungen erfüllt ist
  */
-bool IsStopSignal() {
+bool IsStopSignal(bool checkWeekend=true) {
    if (__STATUS__CANCELLED || status!=STATUS_PROGRESSING)
       return(false);
 
+
+   // (1) User-definierte Stop-Conditions prüfen
    static bool isTriggered = false;
 
-
    if (stop.conditions) {
-      if (isTriggered) {                                             // einmal getriggert, immer getriggert (solange stop.conditions aktiviert ist)
-         warn("IsStopSignal()   repeated triggered state call");
+      if (isTriggered)                                               // einmal getriggert, immer getriggert (solange stop.conditions aktiviert ist)
          return(true);
-      }
 
       // -- stop.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ----------------------------------------
       if (stop.limit.condition) {
@@ -1034,8 +1040,39 @@ bool IsStopSignal() {
 
       // -- keine der Bedingungen ist erfüllt (OR-Verknüpfung) ----------------------------------------------------------
    }
-
    isTriggered = false;
+
+
+   // (2) je nach Aufruf zusätzlich interne WeekendStop-Bedingungen prüfen
+   if (checkWeekend)
+      return(IsWeekendStopSignal());
+
+   return(false);
+}
+
+
+/**
+ * Signalgeber für StopSequence(). Prüft, ob die WeekendStop-Bedingung erfüllt ist.
+ *
+ * @return bool
+ */
+bool IsWeekendStopSignal() {
+   if (__STATUS__CANCELLED || (status!=STATUS_PROGRESSING && status!=STATUS_STOPPING && status!=STATUS_STOPPED))
+      return(false);
+
+   if (weekend.stop.triggered)
+      return(true);
+
+   datetime now = TimeCurrent();
+
+   if (weekend.stop.value <= now) {
+      if (weekend.stop.value/DAYS == now/DAYS) {                              // stellt sicher, daß Signal nicht von einem altem Datum getriggert wird
+         weekend.stop.triggered = true;
+         debug(StringConcatenate("IsWeekendStopSignal()   weekend stop signal triggered by '", GetDayOfWeek(weekend.stop.value, false), ", ", TimeToStr(weekend.stop.value, TIME_FULL), "'"));
+         if (__LOG) log(StringConcatenate("IsWeekendStopSignal()   weekend stop signal triggered by '", GetDayOfWeek(weekend.stop.value, false), ", ", TimeToStr(weekend.stop.value, TIME_FULL), "'"));
+         return(true);
+      }
+   }
    return(false);
 }
 
@@ -1043,7 +1080,7 @@ bool IsStopSignal() {
 /**
  * Aktualisiert die Bedingungen für StopSequence() vor der Wochenend-Pause.
  */
-void UpdateWeekendStopConditions() {
+void UpdateWeekendStop() {
    datetime friday, now=ServerToFXT(TimeCurrent());
 
    switch (TimeDayOfWeek(now)) {
@@ -1058,19 +1095,38 @@ void UpdateWeekendStopConditions() {
    weekend.stop.value = (friday/DAYS)*DAYS + weekend.stop.condition%DAY;
 
    if (weekend.stop.value < now)
-      weekend.stop.value = (friday/DAYS)*DAYS + D'1970.01.01 23:55'%DAY;      // 5 Minuten vor Schluß
+      weekend.stop.value = (friday/DAYS)*DAYS + D'1970.01.01 23:55'%DAY;   // Aufruf nach regulärem Stop: neuer Stop erfolgt 5 Minuten vor Handelsschluß
 
    weekend.stop.value = FXTToServerTime(weekend.stop.value);
-   //debug("UpdateWeekendStopConditions()   now='"+ GetDayOfWeek(now, false) +", "+ TimeToStr(now, TIME_FULL) +"'   weekend.stop='"+ GetDayOfWeek(weekend.stop.value, false) +", "+ TimeToStr(weekend.stop.value, TIME_FULL) +"'");
+   weekend.stop.triggered = false;
+
+   //debug(StringConcatenate("UpdateWeekendStop()   now='", GetDayOfWeek(now, false), ", ", TimeToStr(now, TIME_FULL), "'   stop='", GetDayOfWeek(weekend.stop.value, false), ", ", TimeToStr(weekend.stop.value, TIME_FULL), "'"));
+}
+
+
+/**
+ * Signalgeber für StopSequence(). Prüft, ob die WeekendStop-Bedingung erfüllt ist.
+ *
+ * @return bool
+ */
+bool IsWeekendResumeSignal() {
+   if (__STATUS__CANCELLED || (status!=STATUS_STOPPED && status!=STATUS_STARTING && status!=STATUS_PROGRESSING))
+      return(false);
+
+   if (weekend.resume.triggered)
+      return(true);
+
+   return(false);
 }
 
 
 /**
  * Aktualisiert die Bedingungen für ResumeSequence() nach der Wochenend-Pause.
  */
-void UpdateWeekendResumeConditions() {
-   // weekend.resume.value = D'1970.01.01 01:10';
-   debug("UpdateWeekendResumeConditions()   weekend.resume='"+ TimeToStr(weekend.resume.value, TIME_FULL) +"'");
+void UpdateWeekendResume() {
+   datetime monday, now=ServerToFXT(TimeCurrent());
+
+   debug(StringConcatenate("UpdateWeekendResume()   now='", GetDayOfWeek(now, false), ", ", TimeToStr(now, TIME_FULL), "'   resume='", GetDayOfWeek(weekend.resume.value, false), ", ", TimeToStr(weekend.resume.value, TIME_FULL), "'"));
 }
 
 
@@ -4393,8 +4449,8 @@ bool SynchronizeStatus() {
 
 
    // (5) Daten für Wochenend-Pause aktualisieren
-   if      (status == STATUS_PROGRESSING) UpdateWeekendStopConditions();
-   else if (status == STATUS_STOPPED    ) UpdateWeekendResumeConditions();       // TODO: Weekend-Resume darf nur nach Weekend-Stop getriggert werden
+   if      (status == STATUS_PROGRESSING) UpdateWeekendStop();
+   else if (status == STATUS_STOPPED    ) UpdateWeekendResume();     // TODO: Weekend-Resume darf nur nach Weekend-Stop getriggert werden
 
 
    // (6) Anzeigen aktualisieren (ShowStatus() wird später aufgerufen)

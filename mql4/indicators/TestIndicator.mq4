@@ -29,12 +29,12 @@ int onTick() {
    if (!done) {
       datetime now;
 
-      now = ServerToFXT(D'2012.07.26 13:50'); UpdateWeekendStopConditions(now);
-      now = ServerToFXT(D'2012.07.27 13:50'); UpdateWeekendStopConditions(now);
-      now = ServerToFXT(D'2012.07.27 23:50'); UpdateWeekendStopConditions(now);
-      now = ServerToFXT(D'2012.07.28 23:50'); UpdateWeekendStopConditions(now);
+      now = ServerToFXT(D'2012.07.26 13:50'); UpdateWeekendStop(now);
+      now = ServerToFXT(D'2012.07.27 13:50'); UpdateWeekendStop(now);
+      now = ServerToFXT(D'2012.07.27 23:50'); UpdateWeekendStop(now);
+      now = ServerToFXT(D'2012.07.28 23:50'); UpdateWeekendStop(now);
 
-      //UpdateWeekendResumeConditions();
+      //UpdateWeekendResume();
       done = true;
    }
    return(catch("onTick()"+ now));
@@ -44,7 +44,7 @@ int onTick() {
 /**
  * Aktualisiert die Bedingungen für StopSequence() vor der Wochenend-Pause.
  */
-void UpdateWeekendStopConditions(datetime now) {
+void UpdateWeekendStop(datetime now) {
    datetime friday;
 
    switch (TimeDayOfWeek(now)) {
@@ -70,8 +70,8 @@ void UpdateWeekendStopConditions(datetime now) {
 /**
  * Aktualisiert die Bedingungen für ResumeSequence() nach der Wochenend-Pause.
  */
-void UpdateWeekendResumeConditions() {
-   debug("UpdateWeekendResumeConditions()   resume='"+ TimeToStr(weekend.resume.time.value, TIME_FULL) +"'");
+void UpdateWeekendResume() {
+   debug("UpdateWeekendResume()   resume='"+ TimeToStr(weekend.resume.time.value, TIME_FULL) +"'");
 }
 
 
@@ -81,6 +81,6 @@ void UpdateWeekendResumeConditions() {
  */
 int onDeinit() {
    return(catch("onDeinit()"));
-   UpdateWeekendStopConditions(NULL);
-   UpdateWeekendResumeConditions();
+   UpdateWeekendStop(NULL);
+   UpdateWeekendResume();
 }
