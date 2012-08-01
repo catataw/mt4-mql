@@ -130,10 +130,10 @@ datetime instanceStartTime;                                 // Start des EA's
 double   instanceStartPrice;
 double   sequenceStartEquity;                               // Equity bei Start der ersten Subsequenz
 
-datetime sequenceStartTimes [];                             // Start-Daten: bei Abschluß des Starts (Statuswechsel zu STATUS_PROGRESSING)
+datetime sequenceStartTimes [];                             // Start-Daten: nach Start (Statuswechsel zu STATUS_PROGRESSING)
 double   sequenceStartPrices[];
 
-datetime sequenceStopTimes [];                              // Stop-Daten: bei Abschluß des Stops (Statuswechsel zu STATUS_STOPPED)
+datetime sequenceStopTimes [];                              // Stop-Daten: nach Stop (Statuswechsel zu STATUS_STOPPED)
 double   sequenceStopPrices[];
 
 bool     start.conditions;                                  // ob mindestens eine StartCondition aktiv ist
@@ -253,14 +253,6 @@ int onTick() {
    HandleEvent(EVENT_CHART_CMD);
 
 
-   // (2) ResumeSignal auswerten
-   if (status == STATUS_STOPPED) {
-      //if (IsResumeSignal()) ResumeSequence();
-      //else
-      { firstTick = false; return(last_error); }
-   }
-
-
    static int    last.grid.level;
    static double last.grid.base;
 
@@ -270,7 +262,16 @@ int onTick() {
       if (IsStartSignal())                    StartSequence();
    }
 
-   // (3) ...oder läuft: Daten und Orders aktualisieren
+   // (3) ...oder wartet auf ResumeSignal...
+   else if (status == STATUS_STOPPED) {
+      if (IsResumeSignal())                   ResumeSequence();
+      else {
+         firstTick=false;
+         return(last_error);
+      }
+   }
+
+   // (4) ...oder läuft
    else if (UpdateStatus()) {
       if      (IsStopSignal())                StopSequence();
       else if (grid.level != last.grid.level) UpdatePendingOrders();
@@ -282,7 +283,7 @@ int onTick() {
    firstTick       = false;
 
 
-   // (4) Status anzeigen
+   // (5) Status anzeigen
    ShowStatus();
 
    return(last_error);
@@ -440,7 +441,7 @@ bool StopSequence() {
 
 
    status = STATUS_STOPPING;
-   if (__LOG) log("StopSequence()   stopping sequence (STATUS_STOPPING)");
+   if (__LOG) log(StringConcatenate("StopSequence()   stopping sequence at level ", grid.level, " (STATUS_STOPPING)"));
 
 
    // (2) PendingOrders und OpenPositions einlesen
@@ -523,11 +524,11 @@ bool StopSequence() {
    if (__LOG) log("StopSequence()   sequence stopped (STATUS_STOPPED)");
 
 
-   // (5) StartConditions zurücksetzen, um nicht evt. sofortiges Resume-Signal zu triggern
+   // (5) StartConditions zurücksetzen und ggf. ResumeConditions aktualisieren
    start.conditions = false; StartConditions = "";
    SS.StartStopConditions();
 
-   if (IsWeekendStopSignal())                                                    // nach WeekendStop neue WeekendResume-Condition setzen
+   if (IsWeekendStopSignal())
       UpdateWeekendResume();
 
 
@@ -584,7 +585,7 @@ bool ResumeSequence() {
 
 
    status = STATUS_STARTING;
-   if (__LOG) log("ResumeSequence()   resuming sequence (STATUS_STARTING)");
+   if (__LOG) log(StringConcatenate("ResumeSequence()   resuming sequence at level ", grid.level, " (STATUS_STARTING)"));
 
    datetime startTime;
    double   startPrice, lastStopPrice, gridBase;
@@ -908,16 +909,15 @@ bool IsOrderClosedBySL() {
  * @return bool - ob alle konfigurierten Startbedingungen erfüllt sind
  */
 bool IsStartSignal() {
-   if (__STATUS__CANCELLED || status!=STATUS_WAITING || IsLastError())
+   if (__STATUS__CANCELLED || status!=STATUS_WAITING)
       return(false);
 
    static bool isTriggered = false;
 
-
    if (start.conditions) {
-      if (isTriggered) {                                             // einmal getriggert, immer getriggert (solange start.conditions aktiviert ist)
+      if (isTriggered) {
          warn("IsStartSignal()   repeated triggered state call");
-         return(true);
+         return(true);                                               // einmal getriggert, immer getriggert (solange start.conditions aktiviert ist)
       }
 
       // -- start.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ---------------------------------------
@@ -960,16 +960,88 @@ bool IsStartSignal() {
       if (__LOG) log("IsStartSignal()   no conditions defined");     // Keine Startbedingungen sind ebenfalls gültiges Startsignal,
       isTriggered = false;                                           // isTriggered wird jedoch zurückgesetzt (Startbedingungen könnten sich ändern).
    }
+
    return(true);
+}
+
+
+/**
+ * Signalgeber für ResumeSequence().
+ *
+ * @return bool
+ */
+bool IsResumeSignal() {
+   if (__STATUS__CANCELLED || status!=STATUS_STOPPED)
+      return(false);
+
+   if (start.conditions)
+      return(IsStartSignal());
+
+   return(IsWeekendResumeSignal());
+}
+
+
+/**
+ * Signalgeber für StopSequence(). Prüft, ob die WeekendStop-Bedingung erfüllt ist.
+ *
+ * @return bool
+ */
+bool IsWeekendResumeSignal() {
+   if (__STATUS__CANCELLED || (status!=STATUS_STOPPED && status!=STATUS_STARTING && status!=STATUS_PROGRESSING))
+      return(false);
+
+   if (weekend.resume.triggered)
+      return(true);
+
+   datetime now = TimeCurrent();
+
+   if (weekend.resume.value <= now) {
+      if (weekend.resume.value/DAYS == now/DAYS) {                               // stellt sicher, daß Signal nicht von altem Datum getriggert wird
+         weekend.resume.triggered = true;
+
+         debug(StringConcatenate("IsWeekendResumeSignal()   resume signal triggered at '", GetDayOfWeek(weekend.resume.value, false), ", ", TimeToStr(weekend.resume.value, TIME_FULL), "'"));
+         if (__LOG) log(StringConcatenate("IsWeekendResumeSignal()   resume signal triggered at '", GetDayOfWeek(weekend.resume.value, false), ", ", TimeToStr(weekend.resume.value, TIME_FULL), "'"));
+         return(true);
+      }
+   }
+   return(false);
+}
+
+
+/**
+ * Aktualisiert die Bedingungen für ResumeSequence() nach der Wochenend-Pause.
+ */
+void UpdateWeekendResume() {
+   if (__STATUS__CANCELLED)      return;
+   if (status != STATUS_STOPPED) return(_NULL(catch("UpdateWeekendResume(1)   cannot update weekend resume conditions of "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (!IsWeekendStopSignal())   return(_NULL(catch("UpdateWeekendResume(2)   cannot update weekend resume conditions without weekend stop", ERR_RUNTIME_ERROR)));
+
+   datetime monday, stop=ServerToFXT(sequenceStopTimes[ArraySize(sequenceStopTimes)-1]);
+
+   switch (TimeDayOfWeek(stop)) {
+      case SUNDAY   : monday = /*0*/stop + 1*DAYS; break;
+      case MONDAY   : monday = /*1*/stop + 0*DAYS; break;
+      case TUESDAY  : monday = /*2*/stop + 6*DAYS; break;
+      case WEDNESDAY: monday = /*3*/stop + 5*DAYS; break;
+      case THURSDAY : monday = /*4*/stop + 4*DAY ; break;
+      case FRIDAY   : monday = /*5*/stop + 3*DAYS; break;
+      case SATURDAY : monday = /*6*/stop + 2*DAYS; break;
+   }
+   weekend.resume.value = (monday/DAYS)*DAYS + weekend.resume.condition%DAY;
+
+   weekend.resume.value = FXTToServerTime(weekend.resume.value);
+   weekend.resume.triggered = false;
+
+   //debug(StringConcatenate("UpdateWeekendResume()   stop='", GetDayOfWeek(stop, false), ", ", TimeToStr(stop, TIME_FULL), "'   resume='", GetDayOfWeek(weekend.resume.value, false), ", ", TimeToStr(weekend.resume.value, TIME_FULL), "'"));
 }
 
 
 /**
  * Signalgeber für StopSequence(). Die einzelnen Bedingungen sind OR-verknüpft.
  *
- * @param bool checkWeekend - ob auch auf das Wochenend-Stopsignal geprüft werden soll (default: ja)
+ * @param bool checkWeekend - ob auch auf das Wochenend-Stop-Signal geprüft werden soll (default: ja)
  *
- * @return bool - ob mindestens eine der konfigurierten Stopbedingungen erfüllt ist
+ * @return bool - ob mindestens eine Stopbedingung erfüllt ist
  */
 bool IsStopSignal(bool checkWeekend=true) {
    if (__STATUS__CANCELLED || status!=STATUS_PROGRESSING)
@@ -980,8 +1052,10 @@ bool IsStopSignal(bool checkWeekend=true) {
    static bool isTriggered = false;
 
    if (stop.conditions) {
-      if (isTriggered)                                               // einmal getriggert, immer getriggert (solange stop.conditions aktiviert ist)
-         return(true);
+      if (isTriggered) {
+         warn("IsStopSignal()   repeated triggered state call");
+         return(true);                                               // einmal getriggert, immer getriggert (solange stop.conditions aktiviert ist)
+      }
 
       // -- stop.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ----------------------------------------
       if (stop.limit.condition) {
@@ -1066,10 +1140,10 @@ bool IsWeekendStopSignal() {
    datetime now = TimeCurrent();
 
    if (weekend.stop.value <= now) {
-      if (weekend.stop.value/DAYS == now/DAYS) {                              // stellt sicher, daß Signal nicht von einem altem Datum getriggert wird
+      if (weekend.stop.value/DAYS == now/DAYS) {                              // stellt sicher, daß Signal nicht von altem Datum getriggert wird
          weekend.stop.triggered = true;
-         debug(StringConcatenate("IsWeekendStopSignal()   weekend stop signal triggered by '", GetDayOfWeek(weekend.stop.value, false), ", ", TimeToStr(weekend.stop.value, TIME_FULL), "'"));
-         if (__LOG) log(StringConcatenate("IsWeekendStopSignal()   weekend stop signal triggered by '", GetDayOfWeek(weekend.stop.value, false), ", ", TimeToStr(weekend.stop.value, TIME_FULL), "'"));
+         debug(StringConcatenate("IsWeekendStopSignal()   stop signal triggered at '", GetDayOfWeek(weekend.stop.value, false), ", ", TimeToStr(weekend.stop.value, TIME_FULL), "'"));
+         if (__LOG) log(StringConcatenate("IsWeekendStopSignal()   stop signal triggered at '", GetDayOfWeek(weekend.stop.value, false), ", ", TimeToStr(weekend.stop.value, TIME_FULL), "'"));
          return(true);
       }
    }
@@ -1101,32 +1175,6 @@ void UpdateWeekendStop() {
    weekend.stop.triggered = false;
 
    //debug(StringConcatenate("UpdateWeekendStop()   now='", GetDayOfWeek(now, false), ", ", TimeToStr(now, TIME_FULL), "'   stop='", GetDayOfWeek(weekend.stop.value, false), ", ", TimeToStr(weekend.stop.value, TIME_FULL), "'"));
-}
-
-
-/**
- * Signalgeber für StopSequence(). Prüft, ob die WeekendStop-Bedingung erfüllt ist.
- *
- * @return bool
- */
-bool IsWeekendResumeSignal() {
-   if (__STATUS__CANCELLED || (status!=STATUS_STOPPED && status!=STATUS_STARTING && status!=STATUS_PROGRESSING))
-      return(false);
-
-   if (weekend.resume.triggered)
-      return(true);
-
-   return(false);
-}
-
-
-/**
- * Aktualisiert die Bedingungen für ResumeSequence() nach der Wochenend-Pause.
- */
-void UpdateWeekendResume() {
-   datetime monday, now=ServerToFXT(TimeCurrent());
-
-   debug(StringConcatenate("UpdateWeekendResume()   now='", GetDayOfWeek(now, false), ", ", TimeToStr(now, TIME_FULL), "'   resume='", GetDayOfWeek(weekend.resume.value, false), ", ", TimeToStr(weekend.resume.value, TIME_FULL), "'"));
 }
 
 
@@ -4450,7 +4498,8 @@ bool SynchronizeStatus() {
 
    // (5) Daten für Wochenend-Pause aktualisieren
    if      (status == STATUS_PROGRESSING) UpdateWeekendStop();
-   else if (status == STATUS_STOPPED    ) UpdateWeekendResume();     // TODO: Weekend-Resume darf nur nach Weekend-Stop getriggert werden
+   else if (status == STATUS_STOPPED)
+      if (IsWeekendStopSignal())          UpdateWeekendResume();
 
 
    // (6) Anzeigen aktualisieren (ShowStatus() wird später aufgerufen)
