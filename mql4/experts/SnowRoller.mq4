@@ -5,7 +5,7 @@
  *
  *  TODO:
  *  -----
- *  - automatisches Pause/Resume an Wochenenden                                                       *
+ *  - automatisches Resume an Wochenenden                                                             *
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
  *                                                                                                    *
  *  - Logging aller Traderequest-Fehler                                                               *
