@@ -33,9 +33,13 @@ int onDeinitUndefined() {
 int onDeinitChartClose() {
    // (1) Tester
    if (IsTesting()) {
-      __STATUS__CANCELLED = true;                                    // Vorsicht: der EA-Status ist undefined
+      __STATUS__CANCELLED = true;
 
-      if (IsLastError() || (status!=STATUS_WAITING && status!=STATUS_STOPPED)) {
+      // !!! Vorsicht: Der EA-Status ist "undefined", alle Variablen können Datenmüll enthalten !!!
+
+      // Das Flag "StatusFile nicht löschen" kann nicht über Variablen oder den Chart kommuniziert werden: => globale Variable mit Thread-ID
+
+      if (IsLastError()) {
          // Statusfile löschen (der Fenstertitel des Testers kann nicht zurückgesetzt werden: SendMessage() führt in deinit() zu Deadlock)
          FileDelete(GetMqlStatusFileName());
          GetLastError();                                             // falls in FileDelete() ein Fehler auftrat
