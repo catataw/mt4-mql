@@ -916,27 +916,24 @@ bool IsStartSignal() {
    if (start.conditions) {
       if (isTriggered) {
          warn("IsStartSignal()   repeated triggered state call");
-         return(true);                                               // einmal getriggert, immer getriggert (solange start.conditions aktiviert ist)
+         return(true);                                                     // einmal getriggert, immer getriggert (solange start.conditions aktiviert ist)
       }
 
       // -- start.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ---------------------------------------
       if (start.limit.condition) {
-         static double lastBid;                                      // Kreuzen des Limits seit dem letzten Tick erkennen
+         static double lastBid;
          static bool   lastBid_init = true;
 
          bool result;
 
-         if (EQ(Bid, start.limit.value)) {                           // Bid liegt exakt auf dem Limit
-            result = true;
-         }
-         else if (lastBid_init) {
+         if (lastBid_init) {
             lastBid_init = false;
          }
-         else if (LT(lastBid, start.limit.value)) {
-            result = GT(Bid, start.limit.value);                     // Bid hat Limit von unten nach oben gekreuzt
+         else if (lastBid < start.limit.value) {
+            result = (Bid >= start.limit.value);                           // Bid hat Limit von unten nach oben gekreuzt
          }
-         else if (GT(lastBid, start.limit.value)) {
-            result = LT(Bid, start.limit.value);                     // Bid hat Limit von oben nach unten gekreuzt
+         else {
+            result = (Bid <= start.limit.value);                           // Bid hat Limit von oben nach unten gekreuzt
          }
 
          lastBid = Bid;
@@ -956,8 +953,8 @@ bool IsStartSignal() {
       isTriggered = true;
    }
    else {
-      if (__LOG) log("IsStartSignal()   no conditions defined");     // Keine Startbedingungen sind ebenfalls gültiges Startsignal,
-      isTriggered = false;                                           // isTriggered wird jedoch zurückgesetzt (Startbedingungen könnten sich ändern).
+      if (__LOG) log("IsStartSignal()   no start conditions defined");     // Keine Startbedingungen sind ebenfalls gültiges Startsignal,
+      isTriggered = false;                                                 // isTriggered wird jedoch zurückgesetzt (Startbedingungen könnten sich ändern).
    }
 
    return(true);
@@ -993,7 +990,7 @@ bool IsWeekendResumeSignal() {
    if (weekend.resume.time == 0) return(false);
 
    static datetime sessionStartTime, last.weekend.resume.time;
-   static double   lastPrice;                                                    // Kreuzen des Stop-Preises seit dem letzten Tick erkennen
+   static double   lastPrice;
    static bool     lastPrice_init = true;
 
 
@@ -1023,17 +1020,14 @@ bool IsWeekendResumeSignal() {
    else                price = Bid;
 
 
-   if (EQ(price, stopPrice)) {                                                   // Preis liegt exakt auf dem Stop-Preis
-      result = true;
-   }
-   else if (lastPrice_init) {
+   if (lastPrice_init) {
       lastPrice_init = false;
    }
-   else if (LT(lastPrice, stopPrice)) {
-      result = GT(price, stopPrice);                                             // Preis hat Stop-Preis von unten nach oben gekreuzt
+   else if (lastPrice < stopPrice) {
+      result = (price >= stopPrice);                                             // Preis hat Stop-Preis von unten nach oben gekreuzt
    }
-   else if (GT(lastPrice, stopPrice)) {
-      result = LT(price, stopPrice);                                             // Preis hat Stop-Preis von oben nach unten gekreuzt
+   else {
+      result = (price <= stopPrice);                                             // Preis hat Stop-Preis von oben nach unten gekreuzt
    }
    lastPrice = price;
    if (result) {
@@ -1067,13 +1061,13 @@ void UpdateWeekendResume() {
    datetime monday, stop=ServerToFXT(sequenceStopTimes[ArraySize(sequenceStopTimes)-1]);
 
    switch (TimeDayOfWeek(stop)) {
-      case SUNDAY   : monday = /*0*/stop + 1*DAYS; break;
-      case MONDAY   : monday = /*1*/stop + 0*DAYS; break;
-      case TUESDAY  : monday = /*2*/stop + 6*DAYS; break;
-      case WEDNESDAY: monday = /*3*/stop + 5*DAYS; break;
-      case THURSDAY : monday = /*4*/stop + 4*DAY ; break;
-      case FRIDAY   : monday = /*5*/stop + 3*DAYS; break;
-      case SATURDAY : monday = /*6*/stop + 2*DAYS; break;
+      case SUNDAY   : monday = stop + 1*DAYS; break;
+      case MONDAY   : monday = stop + 0*DAYS; break;
+      case TUESDAY  : monday = stop + 6*DAYS; break;
+      case WEDNESDAY: monday = stop + 5*DAYS; break;
+      case THURSDAY : monday = stop + 4*DAY ; break;
+      case FRIDAY   : monday = stop + 3*DAYS; break;
+      case SATURDAY : monday = stop + 2*DAYS; break;
    }
    weekend.resume.time      = FXTToServerTime((monday/DAYS)*DAYS + weekend.resume.condition%DAY);
    weekend.resume.triggered = false;
@@ -1201,18 +1195,18 @@ void UpdateWeekendStop() {
    datetime friday, now=ServerToFXT(TimeCurrent());
 
    switch (TimeDayOfWeek(now)) {
-      case SUNDAY   : friday = /*0*/now + 5*DAYS; break;
-      case MONDAY   : friday = /*1*/now + 4*DAYS; break;
-      case TUESDAY  : friday = /*2*/now + 3*DAYS; break;
-      case WEDNESDAY: friday = /*3*/now + 2*DAYS; break;
-      case THURSDAY : friday = /*4*/now + 1*DAY ; break;
-      case FRIDAY   : friday = /*5*/now + 0*DAYS; break;
-      case SATURDAY : friday = /*6*/now + 6*DAYS; break;
+      case SUNDAY   : friday = now + 5*DAYS; break;
+      case MONDAY   : friday = now + 4*DAYS; break;
+      case TUESDAY  : friday = now + 3*DAYS; break;
+      case WEDNESDAY: friday = now + 2*DAYS; break;
+      case THURSDAY : friday = now + 1*DAY ; break;
+      case FRIDAY   : friday = now + 0*DAYS; break;
+      case SATURDAY : friday = now + 6*DAYS; break;
    }
    weekend.stop.time = (friday/DAYS)*DAYS + weekend.stop.condition%DAY;
 
    if (weekend.stop.time < now)
-      weekend.stop.time = (friday/DAYS)*DAYS + D'1970.01.01 23:55'%DAY;    // Aufruf nach regulärem Stop: neuer Stop erfolgt 5 Minuten vor Handelsschluß
+      weekend.stop.time = (friday/DAYS)*DAYS + D'1970.01.01 23:55'%DAY;    // wenn Aufruf nach regulärem Stop, erfolgt neuer Stop 5 Minuten vor Handelsschluß
 
    weekend.stop.time      = FXTToServerTime(weekend.stop.time);
    weekend.stop.triggered = false;
