@@ -24,7 +24,6 @@
  *
  *  - Änderungen der Gridbasis während Auszeit erkennen
  *  - maxProfit/Loss analog zu PendingOrders regelmäßig speichern
- *  - bidirektionales Grid entfernen
  *
  *  - Upload der Statusdatei implementieren
  *  - Laufzeitumgebung auf Server auslagern
@@ -35,7 +34,7 @@
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Logging aller MessageBoxen
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
- *  - Client-Side-Limits implementieren
+ *  - bidirektionales Grid entfernen
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
  *
