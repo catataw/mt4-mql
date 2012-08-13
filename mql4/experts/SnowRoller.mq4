@@ -1031,7 +1031,7 @@ bool IsWeekendResumeSignal() {
    }
 
 
-   // (4) Bedingung is spätestens zur konfigurierten Resume-Zeit erfüllt
+   // (4) Bedingung ist spätestens zur konfigurierten Resume-Zeit erfüllt
    datetime now = TimeCurrent();
    if (weekend.resume.time <= now) {
       if (weekend.resume.time/DAYS == now/DAYS) {                                // stellt sicher, daß Signal nicht von altem Datum getriggert wird
@@ -1324,7 +1324,7 @@ bool UpdatePendingOrders() {
  * @return bool - Erfolgsstatus
  *
  *
- *  NOTE:  Im Level 0 (keine Positionen zu öffnen) werden die Variablen, auf die die Parameter zeigen, nicht modifiziert.
+ *  NOTE:  Im Level 0 (keine Positionen zu öffnen) werden die Variablen, auf die die übergebenen Pointer zeigen, nicht modifiziert.
  *  -----
  */
 bool UpdateOpenPositions(datetime &lpOpenTime, double &lpOpenPrice) {
@@ -1513,7 +1513,7 @@ bool Grid.AddOrder(int type, int level) {
 
 
 /**
- * Legt die angegebene Position in den Markt und fügt den Gridarrays deren Daten hinzu.
+ * Legt die angegebene Position in den Markt und fügt den Gridarrays deren Daten hinzu. Aufruf nur in UpdateOpenPositions()
  *
  * @param  int type  - Ordertyp: OP_BUY | OP_SELL
  * @param  int level - Gridlevel der Position
@@ -1537,6 +1537,14 @@ bool Grid.AddPosition(int type, int level) {
       }
    }
    firstTickConfirmed = true;
+
+
+   /**
+    * TODO: STOPLEVEL-Problematik
+    *
+    * (1) der StopLoss kann innerhalb des Spreads liegen
+    * (2) der StopLoss kann innerhalb der StopDistance liegen
+    */
 
 
    // (1) Position öffnen
@@ -1888,9 +1896,9 @@ int SubmitStopOrder(int type, int level, int oe[]) {
 
 
 /**
- * Öffnet eine Position zum aktuellen Preis.
+ * Öffnet eine Position zum aktuellen Preis. Aufruf nur in Grid.AddPosition()
  *
- * @param  int type  - Ordertyp: OP_BUYSTOP | OP_SELLSTOP
+ * @param  int type  - Ordertyp: OP_BUY | OP_SELL
  * @param  int level - Gridlevel der Order
  * @param  int oe[]  - Ausführungsdetails
  *
@@ -1928,17 +1936,18 @@ int SubmitMarketOrder(int type, int level, int oe[]) {
    if (orderDisplayMode == ODM_NONE)
       markerColor = CLR_NONE;
 
-   if (IsLastError())
-      return(-1);
-
-   // TODO: in ResumeSequence() kann STOPLEVEL-Verletzung auftreten
+   /**
+    * TODO: STOPLEVEL-Problematik
+    *
+    * (1) der StopLoss kann innerhalb des Spreads liegen
+    * (2) der StopLoss kann innerhalb der StopDistance liegen
+    */
 
    int ticket = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
-   if (ticket == -1)
-      return(_int(-1, SetLastError(stdlib_PeekLastError())));
 
-   if (IsError(catch("SubmitMarketOrder(6)")))
-      return(-1);
+   if (ticket < 0)                                  SetLastError(stdlib_PeekLastError());
+   else if (IsError(catch("SubmitMarketOrder(6)"))) ticket = -1;
+
    return(ticket);
 }
 
