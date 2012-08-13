@@ -1066,7 +1066,7 @@ void UpdateWeekendResume() {
       case SATURDAY : monday = stop + 2*DAYS; break;
    }
    weekend.resume.time = FXTToServerTime((monday/DAYS)*DAYS + weekend.resume.condition%DAY);
-   debug("UpdateWeekendResume()   '"+ TimeToStr(TimeCurrent(), TIME_FULL) +"': resume condition updated to '"+ GetDayOfWeek(weekend.resume.time, false) +", "+ TimeToStr(weekend.resume.time, TIME_FULL) +"'");
+   //debug("UpdateWeekendResume()   '"+ TimeToStr(TimeCurrent(), TIME_FULL) +"': resume condition updated to '"+ GetDayOfWeek(weekend.resume.time, false) +", "+ TimeToStr(weekend.resume.time, TIME_FULL) +"'");
 }
 
 
@@ -1205,7 +1205,7 @@ void UpdateWeekendStop() {
    if (weekend.stop.time < now)
       weekend.stop.time = (friday/DAYS)*DAYS + D'1970.01.01 23:55'%DAY;    // wenn Aufruf nach regulärem Stop, erfolgt neuer Stop 5 Minuten vor Handelsschluß
    weekend.stop.time = FXTToServerTime(weekend.stop.time);
-   debug("UpdateWeekendStop()   '"+ TimeToStr(TimeCurrent(), TIME_FULL) +"': stop condition updated to '"+ GetDayOfWeek(weekend.stop.time, false) +", "+ TimeToStr(weekend.stop.time, TIME_FULL) +"'");
+   //debug("UpdateWeekendStop()   '"+ TimeToStr(TimeCurrent(), TIME_FULL) +"': stop condition updated to '"+ GetDayOfWeek(weekend.stop.time, false) +", "+ TimeToStr(weekend.stop.time, TIME_FULL) +"'");
 }
 
 
@@ -1925,8 +1925,6 @@ int SubmitMarketOrder(int type, int level, int oe[]) {
    datetime expires     = NULL;
    string   comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
    color    markerColor = ifInt(level > 0, CLR_LONG, CLR_SHORT);
-   int      oeFlags     = NULL;
-
    /*
    #define ODM_NONE     0     // - keine Anzeige -
    #define ODM_STOPS    1     // Pending,       ClosedBySL
@@ -1943,11 +1941,24 @@ int SubmitMarketOrder(int type, int level, int oe[]) {
     * (2) der StopLoss kann innerhalb der StopDistance liegen
     */
 
-   int ticket = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
+   int oeFlags = OE_CATCH_INVALID_STOP;
+   int ticket  = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
 
-   if (ticket < 0)                                  SetLastError(stdlib_PeekLastError());
-   else if (IsError(catch("SubmitMarketOrder(6)"))) ticket = -1;
+   if (ticket < 0) {
+      int error = oe.Error(oe);
 
+      debug("SubmitMarketOrder()   error = ["+ error +" - "+ ErrorDescription(error) +"]");
+
+      if (error == ERR_INVALID_STOP) {
+      }
+      else {
+      }
+      SetLastError(error);
+   }
+   else {
+      if (IsError(catch("SubmitMarketOrder(6)")))
+         ticket = -1;
+   }
    return(ticket);
 }
 
@@ -3102,21 +3113,21 @@ bool ValidateConfiguration(bool interactive) {
 /**
  * "Exception-Handler" für ungültige Input-Parameter. Je nach Laufzeitumgebung wird der Fehler weitergereicht oder zur Korrektur aufgefordert.
  *
- * @param  string location  - Ort, an dem der Fehler auftrat
- * @param  string msg       - Fehlermeldung
- * @param  bool interactive - ob der Fehler interaktiv behandelt werden kann
+ * @param  string location    - Ort, an dem der Fehler auftrat
+ * @param  string message     - Fehlermeldung
+ * @param  bool   interactive - ob der Fehler interaktiv behandelt werden kann
  *
  * @return int - der resultierende Fehlerstatus
  */
-int HandleConfigError(string location, string msg, bool interactive) {
+int HandleConfigError(string location, string message, bool interactive) {
    if (IsTesting())
       interactive = false;
    if (!interactive)
-      return(catch(location +"   "+ msg, ERR_INVALID_CONFIG_PARAMVALUE));
+      return(catch(location +"   "+ message, ERR_INVALID_CONFIG_PARAMVALUE));
 
-   if (__LOG) log(location +"   "+ msg, ERR_INVALID_INPUT);
+   if (__LOG) log(StringConcatenate(location, "   ", message), ERR_INVALID_INPUT);
    ForceSound("chord.wav");
-   int button = ForceMessageBox(__NAME__ +" - ValidateConfiguration()", msg, MB_ICONERROR|MB_RETRYCANCEL);
+   int button = ForceMessageBox(__NAME__ +" - ValidateConfiguration()", message, MB_ICONERROR|MB_RETRYCANCEL);
 
    __STATUS__INVALID_INPUT = true;
 
