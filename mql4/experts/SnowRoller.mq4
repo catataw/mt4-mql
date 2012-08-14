@@ -201,6 +201,7 @@ double   orders.risk          [];                           // Risiko des Levels
 datetime orders.closeTime     [];
 double   orders.closePrice    [];
 double   orders.stopLoss      [];
+bool     orders.clientSL      [];                           // Client- oder Server-seitiger StopLoss
 bool     orders.closedBySL    [];
 
 double   orders.swap          [];
@@ -1525,7 +1526,7 @@ bool Grid.AddPosition(int type, int level) {
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_false(catch("Grid.AddPosition(1)", ERR_ILLEGAL_STATE)));
    if (status != STATUS_STARTING)            return(_false(catch("Grid.AddPosition(2)   cannot add market position to "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
-   if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                                    // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - Grid.AddPosition()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a Market "+ OperationTypeDescription(type) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -1539,44 +1540,54 @@ bool Grid.AddPosition(int type, int level) {
    firstTickConfirmed = true;
 
 
-   /**
-    * TODO: STOPLEVEL-Problematik
-    *
-    * (1) der StopLoss kann innerhalb des Spreads liegen
-    * (2) der StopLoss kann innerhalb der StopDistance liegen
-    */
-
-
    // (1) Position öffnen
+   bool clientSideSL = false;
    /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
-   int ticket = SubmitMarketOrder(type, level, oe);
-   if (ticket <= 0) {
-      if      (ticket == -1) debug("Grid.AddPosition()   level="+ level +"   error=["+ ErrorDescription(oe.Error(oe)) +"]   spread violated");
-      else if (ticket == -2) debug("Grid.AddPosition()   level="+ level +"   error=["+ ErrorDescription(oe.Error(oe)) +"]   stop distance violated");
+   int    ticket   = SubmitMarketOrder(type, level, clientSideSL, oe);        // StopLoss server-seitig
+   double stopLoss = oe.StopLoss(oe);
 
-      return(_false(SetLastError(oe.Error(oe))));
+   if (ticket <= 0) {
+      // (2) Spread violated
+      if (ticket == -1)
+         return(_false(catch("Grid.AddPosition(4)   spread violated at level "+ level +"   sl="+ NumberToStr(stopLoss, PriceFormat), oe.Error(oe))));
+
+      // (3) StopDistance violated
+      if (ticket == -2) {
+         debug("Grid.AddPosition()   stop distance violated at level "+ level +"   sl="+ NumberToStr(stopLoss, PriceFormat));
+
+         // Position ohne StopLoss öffnen (client-seitige Verwaltung)
+         if (__LOG) log("Grid.AddPosition()   stop distance violated, installing client-side stoploss for level "+ level +" at "+ NumberToStr(stopLoss, PriceFormat));
+         clientSideSL = true;
+         ticket = SubmitMarketOrder(type, level, clientSideSL, oe);
+         if (ticket <= 0)
+            return(false);
+      }
+      else {
+         return(_false(SetLastError(oe.Error(oe))));
+      }
    }
 
 
-   // (2) Daten speichern
-   //int    ticket       = ...                                       // unverändert
-   //int    level        = ...                                       // unverändert
-   //double grid.base    = ...                                       // unverändert
+   // (4) Daten speichern
+   //int    ticket       = ...                                                // unverändert
+   //int    level        = ...                                                // unverändert
+   //double grid.base    = ...                                                // unverändert
 
    int      pendingType  = OP_UNDEFINED;
    datetime pendingTime  = NULL;
    double   pendingPrice = NULL;
 
-   //int    type         = ...                                       // unverändert
+   //int    type         = ...                                                // unverändert
    datetime openTime     = oe.OpenTime (oe);
    double   openPrice    = oe.OpenPrice(oe);
 
    datetime closeTime    = NULL;
    double   closePrice   = NULL;
-   double   stopLoss     = oe.StopLoss(oe);
+   //bool   clientSideSL = ...                                                // unverändert
+   //double stopLoss     = ...                                                // unverändert
    bool     closedBySL   = false;
 
-   double   swap         = oe.Swap      (oe);                        // falls Swap bereits bei OrderOpen gesetzt sein sollte
+   double   swap         = oe.Swap      (oe);                                 // falls Swap bereits bei OrderOpen gesetzt sein sollte
    double   commission   = oe.Commission(oe);
    double   profit       = NULL;
    double   risk         = CalculateActiveRisk(level, ticket, openPrice, swap, commission);
@@ -1902,9 +1913,10 @@ int SubmitStopOrder(int type, int level, int oe[]) {
 /**
  * Öffnet eine Position zum aktuellen Preis. Aufruf nur in Grid.AddPosition()
  *
- * @param  int type  - Ordertyp: OP_BUY | OP_SELL
- * @param  int level - Gridlevel der Order
- * @param  int oe[]  - Ausführungsdetails (ORDER_EXECUTION)
+ * @param  int  type         - Ordertyp: OP_BUY | OP_SELL
+ * @param  int  level        - Gridlevel der Order
+ * @param  bool clientSideSL - ob der StopLoss client-seitig verwaltet wird
+ * @param  int  oe[]         - Ausführungsdetails (ORDER_EXECUTION)
  *
  * @return int - Ticket der Order (positiver Wert) oder ein anderer Wert, falls ein Fehler auftrat
  *
@@ -1914,7 +1926,7 @@ int SubmitStopOrder(int type, int level, int oe[]) {
  *  -1: der StopLoss verletzt den aktuellen Spread
  *  -2: der StopLoss verletzt die StopDistance des Brokers
  */
-int SubmitMarketOrder(int type, int level, /*ORDER_EXECUTION*/int oe[]) {
+int SubmitMarketOrder(int type, int level, bool clientSideSL, /*ORDER_EXECUTION*/int oe[]) {
    if (__STATUS__CANCELLED || IsLastError()) return(0);
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_ZERO(catch("SubmitMarketOrder(1)", ERR_ILLEGAL_STATE)));
    if (status != STATUS_STARTING)            return(_ZERO(catch("SubmitMarketOrder(2)   cannot submit market order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
@@ -1929,7 +1941,7 @@ int SubmitMarketOrder(int type, int level, /*ORDER_EXECUTION*/int oe[]) {
 
    double   price       = NULL;
    double   slippage    = 0.1;
-   double   stopLoss    = grid.base + (level-Sign(level)) * GridSize * Pips;
+   double   stopLoss    = ifDouble(clientSideSL, NULL, grid.base + (level-Sign(level)) * GridSize * Pips);
    double   takeProfit  = NULL;
    int      magicNumber = CreateMagicNumber(level);
    datetime expires     = NULL;
@@ -1944,7 +1956,9 @@ int SubmitMarketOrder(int type, int level, /*ORDER_EXECUTION*/int oe[]) {
    if (orderDisplayMode == ODM_NONE)
       markerColor = CLR_NONE;
 
-   int oeFlags = OE_CATCH_INVALID_STOP;
+   int oeFlags = NULL;
+   if (!clientSideSL)
+      oeFlags |= OE_CATCH_INVALID_STOP;
    int ticket  = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
 
    if (ticket > 0)
@@ -4723,9 +4737,9 @@ double CalculateActiveRisk(int level, int ticket, double openPrice, double swap,
       realized += orders.swap[i] + orders.commission[i] + orders.profit[i];
    }
 
-   double stopLoss      = gridBase + (level-Sign(level)) * GridSize * Pips;
+   double stopLoss      =  gridBase + (level-Sign(level)) * GridSize * Pips;
    double stopLossValue = -MathAbs(openPrice-stopLoss)/Pips * PipValue(LotSize);
-   double risk          = realized + stopLossValue + swap + commission;
+   double risk          =  realized + stopLossValue + swap + commission;
    //debug("CalculateActiveRisk()   level="+ level +"  realized="+ DoubleToStr(realized, 2) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  slValue="+ DoubleToStr(stopLossValue, 2) +"  risk="+ DoubleToStr(risk, 2));
 
    return(NormalizeDouble(-risk, 2));                                // Rückgabewert für Verlustrisiko soll positiv sein
