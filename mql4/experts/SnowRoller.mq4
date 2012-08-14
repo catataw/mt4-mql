@@ -1900,11 +1900,11 @@ int SubmitStopOrder(int type, int level, int oe[]) {
  *
  * @param  int type  - Ordertyp: OP_BUY | OP_SELL
  * @param  int level - Gridlevel der Order
- * @param  int oe[]  - Ausführungsdetails
+ * @param  int oe[]  - Ausführungsdetails (ORDER_EXECUTION)
  *
  * @return int - Ticket der Order oder -1, falls ein Fehler auftrat
  */
-int SubmitMarketOrder(int type, int level, int oe[]) {
+int SubmitMarketOrder(int type, int level, /*ORDER_EXECUTION*/int oe[]) {
    if (__STATUS__CANCELLED || IsLastError()) return(-1);
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_int(-1, catch("SubmitMarketOrder(1)", ERR_ILLEGAL_STATE)));
    if (status != STATUS_STARTING)            return(_int(-1, catch("SubmitMarketOrder(2)   cannot submit market order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
@@ -1960,6 +1960,7 @@ int SubmitMarketOrder(int type, int level, int oe[]) {
          // (4) Unbekannte Ursache, Markt scheint sich sofort nach dem Fehler geändert zu haben.
          else {
             warn("SubmitMarketOrder(6)   error="+ error +" ["+ ErrorDescription(error) +"]   insideSpread="+ insideSpread +"   insideStopDistance="+ insideStopDistance);
+             log("SubmitMarketOrder(6)   oe="+ ORDER_EXECUTION.toStr(oe, false));
          }
       }
       SetLastError(error);
