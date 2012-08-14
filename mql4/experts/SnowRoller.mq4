@@ -1934,24 +1934,20 @@ int SubmitMarketOrder(int type, int level, int oe[]) {
    if (orderDisplayMode == ODM_NONE)
       markerColor = CLR_NONE;
 
-   /**
-    * TODO: STOPLEVEL-Problematik
-    *
-    * (1) der StopLoss kann innerhalb des Spreads liegen
-    * (2) der StopLoss kann innerhalb der StopDistance liegen
-    */
-
-   int oeFlags = OE_CATCH_INVALID_STOP;
+   int oeFlags = OE_MUTE_INVALID_STOP;
    int ticket  = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
 
    if (ticket < 0) {
       int error = oe.Error(oe);
-
-      debug("SubmitMarketOrder()   error = ["+ error +" - "+ ErrorDescription(error) +"]");
-
       if (error == ERR_INVALID_STOP) {
-      }
-      else {
+         debug("SubmitMarketOrder()   error = ["+ error +" - "+ ErrorDescription(error) +"]");
+
+         // TODO: STOPLEVEL-Problematik
+         // -----
+         // (1) der StopLoss kann innerhalb des Spreads liegen
+         // (2) der StopLoss kann innerhalb der StopDistance liegen
+
+         ORDER_EXECUTION.toStr(oe, true);
       }
       SetLastError(error);
    }
