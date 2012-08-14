@@ -909,7 +909,7 @@ bool IsStartSignal() {
 
    if (start.conditions) {
       if (isTriggered) {
-         warn("IsStartSignal()   repeated triggered state call");
+         warn("IsStartSignal(1)   repeated triggered state call");
          return(true);                                                     // einmal getriggert, immer getriggert (solange start.conditions aktiviert ist)
       }
 
@@ -1087,7 +1087,7 @@ bool IsStopSignal(bool checkWeekend=true) {
 
    if (stop.conditions) {
       if (isTriggered) {
-         warn("IsStopSignal()   repeated triggered state call");
+         warn("IsStopSignal(1)   repeated triggered state call");
          return(true);                                               // einmal getriggert, immer getriggert (solange stop.conditions aktiviert ist)
       }
 
@@ -1934,26 +1934,38 @@ int SubmitMarketOrder(int type, int level, int oe[]) {
    if (orderDisplayMode == ODM_NONE)
       markerColor = CLR_NONE;
 
-   int oeFlags = OE_MUTE_INVALID_STOP;
+   int oeFlags = OE_CATCH_INVALID_STOP;
    int ticket  = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
 
    if (ticket < 0) {
       int error = oe.Error(oe);
+
       if (error == ERR_INVALID_STOP) {
-         debug("SubmitMarketOrder()   error = ["+ error +" - "+ ErrorDescription(error) +"]");
+         // (1) Der StopLoss liegt entweder innerhalb des Spreads oder innerhalb der StopDistance.
+         bool insideSpread, insideStopDistance;
+         if (type == OP_BUY) insideSpread = GE(oe.StopLoss(oe), oe.Bid(oe));
+         else                insideSpread = LE(oe.StopLoss(oe), oe.Ask(oe));
+         insideStopDistance = !insideSpread;
 
-         // TODO: STOPLEVEL-Problematik
-         // -----
-         // (1) der StopLoss kann innerhalb des Spreads liegen
-         // (2) der StopLoss kann innerhalb der StopDistance liegen
+         // (2) StopLoss liegt innerhalb des Spreads
+         if (insideSpread) {
+            debug("SubmitMarketOrder()   error="+ error +" ["+ ErrorDescription(error) +"]   spread violated");
+         }
 
-         ORDER_EXECUTION.toStr(oe, true);
+         // (3) StopLoss liegt innerhalb der StopDistance
+         else if (insideStopDistance) {
+            debug("SubmitMarketOrder()   error="+ error +" ["+ ErrorDescription(error) +"]   stop distance violated");
+         }
+
+         // (4) Unbekannte Ursache, Markt scheint sich sofort nach dem Fehler geändert zu haben.
+         else {
+            warn("SubmitMarketOrder(6)   error="+ error +" ["+ ErrorDescription(error) +"]   insideSpread="+ insideSpread +"   insideStopDistance="+ insideStopDistance);
+         }
       }
       SetLastError(error);
    }
-   else {
-      if (IsError(catch("SubmitMarketOrder(6)")))
-         ticket = -1;
+   else if (IsError(catch("SubmitMarketOrder(7)"))) {
+      ticket = -1;
    }
    return(ticket);
 }
