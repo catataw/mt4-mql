@@ -1550,8 +1550,12 @@ bool Grid.AddPosition(int type, int level) {
    // (1) Position öffnen
    /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
    int ticket = SubmitMarketOrder(type, level, oe);
-   if (ticket == -1)
-      return(false);
+   if (ticket <= 0) {
+      if      (ticket == -1) debug("Grid.AddPosition()   level="+ level +"   error=["+ ErrorDescription(oe.Error(oe)) +"]   spread violated");
+      else if (ticket == -2) debug("Grid.AddPosition()   level="+ level +"   error=["+ ErrorDescription(oe.Error(oe)) +"]   stop distance violated");
+
+      return(_false(SetLastError(oe.Error(oe))));
+   }
 
 
    // (2) Daten speichern
@@ -1902,20 +1906,26 @@ int SubmitStopOrder(int type, int level, int oe[]) {
  * @param  int level - Gridlevel der Order
  * @param  int oe[]  - Ausführungsdetails (ORDER_EXECUTION)
  *
- * @return int - Ticket der Order oder -1, falls ein Fehler auftrat
+ * @return int - Ticket der Order (positiver Wert) oder ein anderer Wert, falls ein Fehler auftrat
+ *
+ *
+ *  Return-Codes mit besonderer Bedeutung:
+ *  --------------------------------------
+ *  -1: der StopLoss verletzt den aktuellen Spread
+ *  -2: der StopLoss verletzt die StopDistance des Brokers
  */
 int SubmitMarketOrder(int type, int level, /*ORDER_EXECUTION*/int oe[]) {
-   if (__STATUS__CANCELLED || IsLastError()) return(-1);
-   if (IsTest()) /*&&*/ if (!IsTesting())    return(_int(-1, catch("SubmitMarketOrder(1)", ERR_ILLEGAL_STATE)));
-   if (status != STATUS_STARTING)            return(_int(-1, catch("SubmitMarketOrder(2)   cannot submit market order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (__STATUS__CANCELLED || IsLastError()) return(0);
+   if (IsTest()) /*&&*/ if (!IsTesting())    return(_ZERO(catch("SubmitMarketOrder(1)", ERR_ILLEGAL_STATE)));
+   if (status != STATUS_STARTING)            return(_ZERO(catch("SubmitMarketOrder(2)   cannot submit market order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
    if (type == OP_BUY) {
-      if (level <= 0) return(_int(-1, catch("SubmitMarketOrder(3)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (level <= 0) return(_ZERO(catch("SubmitMarketOrder(3)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
    }
    else if (type == OP_SELL) {
-      if (level >= 0) return(_int(-1, catch("SubmitMarketOrder(4)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (level >= 0) return(_ZERO(catch("SubmitMarketOrder(4)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
    }
-   else               return(_int(-1, catch("SubmitMarketOrder(5)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   else               return(_ZERO(catch("SubmitMarketOrder(5)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    double   price       = NULL;
    double   slippage    = 0.1;
@@ -1937,38 +1947,22 @@ int SubmitMarketOrder(int type, int level, /*ORDER_EXECUTION*/int oe[]) {
    int oeFlags = OE_CATCH_INVALID_STOP;
    int ticket  = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
 
-   if (ticket < 0) {
-      int error = oe.Error(oe);
+   if (ticket > 0)
+      return(ticket);
 
-      if (error == ERR_INVALID_STOP) {
-         // (1) Der StopLoss liegt entweder innerhalb des Spreads oder innerhalb der StopDistance.
-         bool insideSpread, insideStopDistance;
-         if (type == OP_BUY) insideSpread = GE(oe.StopLoss(oe), oe.Bid(oe));
-         else                insideSpread = LE(oe.StopLoss(oe), oe.Ask(oe));
-         insideStopDistance = !insideSpread;
+   int error = oe.Error(oe);
 
-         // (2) StopLoss liegt innerhalb des Spreads
-         if (insideSpread) {
-            debug("SubmitMarketOrder()   error="+ error +" ["+ ErrorDescription(error) +"]   spread violated");
-         }
-
-         // (3) StopLoss liegt innerhalb der StopDistance
-         else if (insideStopDistance) {
-            debug("SubmitMarketOrder()   error="+ error +" ["+ ErrorDescription(error) +"]   stop distance violated");
-         }
-
-         // (4) Unbekannte Ursache, Markt scheint sich sofort nach dem Fehler geändert zu haben.
-         else {
-            warn("SubmitMarketOrder(6)   error="+ error +" ["+ ErrorDescription(error) +"]   insideSpread="+ insideSpread +"   insideStopDistance="+ insideStopDistance);
-             log("SubmitMarketOrder(6)   oe="+ ORDER_EXECUTION.toStr(oe, false));
-         }
-      }
-      SetLastError(error);
+   if (error == ERR_INVALID_STOP) {
+      // Der StopLoss liegt entweder innerhalb des Spreads oder innerhalb der StopDistance.
+      bool insideSpread;
+      if (type == OP_BUY) insideSpread = GE(oe.StopLoss(oe), oe.Bid(oe));
+      else                insideSpread = LE(oe.StopLoss(oe), oe.Ask(oe));
+      if (insideSpread)
+         return(-1);
+      return(-2);
    }
-   else if (IsError(catch("SubmitMarketOrder(7)"))) {
-      ticket = -1;
-   }
-   return(ticket);
+
+   return(_ZERO(SetLastError(error)));
 }
 
 
