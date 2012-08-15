@@ -264,7 +264,7 @@ int onTick() {
    else if (status == STATUS_STOPPED) {
       if (IsResumeSignal())                   ResumeSequence();
       else {
-         firstTick=false;
+         firstTick = false;
          return(last_error);
       }
    }
