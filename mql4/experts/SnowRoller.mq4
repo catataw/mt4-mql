@@ -7,15 +7,14 @@
  *  -----
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
  *                                                                                                    *
- *  - Logging aller Traderequest-Fehler                                                               *
+ *  - bidirektional trailendes Grid implementieren                                                    *
+ *  - PendingOrders nicht per Tick trailen                                                            *
  *                                                                                                    *
  *  - Start/StopConditions vervollständigen                                                           *
  *  - ResumeCondition implementieren                                                                  *
  *  - StartCondition @level() implementieren                                                          *
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
- *  - PendingOrders nicht per Tick trailen                                                            *
- *  - bidirektional trailendes Grid implementieren                                                    *
  *  - Equity-Charts generieren                                                                        *
  *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment                                         *
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
@@ -25,17 +24,16 @@
  *  - Änderungen der Gridbasis während Auszeit erkennen
  *  - maxProfit/Loss analog zu PendingOrders regelmäßig speichern
  *
- *  - Upload der Statusdatei implementieren
- *  - Laufzeitumgebung auf Server auslagern
- *  - STATUS_MONITORING implementieren
- *  - Heartbeat implementieren
- *
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Logging aller MessageBoxen
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
+ *  - Upload der Statusdatei implementieren
+ *  - Laufzeitumgebung auf Server auslagern
+ *  - STATUS_MONITORING implementieren
+ *  - Heartbeat implementieren
  *
  *  - Build 419 silently crashes (1 mal)
  *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec. (TCP-Socket Timeout???)
