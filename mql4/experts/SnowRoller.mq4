@@ -15,8 +15,8 @@
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
  *  - PendingOrders nicht per Tick trailen                                                            *
+ *  - bidirektional trailendes Grid implementieren                                                    *
  *  - Equity-Charts generieren                                                                        *
- *  - beidseitig unidirektionales Grid implementieren                                                 *
  *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment                                         *
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird   *
@@ -34,7 +34,6 @@
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Logging aller MessageBoxen
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
- *  - bidirektionales Grid entfernen
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
  *
