@@ -200,7 +200,7 @@ double   orders.risk          [];                           // Risiko des Levels
 datetime orders.closeTime     [];
 double   orders.closePrice    [];
 double   orders.stopLoss      [];
-bool     orders.clientSL      [];                           // Client- oder Server-seitiger StopLoss
+bool     orders.clientSL      [];                           // client- oder server-seitiger StopLoss
 bool     orders.closedBySL    [];
 
 double   orders.swap          [];
