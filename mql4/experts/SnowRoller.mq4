@@ -690,7 +690,7 @@ bool UpdateStatus() {
          if (wasPending) {
             // beim letzten Aufruf Pending-Order
             if (OrderType() != orders.pendingType[i]) {                                         // Order wurde ausgeführt
-               if (__LOG) log(StringConcatenate("UpdateStatus()   ", LogMessage.PendingOrderFilled(i)));
+               if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.PendingFilledMsg(i)));
                orders.type      [i] = OrderType();
                orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
@@ -744,7 +744,7 @@ bool UpdateStatus() {
                ChartMarker.PositionClosed(i);
 
                if (orders.closedBySL[i]) {                                                      // ausgestoppt
-                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", LogMessage.StopLossExecuted(i)));
+                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.SLExecutedMsg(i)));
                   grid.level      -= Sign(orders.level[i]);
                   grid.stops++;
                   grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
@@ -755,7 +755,7 @@ bool UpdateStatus() {
                else {                                                                           // Sequenzstop im STATUS_MONITORING oder autom. Close bei Beenden des Testers
                   if (status != STATUS_STOPPED)
                      status = STATUS_STOPPING;
-                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", LogMessage.PositionClosed()));
+                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.PositionClosedMsg()));
                   grid.closedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
             }
@@ -879,18 +879,14 @@ bool IsOrderClosedBySL() {
          closedBySL = true;
       }
       else {
-         // Bei client-side-Limits StopLoss aus Griddaten verwenden.
-         double stopLoss = OrderStopLoss();
-         if (EQ(stopLoss, 0)) {
-            int i = SearchIntArray(orders.ticket, OrderTicket());
-            if (i == -1)
-               return(_false(catch("IsOrderClosedBySL(1)   #"+ OrderTicket() +" not found in grid arrays", ERR_RUNTIME_ERROR)));
-            stopLoss = NormalizeDouble(orders.stopLoss[i], Digits);
-            if (EQ(stopLoss, 0))
-               return(_false(catch("IsOrderClosedBySL(2)   #"+ OrderTicket() +" no stop-loss found in grid arrays", ERR_RUNTIME_ERROR)));
-         }
-         if      (OrderType() == OP_BUY ) closedBySL = LE(OrderClosePrice(), stopLoss);
-         else if (OrderType() == OP_SELL) closedBySL = GE(OrderClosePrice(), stopLoss);
+         // immer StopLoss aus Griddaten verwenden (SL kann client-seitig verwaltet sein)
+         int i = SearchIntArray(orders.ticket, OrderTicket());
+
+         if (i == -1)                   return(_false(catch("IsOrderClosedBySL(1)   #"+ OrderTicket() +" not found in grid arrays", ERR_RUNTIME_ERROR)));
+         if (EQ(orders.stopLoss[i], 0)) return(_false(catch("IsOrderClosedBySL(2)   #"+ OrderTicket() +" no stop-loss found in grid arrays", ERR_RUNTIME_ERROR)));
+
+         if      (OrderType() == OP_BUY ) closedBySL = LE(OrderClosePrice(), orders.stopLoss[i]);
+         else if (OrderType() == OP_SELL) closedBySL = GE(OrderClosePrice(), orders.stopLoss[i]);
       }
    }
    return(closedBySL);
@@ -1499,6 +1495,7 @@ bool Grid.AddOrder(int type, int level) {
    datetime closeTime    = NULL;
    double   closePrice   = NULL;
    double   stopLoss     = oe.StopLoss(oe);
+   bool     clientSL     = false;
    bool     closedBySL   = false;
 
    double   swap         = NULL;
@@ -1507,7 +1504,7 @@ bool Grid.AddOrder(int type, int level) {
 
    ArrayResize(oe, 0);
 
-   if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, closedBySL, swap, commission, profit))
+   if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit))
       return(false);
    return(IsNoError(catch("Grid.AddOrder(5)")));
 }
@@ -1541,9 +1538,9 @@ bool Grid.AddPosition(int type, int level) {
 
 
    // (1) Position öffnen
-   bool clientSideSL = false;
+   bool clientSL = false;
    /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
-   int    ticket   = SubmitMarketOrder(type, level, clientSideSL, oe);        // server-seitigiger StopLoss
+   int    ticket   = SubmitMarketOrder(type, level, clientSL, oe);            // server-seitigiger StopLoss
    double stopLoss = oe.StopLoss(oe);
 
    if (ticket <= 0) {
@@ -1557,8 +1554,8 @@ bool Grid.AddPosition(int type, int level) {
 
          // Position ohne StopLoss öffnen (client-seitige Verwaltung)
          if (__LOG) log("Grid.AddPosition()   stop distance violated, installing client-side stoploss for level "+ level +" at "+ NumberToStr(stopLoss, PriceFormat));
-         clientSideSL = true;
-         ticket = SubmitMarketOrder(type, level, clientSideSL, oe);           // client-seitigiger StopLoss
+         clientSL = true;
+         ticket = SubmitMarketOrder(type, level, clientSL, oe);               // client-seitigiger StopLoss
          if (ticket <= 0)
             return(false);
       }
@@ -1583,8 +1580,8 @@ bool Grid.AddPosition(int type, int level) {
 
    datetime closeTime    = NULL;
    double   closePrice   = NULL;
-   //bool   clientSideSL = ...                                                // unverändert
    //double stopLoss     = ...                                                // unverändert
+   //bool   clientSL     = ...                                                // unverändert
    bool     closedBySL   = false;
 
    double   swap         = oe.Swap      (oe);                                 // falls Swap bereits bei OrderOpen gesetzt sein sollte
@@ -1594,7 +1591,7 @@ bool Grid.AddPosition(int type, int level) {
 
    ArrayResize(oe, 0);
 
-   if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, closedBySL, swap, commission, profit))
+   if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit))
       return(false);
    return(IsNoError(catch("Grid.AddPosition(5)")));
 }
@@ -1713,6 +1710,7 @@ bool Grid.DeleteOrder(int ticket) {
  * @param  datetime closeTime
  * @param  double   closePrice
  * @param  double   stopLoss
+ * @param  bool     clientSL
  * @param  bool     closedBySL
  *
  * @param  double   swap
@@ -1721,8 +1719,8 @@ bool Grid.DeleteOrder(int ticket) {
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.PushData(int ticket, int level, double gridBase, int pendingType, datetime pendingTime, double pendingPrice, int type, datetime openTime, double openPrice, double risk, datetime closeTime, double closePrice, double stopLoss, bool closedBySL, double swap, double commission, double profit) {
-   return(Grid.SetData(-1, ticket, level, gridBase, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, closedBySL, swap, commission, profit));
+bool Grid.PushData(int ticket, int level, double gridBase, int pendingType, datetime pendingTime, double pendingPrice, int type, datetime openTime, double openPrice, double risk, datetime closeTime, double closePrice, double stopLoss, bool clientSL, bool closedBySL, double swap, double commission, double profit) {
+   return(Grid.SetData(-1, ticket, level, gridBase, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit));
 }
 
 
@@ -1747,6 +1745,7 @@ bool Grid.PushData(int ticket, int level, double gridBase, int pendingType, date
  * @param  datetime closeTime
  * @param  double   closePrice
  * @param  double   stopLoss
+ * @param  bool     clientSL
  * @param  bool     closedBySL
  *
  * @param  double   swap
@@ -1755,7 +1754,7 @@ bool Grid.PushData(int ticket, int level, double gridBase, int pendingType, date
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.SetData(int position, int ticket, int level, double gridBase, int pendingType, datetime pendingTime, double pendingPrice, int type, datetime openTime, double openPrice, double risk, datetime closeTime, double closePrice, double stopLoss, bool closedBySL, double swap, double commission, double profit) {
+bool Grid.SetData(int position, int ticket, int level, double gridBase, int pendingType, datetime pendingTime, double pendingPrice, int type, datetime openTime, double openPrice, double risk, datetime closeTime, double closePrice, double stopLoss, bool clientSL, bool closedBySL, double swap, double commission, double profit) {
    if (position < -1)
       return(_false(catch("Grid.SetData(1)   illegal parameter position = "+ position, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
@@ -1780,6 +1779,7 @@ bool Grid.SetData(int position, int ticket, int level, double gridBase, int pend
    orders.closeTime   [i] = closeTime;
    orders.closePrice  [i] = NormalizeDouble(closePrice, Digits);
    orders.stopLoss    [i] = NormalizeDouble(stopLoss, Digits);
+   orders.clientSL    [i] = clientSL;
    orders.closedBySL  [i] = closedBySL;
 
    orders.swap        [i] = NormalizeDouble(swap,       2);
@@ -1820,6 +1820,7 @@ bool Grid.DropTicket(int ticket) {
    ArraySpliceInts   (orders.closeTime,    i, 1);
    ArraySpliceDoubles(orders.closePrice,   i, 1);
    ArraySpliceDoubles(orders.stopLoss,     i, 1);
+   ArraySpliceBools  (orders.clientSL,     i, 1);
    ArraySpliceBools  (orders.closedBySL,   i, 1);
 
    ArraySpliceDoubles(orders.swap,         i, 1);
@@ -3535,6 +3536,7 @@ bool SaveStatus() {
    datetime orders.closeTime   [];     // ja
    double   orders.closePrice  [];     // ja
    double   orders.stopLoss    [];     // ja
+   bool     orders.clientSL    [];     // ja
    bool     orders.closedBySL  [];     // ja
    double   orders.swap        [];     // ja
    double   orders.commission  [];     // ja
@@ -3615,11 +3617,12 @@ bool SaveStatus() {
       datetime closeTime    = orders.closeTime   [i];
       double   closePrice   = orders.closePrice  [i];
       double   stopLoss     = orders.stopLoss    [i];
+      bool     clientSL     = orders.clientSL    [i];
       bool     closedBySL   = orders.closedBySL  [i];
       double   swap         = orders.swap        [i];
       double   commission   = orders.commission  [i];
       double   profit       = orders.profit      [i];
-      ArrayPushString(lines, StringConcatenate("rt.order.", i, "=", ticket, ",", level, ",", NumberToStr(NormalizeDouble(gridBase, Digits), ".+"), ",", pendingType, ",", pendingTime, ",", NumberToStr(NormalizeDouble(pendingPrice, Digits), ".+"), ",", type, ",", openTime, ",", NumberToStr(NormalizeDouble(openPrice, Digits), ".+"), ",", NumberToStr(NormalizeDouble(risk, 2), ".+"), ",", closeTime, ",", NumberToStr(NormalizeDouble(closePrice, Digits), ".+"), ",", NumberToStr(NormalizeDouble(stopLoss, Digits), ".+"), ",", closedBySL, ",", NumberToStr(swap, ".+"), ",", NumberToStr(commission, ".+"), ",", NumberToStr(profit, ".+")));
+      ArrayPushString(lines, StringConcatenate("rt.order.", i, "=", ticket, ",", level, ",", NumberToStr(NormalizeDouble(gridBase, Digits), ".+"), ",", pendingType, ",", pendingTime, ",", NumberToStr(NormalizeDouble(pendingPrice, Digits), ".+"), ",", type, ",", openTime, ",", NumberToStr(NormalizeDouble(openPrice, Digits), ".+"), ",", NumberToStr(NormalizeDouble(risk, 2), ".+"), ",", closeTime, ",", NumberToStr(NormalizeDouble(closePrice, Digits), ".+"), ",", NumberToStr(NormalizeDouble(stopLoss, Digits), ".+"), ",", clientSL, ",", closedBySL, ",", NumberToStr(swap, ".+"), ",", NumberToStr(commission, ".+"), ",", NumberToStr(profit, ".+")));
    }
 
 
@@ -3900,7 +3903,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
    double   rt.grid.maxDrawdown=-127.80
    datetime rt.grid.maxDrawdownTime=1328691713
    string   rt.grid.base=1331710960|1.56743,1331711010|1.56714
-   string   rt.order.0=62544847,1,1.32067,4,1330932525,1330932525,1.32067,0,0,1330936196,1.32067,0,0,0,1330938698,1.31897,1.31897,17,1,0,0,0,0,0,-17
+   string   rt.order.0=62544847,1,1.32067,4,1330932525,1330932525,1.32067,0,0,1330936196,1.32067,0,0,0,1330938698,1.31897,1.31897,17,1,0,0,0,0,0,0,-17
       int      ticket       = values[ 0];
       int      level        = values[ 1];
       double   gridBase     = values[ 2];
@@ -3914,10 +3917,11 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       datetime closeTime    = values[10];
       double   closePrice   = values[11];
       double   stopLoss     = values[12];
-      bool     closedBySL   = values[13];
-      double   swap         = values[14];
-      double   commission   = values[15];
-      double   profit       = values[16];
+      bool     clientSL     = values[13];
+      bool     closedBySL   = values[14];
+      double   swap         = values[15];
+      double   commission   = values[16];
+      double   profit       = values[17];
    */
    string values[], data[];
 
@@ -4100,7 +4104,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       if (ArraySize(orders.ticket) > i) /*&&*/ if (orders.ticket[i]!=0)     return(_false(catch("RestoreStatus.Runtime(44)   duplicate order index "+ key +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // Orderdaten
-      if (Explode(value, ",", values, NULL) != 17)                          return(_false(catch("RestoreStatus.Runtime(45)   illegal number of order details ("+ ArraySize(values) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (Explode(value, ",", values, NULL) != 18)                          return(_false(catch("RestoreStatus.Runtime(45)   illegal number of order details ("+ ArraySize(values) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // ticket
       strTicket = StringTrim(values[0]);
@@ -4202,38 +4206,43 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       if (LE(stopLoss, 0))                                                  return(_false(catch("RestoreStatus.Runtime(84)   illegal order stoploss "+ NumberToStr(stopLoss, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       if (NE(stopLoss, gridBase+(level-Sign(level))*GridSize*Pips, Digits)) return(_false(catch("RestoreStatus.Runtime(85)   grid base/stoploss mis-match "+ NumberToStr(gridBase, PriceFormat) +"/"+ NumberToStr(stopLoss, PriceFormat) +" (level "+ level +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
+      // clientSL
+      string strClientSL = StringTrim(values[13]);
+      if (!StringIsDigit(strClientSL))                                      return(_false(catch("RestoreStatus.Runtime(86)   illegal clientSL value \""+ strClientSL +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      bool clientSL = _bool(StrToInteger(strClientSL));
+
       // closedBySL
-      string strClosedBySL = StringTrim(values[13]);
-      if (!StringIsDigit(strClosedBySL))                                    return(_false(catch("RestoreStatus.Runtime(86)   illegal closedBySL value \""+ strClosedBySL +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      string strClosedBySL = StringTrim(values[14]);
+      if (!StringIsDigit(strClosedBySL))                                    return(_false(catch("RestoreStatus.Runtime(87)   illegal closedBySL value \""+ strClosedBySL +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       bool closedBySL = _bool(StrToInteger(strClosedBySL));
 
       // swap
-      string strSwap = StringTrim(values[14]);
-      if (!StringIsNumeric(strSwap))                                        return(_false(catch("RestoreStatus.Runtime(87)   illegal order swap \""+ strSwap +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      string strSwap = StringTrim(values[15]);
+      if (!StringIsNumeric(strSwap))                                        return(_false(catch("RestoreStatus.Runtime(88)   illegal order swap \""+ strSwap +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double swap = StrToDouble(strSwap);
-      if (type==OP_UNDEFINED && NE(swap, 0))                                return(_false(catch("RestoreStatus.Runtime(88)   pending order/swap mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(swap, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (type==OP_UNDEFINED && NE(swap, 0))                                return(_false(catch("RestoreStatus.Runtime(89)   pending order/swap mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(swap, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // commission
-      string strCommission = StringTrim(values[15]);
-      if (!StringIsNumeric(strCommission))                                  return(_false(catch("RestoreStatus.Runtime(89)   illegal order commission \""+ strCommission +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      string strCommission = StringTrim(values[16]);
+      if (!StringIsNumeric(strCommission))                                  return(_false(catch("RestoreStatus.Runtime(90)   illegal order commission \""+ strCommission +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double commission = StrToDouble(strCommission);
-      if (type==OP_UNDEFINED && NE(commission, 0))                          return(_false(catch("RestoreStatus.Runtime(90)   pending order/commission mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(commission, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (type==OP_UNDEFINED && NE(commission, 0))                          return(_false(catch("RestoreStatus.Runtime(91)   pending order/commission mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(commission, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // profit
-      string strProfit = StringTrim(values[16]);
-      if (!StringIsNumeric(strProfit))                                      return(_false(catch("RestoreStatus.Runtime(91)   illegal order profit \""+ strProfit +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      string strProfit = StringTrim(values[17]);
+      if (!StringIsNumeric(strProfit))                                      return(_false(catch("RestoreStatus.Runtime(92)   illegal order profit \""+ strProfit +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       double profit = StrToDouble(strProfit);
-      if (type==OP_UNDEFINED && NE(profit, 0))                              return(_false(catch("RestoreStatus.Runtime(92)   pending order/profit mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(profit, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      if (type==OP_UNDEFINED && NE(profit, 0))                              return(_false(catch("RestoreStatus.Runtime(93)   pending order/profit mis-match "+ OperationTypeToStr(pendingType) +"/"+ DoubleToStr(profit, 2) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
 
       // Daten speichern
-      Grid.SetData(i, ticket, level, gridBase, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, closedBySL, swap, commission, profit);
-      //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  gridBase="+ NumberToStr(gridBase, PriceFormat) +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime='"+ TimeToStr(pendingTime, TIME_FULL) +"'  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  type="+ OperationTypeToStr(type) +"  openTime='"+ TimeToStr(openTime, TIME_FULL) +"'  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  risk="+ DoubleToStr(risk, 2) +"  closeTime='"+ TimeToStr(closeTime, TIME_FULL) +"'  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  closedBySL="+ BoolToStr(closedBySL) +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
+      Grid.SetData(i, ticket, level, gridBase, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit);
+      //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  gridBase="+ NumberToStr(gridBase, PriceFormat) +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime='"+ TimeToStr(pendingTime, TIME_FULL) +"'  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  type="+ OperationTypeToStr(type) +"  openTime='"+ TimeToStr(openTime, TIME_FULL) +"'  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  risk="+ DoubleToStr(risk, 2) +"  closeTime='"+ TimeToStr(closeTime, TIME_FULL) +"'  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  clientSL="+ BoolToStr(clientSL) +"  closedBySL="+ BoolToStr(closedBySL) +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
    }
 
    ArrayResize(values, 0);
    ArrayResize(data,   0);
-   return(!IsLastError() && IsNoError(catch("RestoreStatus.Runtime(93)")));
+   return(!IsLastError() && IsNoError(catch("RestoreStatus.Runtime(94)")));
 }
 
 
@@ -4653,29 +4662,43 @@ bool Sync.UpdateOrder(int i, bool &lpPermChange) {
       orders.pendingPrice[i] = OrderOpenPrice();
    }
    else if (wasPending) {
-      orders.type      [i] = OrderType();
-      orders.openTime  [i] = OrderOpenTime();
-      orders.openPrice [i] = OrderOpenPrice();
-      orders.risk      [i] = CalculateActiveRisk(orders.level[i], orders.ticket[i], OrderOpenPrice(), OrderSwap(), OrderCommission());
+      orders.type        [i] = OrderType();
+      orders.openTime    [i] = OrderOpenTime();
+      orders.openPrice   [i] = OrderOpenPrice();
+      orders.risk        [i] = CalculateActiveRisk(orders.level[i], orders.ticket[i], OrderOpenPrice(), OrderSwap(), OrderCommission());
    }
-      orders.stopLoss  [i] = OrderStopLoss();
+
+   if (EQ(OrderStopLoss(), 0)) {
+      if (!orders.clientSL[i]) {
+         orders.stopLoss [i] = NormalizeDouble(grid.base + (orders.level[i]-Sign(orders.level[i])) * GridSize * Pips, Digits);
+         orders.clientSL [i] = true;
+         lpPermChange        = true;
+      }
+   }
+   else {
+      orders.stopLoss    [i] = OrderStopLoss();
+      if (orders.clientSL[i]) {
+         orders.clientSL [i] = false;
+         lpPermChange        = true;
+      }
+   }
 
    if (isClosed) {
-      orders.closeTime [i] = OrderCloseTime();
-      orders.closePrice[i] = OrderClosePrice();
-      orders.closedBySL[i] = IsOrderClosedBySL();
+      orders.closeTime   [i] = OrderCloseTime();
+      orders.closePrice  [i] = OrderClosePrice();
+      orders.closedBySL  [i] = IsOrderClosedBySL();
    }
 
    if (!isPending) {
-      orders.swap      [i] = OrderSwap();
-      orders.commission[i] = OrderCommission(); grid.commission = OrderCommission(); SS.LotSize();
-      orders.profit    [i] = OrderProfit();
+      orders.swap        [i] = OrderSwap();
+      orders.commission  [i] = OrderCommission(); grid.commission = OrderCommission(); SS.LotSize();
+      orders.profit      [i] = OrderProfit();
    }
 
    // (2) Variable lpPermChange aktualisieren
-   if      (wasPending) lpPermChange = isOpen || isClosed;
+   if      (wasPending) lpPermChange = lpPermChange || isOpen || isClosed;
    else if (  isClosed) lpPermChange = true;
-   else                 lpPermChange = NE(lastSwap, OrderSwap());
+   else                 lpPermChange = lpPermChange || NE(lastSwap, OrderSwap());
 
    return(!IsLastError() && IsNoError(catch("Sync.UpdateOrder(3)")));
 }
@@ -5228,7 +5251,7 @@ bool IsTest() {
  *
  * @return string
  */
-string LogMessage.PendingOrderFilled(int i) {
+string UpdateStatus.PendingFilledMsg(int i) {
    // #1 Stop Sell 0.1 GBPUSD at 1.5457'2 is filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
 
    string strType         = OperationTypeDescription(orders.pendingType[i]);
@@ -5256,12 +5279,12 @@ string LogMessage.PendingOrderFilled(int i) {
  *
  * @return string
  */
-string LogMessage.StopLossExecuted(int i) {
+string UpdateStatus.SLExecutedMsg(int i) {
    // #1 Sell 0.1 GBPUSD at 1.5457'2, stop loss 1.5457'2 is executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
 
    string strType      = OperationTypeDescription(OrderType());
    string strOpenPrice = NumberToStr(OrderOpenPrice(), PriceFormat);
-   string strStopLoss  = NumberToStr(OrderStopLoss(), PriceFormat);
+   string strStopLoss  = NumberToStr(orders.stopLoss[i], PriceFormat);
 
    string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, ", stop loss ", strStopLoss, " is executed");
 
@@ -5283,7 +5306,7 @@ string LogMessage.StopLossExecuted(int i) {
  *
  * @return string
  */
-string LogMessage.PositionClosed() {
+string UpdateStatus.PositionClosedMsg() {
    // #1 Sell 0.1 GBPUSD at 1.5457'2 is closed at 1.5457'2
 
    string strType       = OperationTypeDescription(OrderType());
@@ -5320,6 +5343,7 @@ int ResizeArrays(int size, bool reset=false) {
       ArrayResize(orders.closeTime,    size);
       ArrayResize(orders.closePrice,   size);
       ArrayResize(orders.stopLoss,     size);
+      ArrayResize(orders.clientSL,     size);
       ArrayResize(orders.closedBySL,   size);
       ArrayResize(orders.swap,         size);
       ArrayResize(orders.commission,   size);
@@ -5341,6 +5365,7 @@ int ResizeArrays(int size, bool reset=false) {
          ArrayInitialize(orders.closeTime,               0);
          ArrayInitialize(orders.closePrice,              0);
          ArrayInitialize(orders.stopLoss,                0);
+         ArrayInitialize(orders.clientSL,            false);
          ArrayInitialize(orders.closedBySL,          false);
          ArrayInitialize(orders.swap,                    0);
          ArrayInitialize(orders.commission,              0);
