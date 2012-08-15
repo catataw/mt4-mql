@@ -774,7 +774,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                else {                                                                           // Sequenzstop im STATUS_MONITORING oder autom. Close bei Beenden des Testers
                   if (status != STATUS_STOPPED)
                      status = STATUS_STOPPING;
-                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.PositionClosedMsg()));
+                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.PositionClosedMsg(i)));
                   grid.closedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
             }
@@ -904,9 +904,11 @@ string UpdateStatus.SLExecutedMsg(int i) {
 /**
  * Logmessage für geschlossene Position (Ticket muß selektiert sein).
  *
+ * @param  int i - Index der Order in den Grid-Arrays
+ *
  * @return string
  */
-string UpdateStatus.PositionClosedMsg() {
+string UpdateStatus.PositionClosedMsg(int i) {
    // #1 Sell 0.1 GBPUSD at 1.5457'2 is closed at 1.5457'2
 
    string strType       = OperationTypeDescription(OrderType());
