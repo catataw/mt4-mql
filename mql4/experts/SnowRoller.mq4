@@ -252,7 +252,7 @@ int onTick() {
    HandleEvent(EVENT_CHART_CMD);
 
 
-   static int    last.grid.level;
+   static int    last.grid.level, limits[], stops[];
    static double last.grid.base;
 
 
@@ -271,8 +271,10 @@ int onTick() {
    }
 
    // (4) ...oder läuft
-   else if (UpdateStatus()) {
+   else if (UpdateStatus(limits, stops)) {
       if      (IsStopSignal())                StopSequence();
+      //else if (ArraySize(limits) > 0)         ProcessTriggeredLimits(limits);
+      //else if (ArraySize(stops ) > 0)         ProcessTriggeredStops(stops);
       else if (grid.level != last.grid.level) UpdatePendingOrders();
       else if (NE(grid.base, last.grid.base)) UpdatePendingOrders();
    }
@@ -317,7 +319,8 @@ int onChartCommand(string commands[]) {
       switch (status) {
          case STATUS_WAITING    :
          case STATUS_PROGRESSING:
-            if (UpdateStatus())
+            int iNull[];
+            if (UpdateStatus(iNull, iNull))
                StopSequence();
             ShowStatus();
       }
@@ -529,8 +532,9 @@ bool StopSequence() {
 
 
    // (6) Daten aktualisieren und speichern
-   if (!UpdateStatus()) return(false);
-   if (  !SaveStatus()) return(false);
+   int iNull[];
+   if (!UpdateStatus(iNull, iNull)) return(false);
+   if (!SaveStatus()              ) return(false);
    RedrawStartStop();
 
 
@@ -666,9 +670,15 @@ bool ResumeSequence() {
 /**
  * Prüft und synchronisiert die im EA gespeicherten mit den aktuellen Laufzeitdaten.
  *
+ * @param int limits[] - Array-Indizes der Orders mit getriggerten client-seitigen Limits
+ * @param int stops[]  - Array-Indizes der Orders mit getriggerten client-seitigen Stops
+ *
  * @return bool - Erfolgsstatus
  */
-bool UpdateStatus() {
+bool UpdateStatus(int limits[], int stops[]) {
+   ArrayResize(limits, 0);
+   ArrayResize(stops,  0);
+
    if (__STATUS__CANCELLED || IsLastError()) return( false);
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_false(catch("UpdateStatus(1)", ERR_ILLEGAL_STATE)));
    if (status == STATUS_WAITING)             return( true);
@@ -690,7 +700,7 @@ bool UpdateStatus() {
          if (wasPending) {
             // beim letzten Aufruf Pending-Order
             if (OrderType() != orders.pendingType[i]) {                                         // Order wurde ausgeführt
-               if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.PendingFilledMsg(i)));
+               if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.OrderFilledMsg(i)));
                orders.type      [i] = OrderType();
                orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
@@ -725,9 +735,19 @@ bool UpdateStatus() {
          isClosed = OrderCloseTime() != 0;
 
          if (!isClosed) {                                                                       // weiterhin offenes Ticket
-            grid.floatingPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
-            if (orders.type[i] != OP_UNDEFINED)
+            if (orders.type[i] != OP_UNDEFINED) {
                openPositions = true;
+
+               if (orders.clientSL[i]) /*&&*/ if (IsStopLossTriggered(orders.type[i], orders.stopLoss[i])) {
+                  ArrayPushInt(stops, i);
+                  static bool done;
+                  if (!done) {
+                     debug("UpdateStatus()   triggered client-side stoploss "+ NumberToStr(orders.stopLoss[i], PriceFormat) +" found");
+                     done = true;
+                  }
+               }
+            }
+            grid.floatingPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
          }
          else {                                                                                 // jetzt geschlossenes Ticket: gestrichene Pending-Order oder geschlossene Position
             orders.closeTime [i] = OrderCloseTime();                                            // Bei Spikes kann eine Pending-Order ausgeführt *und* bereits geschlossen sein.
@@ -822,6 +842,79 @@ bool UpdateStatus() {
       UpdateStatusLocation();
 
    return(!IsLastError() && IsNoError(catch("UpdateStatus(3)")));
+}
+
+
+/**
+ * Logmessage für ausgeführte PendingOrder. Die ausgeführte Order muß selektiert sein.
+ *
+ * @param  int i - Index der Order in den Grid-Arrays
+ *
+ * @return string
+ */
+string UpdateStatus.OrderFilledMsg(int i) {
+   // #1 Stop Sell 0.1 GBPUSD at 1.5457'2 is filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+
+   string strType         = OperationTypeDescription(orders.pendingType[i]);
+   string strPendingPrice = NumberToStr(orders.pendingPrice[i], PriceFormat);
+
+   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strPendingPrice, " is filled");
+
+   if (NE(orders.pendingPrice[i], OrderOpenPrice())) {
+      double slippage = (OrderOpenPrice() - orders.pendingPrice[i])/Pip;
+         if (OrderType() == OP_SELL)
+            slippage = -slippage;
+      string strSlippage;
+      if (slippage > 0) strSlippage = StringConcatenate(DoubleToStr( slippage, Digits<<31>>31), " pip slippage");
+      else              strSlippage = StringConcatenate(DoubleToStr(-slippage, Digits<<31>>31), " pip positive slippage");
+      message = StringConcatenate(message, " at ", NumberToStr(OrderOpenPrice(), PriceFormat), " (", strSlippage, ")");
+   }
+   return(message);
+}
+
+
+/**
+ * Logmessage für ausgeführten StopLoss. Die ausgestoppte Order muß selektiert sein.
+ *
+ * @param  int i - Index der Order in den Grid-Arrays
+ *
+ * @return string
+ */
+string UpdateStatus.SLExecutedMsg(int i) {
+   // #1 Sell 0.1 GBPUSD at 1.5457'2, stop loss 1.5457'2 is executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+
+   string strType      = OperationTypeDescription(OrderType());
+   string strOpenPrice = NumberToStr(OrderOpenPrice(), PriceFormat);
+   string strStopLoss  = NumberToStr(orders.stopLoss[i], PriceFormat);
+
+   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, ", stop loss ", strStopLoss, " is executed");
+
+   if (NE(OrderClosePrice(), orders.stopLoss[i])) {
+      double slippage = (orders.stopLoss[i] - OrderClosePrice())/Pip;
+         if (OrderType() == OP_SELL)
+            slippage = -slippage;
+      string strSlippage;
+      if (slippage > 0) strSlippage = StringConcatenate(DoubleToStr( slippage, Digits<<31>>31), " pip slippage");
+      else              strSlippage = StringConcatenate(DoubleToStr(-slippage, Digits<<31>>31), " pip positive slippage");
+      message = StringConcatenate(message, " at ", NumberToStr(OrderClosePrice(), PriceFormat), " (", strSlippage, ")");
+   }
+   return(message);
+}
+
+
+/**
+ * Logmessage für geschlossene Position (Ticket muß selektiert sein).
+ *
+ * @return string
+ */
+string UpdateStatus.PositionClosedMsg() {
+   // #1 Sell 0.1 GBPUSD at 1.5457'2 is closed at 1.5457'2
+
+   string strType       = OperationTypeDescription(OrderType());
+   string strOpenPrice  = NumberToStr(OrderOpenPrice(), PriceFormat);
+   string strClosePrice = NumberToStr(OrderClosePrice(), PriceFormat);
+
+   return(StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, " is closed at ", strClosePrice, " (", StatusToStr(status), ")"));
 }
 
 
@@ -1207,6 +1300,22 @@ void UpdateWeekendStop() {
 
 
 /**
+ * Ob der angegebene client-seitige StopLoss-Wert erreicht wurde.
+ *
+ * @param  int    type  - StopLoss-Typ: OP_BUY | OP_SELL
+ * @param  double value - StopLoss-Wert
+ *
+ * @return bool
+ */
+bool IsStopLossTriggered(int type, double value) {
+   if (type == OP_BUY ) return(Bid >= value);                        // Long-StopLoss
+   if (type == OP_SELL) return(Ask <= value);                        // Short-StopLoss
+
+   return(_false(catch("IsStopLossTriggered()  illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
+}
+
+
+/**
  * Aktualisiert vorhandene, setzt fehlende und löscht unnötige PendingOrders.
  *
  * @return bool - Erfolgsstatus
@@ -1540,7 +1649,7 @@ bool Grid.AddPosition(int type, int level) {
    // (1) Position öffnen
    bool clientSL = false;
    /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
-   int    ticket   = SubmitMarketOrder(type, level, clientSL, oe);            // server-seitigiger StopLoss
+   int    ticket   = Grid.AddPosition.SubmitOrder(type, level, clientSL, oe); // server-seitiger StopLoss
    double stopLoss = oe.StopLoss(oe);
 
    if (ticket <= 0) {
@@ -1550,12 +1659,12 @@ bool Grid.AddPosition(int type, int level) {
 
       // (3) StopDistance violated
       if (ticket == -2) {
-         debug("Grid.AddPosition()   stop distance violated at level "+ level +"   sl="+ NumberToStr(stopLoss, PriceFormat));
-
          // Position ohne StopLoss öffnen (client-seitige Verwaltung)
          if (__LOG) log("Grid.AddPosition()   stop distance violated, installing client-side stoploss for level "+ level +" at "+ NumberToStr(stopLoss, PriceFormat));
+                  debug("Grid.AddPosition()   stop distance violated, installing client-side stoploss for level "+ level +" at "+ NumberToStr(stopLoss, PriceFormat));
+
          clientSL = true;
-         ticket = SubmitMarketOrder(type, level, clientSL, oe);               // client-seitigiger StopLoss
+         ticket = Grid.AddPosition.SubmitOrder(type, level, clientSL, oe);    // client-seitiger StopLoss
          if (ticket <= 0)
             return(false);
       }
@@ -1594,6 +1703,78 @@ bool Grid.AddPosition(int type, int level) {
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openTime, openPrice, risk, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit))
       return(false);
    return(IsNoError(catch("Grid.AddPosition(5)")));
+}
+
+
+/**
+ * Öffnet eine Position zum aktuellen Preis.
+ *
+ * @param  int  type     - Ordertyp: OP_BUY | OP_SELL
+ * @param  int  level    - Gridlevel der Order
+ * @param  bool clientSL - ob der StopLoss client-seitig verwaltet wird
+ * @param  int  oe[]     - Ausführungsdetails (ORDER_EXECUTION)
+ *
+ * @return int - Ticket der Order (positiver Wert) oder ein anderer Wert, falls ein Fehler auftrat
+ *
+ *
+ *  Return-Codes mit besonderer Bedeutung:
+ *  --------------------------------------
+ *  -1: der StopLoss verletzt den aktuellen Spread
+ *  -2: der StopLoss verletzt die StopDistance des Brokers
+ */
+int Grid.AddPosition.SubmitOrder(int type, int level, bool clientSL, /*ORDER_EXECUTION*/int oe[]) {
+   if (__STATUS__CANCELLED || IsLastError()) return(0);
+   if (IsTest()) /*&&*/ if (!IsTesting())    return(_ZERO(catch("Grid.AddPosition.SubmitOrder(1)", ERR_ILLEGAL_STATE)));
+   if (status != STATUS_STARTING)            return(_ZERO(catch("Grid.AddPosition.SubmitOrder(2)   cannot submit market order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+
+   if (type == OP_BUY) {
+      if (level <= 0) return(_ZERO(catch("Grid.AddPosition.SubmitOrder(3)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   }
+   else if (type == OP_SELL) {
+      if (level >= 0) return(_ZERO(catch("Grid.AddPosition.SubmitOrder(4)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   }
+   else               return(_ZERO(catch("Grid.AddPosition.SubmitOrder(5)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   double   price       = NULL;
+   double   slippage    = 0.1;
+   double   stopLoss    = ifDouble(clientSL, NULL, grid.base + (level-Sign(level)) * GridSize * Pips);
+   double   takeProfit  = NULL;
+   int      magicNumber = CreateMagicNumber(level);
+   datetime expires     = NULL;
+   string   comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
+   color    markerColor = ifInt(level > 0, CLR_LONG, CLR_SHORT);
+   int      oeFlags     = NULL;
+   /*
+   #define ODM_NONE     0     // - keine Anzeige -
+   #define ODM_STOPS    1     // Pending,       ClosedBySL
+   #define ODM_PYRAMID  2     // Pending, Open,             Closed
+   #define ODM_ALL      3     // Pending, Open, ClosedBySL, Closed
+   */
+   if (orderDisplayMode == ODM_NONE)
+      markerColor = CLR_NONE;
+
+   if (!clientSL)
+      oeFlags |= OE_CATCH_INVALID_STOP;                              // bei server-seitigem StopLoss ERR_INVALID_STOP abfangen
+
+   int ticket = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
+   if (ticket > 0)
+      return(ticket);
+
+   int error = oe.Error(oe);
+
+   if (_bool(oeFlags & OE_CATCH_INVALID_STOP)) {
+      if (error == ERR_INVALID_STOP) {
+         // Der StopLoss liegt entweder innerhalb des Spreads oder innerhalb der StopDistance.
+         bool insideSpread;
+         if (type == OP_BUY) insideSpread = GE(oe.StopLoss(oe), oe.Bid(oe));
+         else                insideSpread = LE(oe.StopLoss(oe), oe.Ask(oe));
+         if (insideSpread)
+            return(-1);
+         return(-2);
+      }
+   }
+
+   return(_ZERO(SetLastError(error)));
 }
 
 
@@ -1908,78 +2089,6 @@ int SubmitStopOrder(int type, int level, int oe[]) {
    if (IsError(catch("SubmitStopOrder(6)")))
       return(-1);
    return(ticket);
-}
-
-
-/**
- * Öffnet eine Position zum aktuellen Preis. Aufruf nur in Grid.AddPosition()
- *
- * @param  int  type     - Ordertyp: OP_BUY | OP_SELL
- * @param  int  level    - Gridlevel der Order
- * @param  bool clientSL - ob der StopLoss client-seitig verwaltet wird
- * @param  int  oe[]     - Ausführungsdetails (ORDER_EXECUTION)
- *
- * @return int - Ticket der Order (positiver Wert) oder ein anderer Wert, falls ein Fehler auftrat
- *
- *
- *  Return-Codes mit besonderer Bedeutung:
- *  --------------------------------------
- *  -1: der StopLoss verletzt den aktuellen Spread
- *  -2: der StopLoss verletzt die StopDistance des Brokers
- */
-int SubmitMarketOrder(int type, int level, bool clientSL, /*ORDER_EXECUTION*/int oe[]) {
-   if (__STATUS__CANCELLED || IsLastError()) return(0);
-   if (IsTest()) /*&&*/ if (!IsTesting())    return(_ZERO(catch("SubmitMarketOrder(1)", ERR_ILLEGAL_STATE)));
-   if (status != STATUS_STARTING)            return(_ZERO(catch("SubmitMarketOrder(2)   cannot submit market order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
-
-   if (type == OP_BUY) {
-      if (level <= 0) return(_ZERO(catch("SubmitMarketOrder(3)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   }
-   else if (type == OP_SELL) {
-      if (level >= 0) return(_ZERO(catch("SubmitMarketOrder(4)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   }
-   else               return(_ZERO(catch("SubmitMarketOrder(5)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
-
-   double   price       = NULL;
-   double   slippage    = 0.1;
-   double   stopLoss    = ifDouble(clientSL, NULL, grid.base + (level-Sign(level)) * GridSize * Pips);
-   double   takeProfit  = NULL;
-   int      magicNumber = CreateMagicNumber(level);
-   datetime expires     = NULL;
-   string   comment     = StringConcatenate("SR.", sequenceId, ".", NumberToStr(level, "+."));
-   color    markerColor = ifInt(level > 0, CLR_LONG, CLR_SHORT);
-   int      oeFlags     = NULL;
-   /*
-   #define ODM_NONE     0     // - keine Anzeige -
-   #define ODM_STOPS    1     // Pending,       ClosedBySL
-   #define ODM_PYRAMID  2     // Pending, Open,             Closed
-   #define ODM_ALL      3     // Pending, Open, ClosedBySL, Closed
-   */
-   if (orderDisplayMode == ODM_NONE)
-      markerColor = CLR_NONE;
-
-   if (!clientSL)
-      oeFlags |= OE_CATCH_INVALID_STOP;                              // bei server-seitigem StopLoss ERR_INVALID_STOP abfangen
-
-   int ticket = OrderSendEx(Symbol(), type, LotSize, price, slippage, stopLoss, takeProfit, comment, magicNumber, expires, markerColor, oeFlags, oe);
-   if (ticket > 0)
-      return(ticket);
-
-   int error = oe.Error(oe);
-
-   if (_bool(oeFlags & OE_CATCH_INVALID_STOP)) {
-      if (error == ERR_INVALID_STOP) {
-         // Der StopLoss liegt entweder innerhalb des Spreads oder innerhalb der StopDistance.
-         bool insideSpread;
-         if (type == OP_BUY) insideSpread = GE(oe.StopLoss(oe), oe.Bid(oe));
-         else                insideSpread = LE(oe.StopLoss(oe), oe.Ask(oe));
-         if (insideSpread)
-            return(-1);
-         return(-2);
-      }
-   }
-
-   return(_ZERO(SetLastError(error)));
 }
 
 
@@ -5241,79 +5350,6 @@ bool ChartMarker.PositionClosed(int i) {
  */
 bool IsTest() {
    return(test || IsTesting());
-}
-
-
-/**
- * Logmessage für ausgeführte PendingOrder. Die ausgeführte Order muß selektiert sein.
- *
- * @param  int i - Index der Order in den Grid-Arrays
- *
- * @return string
- */
-string UpdateStatus.PendingFilledMsg(int i) {
-   // #1 Stop Sell 0.1 GBPUSD at 1.5457'2 is filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
-
-   string strType         = OperationTypeDescription(orders.pendingType[i]);
-   string strPendingPrice = NumberToStr(orders.pendingPrice[i], PriceFormat);
-
-   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strPendingPrice, " is filled");
-
-   if (NE(orders.pendingPrice[i], OrderOpenPrice())) {
-      double slippage = (OrderOpenPrice() - orders.pendingPrice[i])/Pip;
-         if (OrderType() == OP_SELL)
-            slippage = -slippage;
-      string strSlippage;
-      if (slippage > 0) strSlippage = StringConcatenate(DoubleToStr( slippage, Digits<<31>>31), " pip slippage");
-      else              strSlippage = StringConcatenate(DoubleToStr(-slippage, Digits<<31>>31), " pip positive slippage");
-      message = StringConcatenate(message, " at ", NumberToStr(OrderOpenPrice(), PriceFormat), " (", strSlippage, ")");
-   }
-   return(message);
-}
-
-
-/**
- * Logmessage für ausgeführten StopLoss. Die ausgestoppte Order muß selektiert sein.
- *
- * @param  int i - Index der Order in den Grid-Arrays
- *
- * @return string
- */
-string UpdateStatus.SLExecutedMsg(int i) {
-   // #1 Sell 0.1 GBPUSD at 1.5457'2, stop loss 1.5457'2 is executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
-
-   string strType      = OperationTypeDescription(OrderType());
-   string strOpenPrice = NumberToStr(OrderOpenPrice(), PriceFormat);
-   string strStopLoss  = NumberToStr(orders.stopLoss[i], PriceFormat);
-
-   string message = StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, ", stop loss ", strStopLoss, " is executed");
-
-   if (NE(OrderClosePrice(), orders.stopLoss[i])) {
-      double slippage = (orders.stopLoss[i] - OrderClosePrice())/Pip;
-         if (OrderType() == OP_SELL)
-            slippage = -slippage;
-      string strSlippage;
-      if (slippage > 0) strSlippage = StringConcatenate(DoubleToStr( slippage, Digits<<31>>31), " pip slippage");
-      else              strSlippage = StringConcatenate(DoubleToStr(-slippage, Digits<<31>>31), " pip positive slippage");
-      message = StringConcatenate(message, " at ", NumberToStr(OrderClosePrice(), PriceFormat), " (", strSlippage, ")");
-   }
-   return(message);
-}
-
-
-/**
- * Logmessage für geschlossene Position (Ticket muß selektiert sein).
- *
- * @return string
- */
-string UpdateStatus.PositionClosedMsg() {
-   // #1 Sell 0.1 GBPUSD at 1.5457'2 is closed at 1.5457'2
-
-   string strType       = OperationTypeDescription(OrderType());
-   string strOpenPrice  = NumberToStr(OrderOpenPrice(), PriceFormat);
-   string strClosePrice = NumberToStr(OrderClosePrice(), PriceFormat);
-
-   return(StringConcatenate("#", OrderTicket(), " ", strType, " ", NumberToStr(OrderLots(), ".+"), " ", OrderSymbol(), " at ", strOpenPrice, " is closed at ", strClosePrice, " (", StatusToStr(status), ")"));
 }
 
 

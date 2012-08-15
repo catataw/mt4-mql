@@ -50,7 +50,8 @@ int onDeinitChartClose() {
 
    // (2) Nicht im Tester:  Der Status kann sich seit dem letzten Tick geändert haben.
    if (!IsTest()) /*&&*/ if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
-      UpdateStatus();
+      int iNull[];
+      UpdateStatus(iNull, iNull);
       SaveStatus();
    }
    StoreStickyStatus();                                              // für Terminal-Restart oder Profile-Wechsel
@@ -66,7 +67,8 @@ int onDeinitChartClose() {
 int onDeinitRemove() {
    // Der Status kann sich seit dem letzten Tick geändert haben.
    if (!IsTest()) /*&&*/ if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
-      UpdateStatus();
+      int iNull[];
+      UpdateStatus(iNull, iNull);
       SaveStatus();
    }
    return(last_error);
