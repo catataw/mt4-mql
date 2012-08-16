@@ -8,6 +8,7 @@
  *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
  *                                                                                                    *
  *  - bidirektional trailendes Grid implementieren                                                    *
+ *  - Equity-Charts generieren                                                                        *
  *  - PendingOrders nicht per Tick trailen                                                            *
  *                                                                                                    *
  *  - Start/StopConditions vervollständigen                                                           *
@@ -15,7 +16,6 @@
  *  - StartCondition @level() implementieren                                                          *
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
- *  - Equity-Charts generieren                                                                        *
  *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment                                         *
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird   *
