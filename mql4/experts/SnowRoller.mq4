@@ -841,7 +841,7 @@ bool UpdateStatus(int limits[], int stops[]) {
 
 
 /**
- * Logmessage für ausgeführte PendingOrder. Die ausgeführte Order muß selektiert sein.
+ * Logmessage für ausgeführte PendingOrder
  *
  * @param  int i - Index der Order in den Grid-Arrays
  *
