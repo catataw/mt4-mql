@@ -5,8 +5,6 @@
  *
  *  TODO:
  *  -----
- *  - STOPLEVEL-Verletzung bei Resume abfangen                                                        *
- *                                                                                                    *
  *  - bidirektional trailendes Grid implementieren                                                    *
  *  - Equity-Charts generieren                                                                        *
  *  - PendingOrders nicht per Tick trailen                                                            *
