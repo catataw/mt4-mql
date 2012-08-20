@@ -699,7 +699,7 @@ bool UpdateStatus(int limits[], int stops[]) {
          if (wasPending) {
             // beim letzten Aufruf Pending-Order
             if (OrderType() != orders.pendingType[i]) {                                         // Order wurde ausgeführt
-               if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.OrderFillMsg(i)));
+               if (__LOG) log(UpdateStatus.OrderFillMsg(i));
                orders.type      [i] = OrderType();
                orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
@@ -738,7 +738,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                openPositions = true;
 
                if (orders.clientSL[i]) /*&&*/ if (IsStopLossTriggered(orders.type[i], orders.stopLoss[i])) {
-                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.SLTriggerMsg(i)));
+                  if (__LOG) log(UpdateStatus.SLTriggerMsg(i));
                   ArrayPushInt(stops, i);
                }
             }
@@ -759,7 +759,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                ChartMarker.PositionClosed(i);
 
                if (orders.closedBySL[i]) {                                                      // ausgestoppt
-                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.SLExecuteMsg(i)));
+                  if (__LOG) log(UpdateStatus.SLExecuteMsg(i));
                   grid.level      -= Sign(orders.level[i]);
                   grid.stops++;
                   grid.stopsPL    += orders.swap[i] + orders.commission[i] + orders.profit[i]; SS.Grid.Stops();
@@ -770,7 +770,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                else {                                                                           // Sequenzstop im STATUS_MONITORING oder autom. Close bei Beenden des Testers
                   if (status != STATUS_STOPPED)
                      status = STATUS_STOPPING;
-                  if (__LOG) log(StringConcatenate("UpdateStatus()   ", UpdateStatus.PositionCloseMsg(i)));
+                  if (__LOG) log(UpdateStatus.PositionCloseMsg(i));
                   grid.closedPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
                }
             }
@@ -848,12 +848,12 @@ bool UpdateStatus(int limits[], int stops[]) {
  * @return string
  */
 string UpdateStatus.OrderFillMsg(int i) {
-   // #1 Stop Sell 0.1 GBPUSD at 1.5457'2 is filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+   // UpdateStatus()   #1 Stop Sell 0.1 GBPUSD at 1.5457'2 is filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
 
    string strType         = OperationTypeDescription(orders.pendingType[i]);
    string strPendingPrice = NumberToStr(orders.pendingPrice[i], PriceFormat);
 
-   string message = StringConcatenate("#", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strPendingPrice, " is filled");
+   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strPendingPrice, " is filled");
 
    if (NE(orders.pendingPrice[i], orders.openPrice[i])) {
       double slippage = (orders.openPrice[i] - orders.pendingPrice[i])/Pip;
@@ -876,9 +876,9 @@ string UpdateStatus.OrderFillMsg(int i) {
  * @return string
  */
 string UpdateStatus.SLTriggerMsg(int i) {
-   // #1 (level -3) client-side stop-loss at 1.5457'2 was triggered
+   // UpdateStatus()   #1 (level -3) client-side stop-loss at 1.5457'2 was triggered
 
-   return(StringConcatenate("#", orders.ticket[i], " (level ", orders.level[i], ") client-side stop-loss at ", NumberToStr(orders.stopLoss[i], PriceFormat), " was triggered"));
+   return(StringConcatenate("UpdateStatus()   #", orders.ticket[i], " (level ", orders.level[i], ") client-side stop-loss at ", NumberToStr(orders.stopLoss[i], PriceFormat), " was triggered"));
 }
 
 
@@ -890,13 +890,13 @@ string UpdateStatus.SLTriggerMsg(int i) {
  * @return string
  */
 string UpdateStatus.SLExecuteMsg(int i) {
-   // #1 Sell 0.1 GBPUSD at 1.5457'2, stop-loss 1.5457'2 is executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+   // UpdateStatus()   #1 Sell 0.1 GBPUSD at 1.5457'2, stop-loss 1.5457'2 is executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
 
    string strType      = OperationTypeDescription(orders.type[i]);
    string strOpenPrice = NumberToStr(orders.openPrice[i], PriceFormat);
    string strStopLoss  = NumberToStr(orders.stopLoss [i], PriceFormat);
 
-   string message = StringConcatenate("#", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, ", stop-loss ", strStopLoss, " is executed");
+   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, ", stop-loss ", strStopLoss, " is executed");
 
    if (NE(orders.closePrice[i], orders.stopLoss[i])) {
       double slippage = (orders.stopLoss[i] - orders.closePrice[i])/Pip;
@@ -919,13 +919,13 @@ string UpdateStatus.SLExecuteMsg(int i) {
  * @return string
  */
 string UpdateStatus.PositionCloseMsg(int i) {
-   // #1 Sell 0.1 GBPUSD at 1.5457'2 is closed at 1.5457'2
+   // UpdateStatus()   #1 Sell 0.1 GBPUSD at 1.5457'2 is closed at 1.5457'2
 
    string strType       = OperationTypeDescription(orders.type[i]);
    string strOpenPrice  = NumberToStr(orders.openPrice[i], PriceFormat);
    string strClosePrice = NumberToStr(orders.closePrice[i], PriceFormat);
 
-   return(StringConcatenate("#", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, " is closed at ", strClosePrice, " (", StatusToStr(status), ")"));
+   return(StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, " is closed at ", strClosePrice, " (", StatusToStr(status), ")"));
 }
 
 
