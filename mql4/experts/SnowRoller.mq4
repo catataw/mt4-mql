@@ -740,7 +740,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                if (orders.clientSL[i]) /*&&*/ if (IsStopLossTriggered(orders.type[i], orders.stopLoss[i])) {
                   if (__LOG) log(UpdateStatus.SLTriggerMsg(i));
                   ArrayPushInt(stops, i);
-               }
+            }
             }
             grid.floatingPL += orders.swap[i] + orders.commission[i] + orders.profit[i];
          }
@@ -894,7 +894,7 @@ string UpdateStatus.SLExecuteMsg(int i) {
 
    string strType      = OperationTypeDescription(orders.type[i]);
    string strOpenPrice = NumberToStr(orders.openPrice[i], PriceFormat);
-   string strStopLoss  = NumberToStr(orders.stopLoss [i], PriceFormat);
+   string strStopLoss  = NumberToStr(orders.stopLoss[i], PriceFormat);
 
    string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, ", stop-loss ", strStopLoss, " is executed");
 
@@ -1584,7 +1584,7 @@ bool UpdateOpenPositions(datetime &lpOpenTime, double &lpOpenPrice) {
 
 
    if (grid.level > 0) {
-      for (level=1; level <= grid.level; level++) {                              // TODO: STOPLEVEL-Fehler im letzten Level abfangen und behandeln
+      for (level=1; level <= grid.level; level++) {
          i = Grid.FindOpenPosition(level);
          if (i == -1) {
             if (!Grid.AddPosition(OP_BUY, level))
@@ -1600,7 +1600,7 @@ bool UpdateOpenPositions(datetime &lpOpenTime, double &lpOpenPrice) {
       openPrice /= Abs(grid.level);                                              // avg(OpenPrice)
    }
    else if (grid.level < 0) {
-      for (level=-1; level >= grid.level; level--) {                             // TODO: STOPLEVEL-Fehler im letzten Level abfangen und behandeln
+      for (level=-1; level >= grid.level; level--) {
          i = Grid.FindOpenPosition(level);
          if (i == -1) {
             if (!Grid.AddPosition(OP_SELL, level))
