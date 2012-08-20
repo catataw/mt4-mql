@@ -147,7 +147,7 @@ double   stop.profitAbs.value;
 bool     stop.profitPercent.condition;
 double   stop.profitPercent.value;
 
-datetime weekend.stop.condition   = D'1970.01.01 23:37';    // StopSequence()-Zeit vor Wochenend-Pause (Freitags abend)
+datetime weekend.stop.condition   = D'1970.01.01 23:05';    // StopSequence()-Zeit vor Wochenend-Pause (Freitags abend)
 datetime weekend.stop.time;
 bool     weekend.stop.triggered;
 
