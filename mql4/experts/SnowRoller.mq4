@@ -848,12 +848,12 @@ bool UpdateStatus(int limits[], int stops[]) {
  * @return string
  */
 string UpdateStatus.OrderFillMsg(int i) {
-   // UpdateStatus()   #1 Stop Sell 0.1 GBPUSD at 1.5457'2 is filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+   // #1 Stop Sell 0.1 GBPUSD at 1.5457'2 was filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
 
    string strType         = OperationTypeDescription(orders.pendingType[i]);
    string strPendingPrice = NumberToStr(orders.pendingPrice[i], PriceFormat);
 
-   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strPendingPrice, " is filled");
+   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strPendingPrice, " was filled");
 
    if (NE(orders.pendingPrice[i], orders.openPrice[i])) {
       double slippage = (orders.openPrice[i] - orders.pendingPrice[i])/Pip;
@@ -876,7 +876,7 @@ string UpdateStatus.OrderFillMsg(int i) {
  * @return string
  */
 string UpdateStatus.SLTriggerMsg(int i) {
-   // UpdateStatus()   #1 (level -3) client-side stop-loss at 1.5457'2 was triggered
+   // #1 (level -3) client-side stop-loss at 1.5457'2 was triggered
 
    return(StringConcatenate("UpdateStatus()   #", orders.ticket[i], " (level ", orders.level[i], ") client-side stop-loss at ", NumberToStr(orders.stopLoss[i], PriceFormat), " was triggered"));
 }
@@ -890,13 +890,13 @@ string UpdateStatus.SLTriggerMsg(int i) {
  * @return string
  */
 string UpdateStatus.SLExecuteMsg(int i) {
-   // UpdateStatus()   #1 Sell 0.1 GBPUSD at 1.5457'2, stop-loss 1.5457'2 is executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+   // #1 Sell 0.1 GBPUSD at 1.5457'2, stop-loss 1.5457'2 was executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
 
    string strType      = OperationTypeDescription(orders.type[i]);
    string strOpenPrice = NumberToStr(orders.openPrice[i], PriceFormat);
    string strStopLoss  = NumberToStr(orders.stopLoss[i], PriceFormat);
 
-   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, ", stop-loss ", strStopLoss, " is executed");
+   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, ", stop-loss ", strStopLoss, " was executed");
 
    if (NE(orders.closePrice[i], orders.stopLoss[i])) {
       double slippage = (orders.stopLoss[i] - orders.closePrice[i])/Pip;
@@ -919,13 +919,13 @@ string UpdateStatus.SLExecuteMsg(int i) {
  * @return string
  */
 string UpdateStatus.PositionCloseMsg(int i) {
-   // UpdateStatus()   #1 Sell 0.1 GBPUSD at 1.5457'2 is closed at 1.5457'2
+   // #1 Sell 0.1 GBPUSD at 1.5457'2 was closed at 1.5457'2
 
    string strType       = OperationTypeDescription(orders.type[i]);
    string strOpenPrice  = NumberToStr(orders.openPrice[i], PriceFormat);
    string strClosePrice = NumberToStr(orders.closePrice[i], PriceFormat);
 
-   return(StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, " is closed at ", strClosePrice, " (", StatusToStr(status), ")"));
+   return(StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, " was closed at ", strClosePrice, " (", StatusToStr(status), ")"));
 }
 
 
@@ -1400,7 +1400,7 @@ bool ProcessClientStops(int stops[]) {
          orders.commission[i] = oe.Commission(oe);
          orders.profit    [i] = oe.Profit    (oe);
 
-         if (__LOG) log(StringConcatenate("ProcessClientStops()   ", ProcessClientStops.SLExecuteMsg(i)));
+         if (__LOG) log(ProcessClientStops.SLExecuteMsg(i));
          ChartMarker.PositionClosed(i);
 
          grid.level      -= Sign(orders.level[i]);
@@ -1436,7 +1436,7 @@ string ProcessClientStops.SLExecuteMsg(int i) {
    string strOpenPrice = NumberToStr(orders.openPrice[i], PriceFormat);
    string strStopLoss  = NumberToStr(orders.stopLoss [i], PriceFormat);
 
-   string message = StringConcatenate("#", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, ", client-side stop-loss ", strStopLoss, " executed");
+   string message = StringConcatenate("ProcessClientStops()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, ", client-side stop-loss ", strStopLoss, " executed");
 
    if (NE(orders.closePrice[i], orders.stopLoss[i])) {
       double slippage = (orders.stopLoss[i] - orders.closePrice[i])/Pip;
