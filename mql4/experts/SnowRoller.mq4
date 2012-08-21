@@ -7,8 +7,8 @@
  *  -----
  *  - bidirektional trailendes Grid implementieren                                                    *
  *  - Equity-Charts generieren                                                                        *
- *  - PendingOrders nicht per Tick trailen                                                            *
  *                                                                                                    *
+ *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Start/StopConditions vervollständigen                                                           *
  *  - ResumeCondition implementieren                                                                  *
  *  - StartCondition @level() implementieren                                                          *
@@ -89,15 +89,15 @@ extern /*sticky*/ string Sequence.ID             = "";
 extern            string GridDirection           = "Bidirectional* | Long | Short | Long+Short";
 extern            int    GridSize                = 20;
 extern            double LotSize                 = 0.1;
-extern            string StartConditions         = "";                     // @limit(1.33) && @time(2012.03.12 12:00)
-extern            string StopConditions          = "@profit(20%)";         // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
+extern            string StartConditions         = "";                  // @limit(1.33) && @time(2012.03.12 12:00)
+extern            string StopConditions          = "@profit(20%)";      // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
 extern /*sticky*/ color  Breakeven.Color         = Blue;
-extern /*sticky*/ string Sequence.StatusLocation = "";                     // Unterverzeichnis
+extern /*sticky*/ string Sequence.StatusLocation = "";                  // Unterverzeichnis
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-       /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;              // sticky-Variablen werden im Chart zwischengespeichert, sie überleben
-       /*sticky*/ int    orderDisplayMode        = ODM_NONE;               // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
+       /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;           // Sticky-Variablen werden im Chart zwischengespeichert, sie überleben
+       /*sticky*/ int    orderDisplayMode        = ODM_NONE;            // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
        /*sticky*/ int    breakeven.Width         = 0;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -166,7 +166,7 @@ double   grid.commission;                                   // Commission-Betrag
 
 int      grid.stops;                                        // Anzahl der bisher getriggerten Stops                                       SS Stops:       Feld 1
 double   grid.stopsPL;                                      // P/L der ausgestoppten Positionen (0 oder negativ)                          SS Stops:       Feld 2
-double   grid.closedPL;                                     // P/L bei StopSequence() geschlossener Positionen (realizedPL = stopsPL + closedPL)
+double   grid.closedPL;                                     // P/L per StopSequence() geschlossener Positionen (realizedPL = stopsPL + closedPL)
 double   grid.floatingPL;                                   // P/L offener Positionen
 double   grid.totalPL;                                      // Gesamt-P/L der Sequenz:  realizedPL + floatingPL                           SS Profit/Loss: Feld 1
 double   grid.activeRisk;                                   // aktuelles Risiko der aktiven Level (0 oder positiv)
@@ -416,7 +416,7 @@ bool StopSequence() {
    if (status!=STATUS_WAITING && status!=STATUS_PROGRESSING && status!=STATUS_STOPPING) return(_false(catch("StopSequence(2)   cannot stop "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
 
-   if (firstTick && !firstTickConfirmed) {                                       // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick && !firstTickConfirmed) {                                             // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - StopSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -449,24 +449,24 @@ bool StopSequence() {
    ArrayResize(openPositions, 0);
 
    for (int i=sizeOfTickets-1; i >= 0; i--) {
-      if (orders.closeTime[i] == 0) {                                         // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
+      if (orders.closeTime[i] == 0) {                                                  // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
          if (orders.ticket[i] < 0) {
-            if (!Grid.DropOrder(i))                                           // client-seitige Pending-Orders können sofort gelöscht werden
+            if (!Grid.DropData(i))                                                     // client-seitige Pending-Orders können sofort intern gelöscht werden
                return(false);
             sizeOfTickets--;
             continue;
          }
          if (!OrderSelectByTicket(orders.ticket[i], "StopSequence(5)"))
             return(false);
-         if (OrderCloseTime() == 0) {                                         // offene Tickets je nach Typ zwischenspeichern
-            if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendingOrders, orders.ticket[i]);
+         if (OrderCloseTime() == 0) {                                                  // offene Tickets je nach Typ zwischenspeichern
+            if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendingOrders, i);  // Grid.DeleteOrder() erwartet den Array-Index
             else                                      ArrayPushInt(openPositions, orders.ticket[i]);
          }
       }
    }
 
 
-   // (3) zuerst server-seitige Pending-Orders streichen (ansonsten könnten sie während OrderClose() getriggert werden)
+   // (3) zuerst Pending-Orders streichen (ansonsten könnten sie während OrderClose() getriggert werden)
    int sizeOfPendingOrders = ArraySize(pendingOrders);
 
    for (i=0; i < sizeOfPendingOrders; i++) {
@@ -475,7 +475,7 @@ bool StopSequence() {
    }
 
 
-   // (4) dann offene Positionen schließen                                       // TODO: Wurde eine PendingOrder inzwischen getriggert, muß sie hier mit verarbeitet werden.
+   // (4) dann offene Positionen schließen                                             // TODO: Wurde eine PendingOrder inzwischen getriggert, muß sie hier mit verarbeitet werden.
    int sizeOfOpenPositions = ArraySize(openPositions);
    int n = ArraySize(sequenceStopTimes) - 1;
 
@@ -486,13 +486,13 @@ bool StopSequence() {
       if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, oeFlags, oes))
          return(_false(SetLastError(stdlib_PeekLastError())));
 
-      sequenceStopTimes [n] = oes.CloseTime (oes, 0) + 1;                        // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehrdeutigkeiten
-      sequenceStopPrices[n] = oes.ClosePrice(oes, 0);                            // bei der Sortierung der Breakeven-Events zu vermeiden.
+      sequenceStopTimes [n] = oes.CloseTime (oes, 0) + 1;                              // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehrdeutigkeiten
+      sequenceStopPrices[n] = oes.ClosePrice(oes, 0);                                  // bei der Sortierung der Breakeven-Events zu vermeiden.
 
       for (i=0; i < sizeOfOpenPositions; i++) {
          int pos = SearchIntArray(orders.ticket, openPositions[i]);
 
-         orders.closeTime [pos] = oes.CloseTime (oes, i);                        // bei allen Tickets gleich
+         orders.closeTime [pos] = oes.CloseTime (oes, i);                              // bei allen Tickets gleich
          orders.closePrice[pos] = oes.ClosePrice(oes, i);
          orders.closedBySL[pos] = false;
 
@@ -505,7 +505,7 @@ bool StopSequence() {
        //grid.valueAtRisk ändert sich nicht bei StopSequence()
       }
       /*
-      grid.floatingPL      = ...                                                 // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte dort automatisch aktualisiert.
+      grid.floatingPL      = ...                                                       // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte dort automatisch aktualisiert.
       grid.totalPL         = ...
       grid.maxProfit       = ...
       grid.maxProfitTime   = ...
@@ -514,8 +514,8 @@ bool StopSequence() {
       */
    }
    else {
-      sequenceStopTimes [n] = TimeCurrent() + 1;                                 // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehrdeutigkeiten
-      sequenceStopPrices[n] = (Bid + Ask)/2;                                     // bei der Sortierung der Breakeven-Events zu vermeiden.
+      sequenceStopTimes [n] = TimeCurrent() + 1;                                       // Wir setzen sequenceStopTime 1 sec. in die Zukunft, um Mehrdeutigkeiten
+      sequenceStopPrices[n] = (Bid + Ask)/2;                                           // bei der Sortierung der Breakeven-Events zu vermeiden.
       if      (grid.base < sequenceStopPrices[n]) sequenceStopPrices[n] = Bid;
       else if (grid.base > sequenceStopPrices[n]) sequenceStopPrices[n] = Ask;
       sequenceStopPrices[n] = NormalizeDouble(sequenceStopPrices[n], Digits);
@@ -762,7 +762,7 @@ bool UpdateStatus(int limits[], int stops[]) {
 
             if (orders.type[i] == OP_UNDEFINED) {                                               // gestrichene Pending-Order im STATUS_MONITORING
                //ChartMarker.OrderDeleted(i);                                                   // TODO: implementieren
-               Grid.DropOrder(i);
+               Grid.DropData(i);
                sizeOfTickets--; i--;
                continue;
             }
@@ -1494,11 +1494,7 @@ bool UpdatePendingOrders() {
                nextOrderExists = true;
                continue;
             }
-            if (orders.ticket[i] < 0) {
-               if (!Grid.DropOrder(i))
-                  return(false);
-            }
-            else if (!Grid.DeleteOrder(orders.ticket[i]))
+            if (!Grid.DeleteOrder(i))
                return(false);
             ordersChanged = true;
          }
@@ -1519,11 +1515,7 @@ bool UpdatePendingOrders() {
                nextOrderExists = true;
                continue;
             }
-            if (orders.ticket[i] < 0) {
-               if (!Grid.DropOrder(i))
-                  return(false);
-            }
-            else if (!Grid.DeleteOrder(orders.ticket[i]))
+            if (!Grid.DeleteOrder(i))
                return(false);
             ordersChanged = true;
          }
@@ -1560,11 +1552,7 @@ bool UpdatePendingOrders() {
                continue;
             }
             // unnötige Pending-Orders löschen
-            if (orders.ticket[i] < 0) {
-               if (!Grid.DropOrder(i))
-                  return(false);
-            }
-            else if (!Grid.DeleteOrder(orders.ticket[i]))
+            if (!Grid.DeleteOrder(i))
                return(false);
             ordersChanged = true;
          }
@@ -2047,12 +2035,12 @@ int SubmitMarketOrder(int type, int level, bool clientSL, /*ORDER_EXECUTION*/int
  * @return bool - Erfolgsstatus
  */
 bool Grid.TrailPendingOrder(int i) {
-   if (__STATUS__CANCELLED || IsLastError())    return( false);
-   if (IsTest()) /*&&*/ if (!IsTesting())       return(_false(catch("Grid.TrailPendingOrder(1)", ERR_ILLEGAL_STATE)));
-   if (status != STATUS_PROGRESSING)            return(_false(catch("Grid.TrailPendingOrder(2)   cannot trail order of "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("Grid.TrailPendingOrder(3)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (orders.type[i] != OP_UNDEFINED)          return(_false(catch("Grid.TrailPendingOrder(4)   cannot trail position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
-   if (orders.closeTime[i] != 0)                return(_false(catch("Grid.TrailPendingOrder(5)   cannot trail cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+   if (__STATUS__CANCELLED || IsLastError())   return( false);
+   if (IsTest()) /*&&*/ if (!IsTesting())      return(_false(catch("Grid.TrailPendingOrder(1)", ERR_ILLEGAL_STATE)));
+   if (status != STATUS_PROGRESSING)           return(_false(catch("Grid.TrailPendingOrder(2)   cannot trail order of "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (i < 0 || i >= ArraySize(orders.ticket)) return(_false(catch("Grid.TrailPendingOrder(3)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (orders.type[i] != OP_UNDEFINED)         return(_false(catch("Grid.TrailPendingOrder(4)   cannot trail position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+   if (orders.closeTime[i] != 0)               return(_false(catch("Grid.TrailPendingOrder(5)   cannot trail cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
    if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
@@ -2090,46 +2078,45 @@ bool Grid.TrailPendingOrder(int i) {
 
 
 /**
- * Streicht die angegebene Order beim Broker und entfernt sie aus den Datenarrays des Grids.
+ * Streicht die angegebene Order und entfernt sie aus den Datenarrays des Grids.
  *
- * @param  int ticket - Orderticket
+ * @param  int i - Index der Order in den Datenarrays
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.DeleteOrder(int ticket) {
+bool Grid.DeleteOrder(int i) {
    if (__STATUS__CANCELLED || IsLastError())                  return( false);
    if (IsTest()) /*&&*/ if (!IsTesting())                     return(_false(catch("Grid.DeleteOrder(1)", ERR_ILLEGAL_STATE)));
    if (status!=STATUS_PROGRESSING && status!=STATUS_STOPPING) return(_false(catch("Grid.DeleteOrder(2)   cannot delete order of "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
-
-   // Position in Datenarrays bestimmen
-   int i = SearchIntArray(orders.ticket, ticket);
-   if (i == -1)
-      return(_false(catch("Grid.DeleteOrder(3)   #"+ ticket +" not found in grid arrays", ERR_RUNTIME_ERROR)));
+   if (i < 0 || i >= ArraySize(orders.ticket))                return(_false(catch("Grid.DeleteOrder(3)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (orders.type[i] != OP_UNDEFINED)                        return(_false(catch("Grid.DeleteOrder(4)   cannot delete "+ ifString(orders.closeTime[i]==0, "open", "closed") +" "+ OperationTypeDescription(orders.type[i]) +" position", ERR_RUNTIME_ERROR)));
 
    if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(__NAME__ +" - Grid.DeleteOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ ticket +" now?", MB_ICONQUESTION|MB_OKCANCEL);
+         int button = ForceMessageBox(__NAME__ +" - Grid.DeleteOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order at level "+ orders.level[i] +" now?", MB_ICONQUESTION|MB_OKCANCEL);
          if (button != IDOK) {
             __STATUS__CANCELLED = true;
-            return(_false(catch("Grid.DeleteOrder(4)")));
+            return(_false(catch("Grid.DeleteOrder(5)")));
          }
          RefreshRates();
       }
    }
    firstTickConfirmed = true;
 
-   int oeFlags = NULL;
-   /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
+   if (orders.ticket[i] > 0) {
+      int oeFlags = NULL;
+      /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
 
-   if (!OrderDeleteEx(ticket, CLR_NONE, oeFlags, oe))
-      return(_false(SetLastError(stdlib_PeekLastError())));
+      if (!OrderDeleteEx(orders.ticket[i], CLR_NONE, oeFlags, oe))
+         return(_false(SetLastError(oe.Error(oe))));
+      ArrayResize(oe, 0);
+   }
 
-   if (!Grid.DropOrder(i))
+   if (!Grid.DropData(i))
       return(false);
 
-   ArrayResize(oe, 0);
-   return(IsNoError(catch("Grid.DeleteOrder(5)")));
+   return(IsNoError(catch("Grid.DeleteOrder(6)")));
 }
 
 
@@ -2233,14 +2220,14 @@ bool Grid.SetData(int position, int ticket, int level, double gridBase, int pend
 
 
 /**
- * Entfernt die Daten der angegebenen Order aus den Datenarrays des Grids.
+ * Entfernt den Datensatz der angegebenen Order aus den Datenarrays.
  *
  * @param  int i - Index der Order in den Datenarrays
  *
  * @return bool - Erfolgsstatus
  */
-bool Grid.DropOrder(int i) {
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("Grid.DropOrder(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+bool Grid.DropData(int i) {
+   if (i < 0 || i >= ArraySize(orders.ticket)) return(_false(catch("Grid.DropData(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    // Einträge entfernen
    ArraySpliceInts   (orders.ticket,       i, 1);
@@ -2266,7 +2253,7 @@ bool Grid.DropOrder(int i) {
    ArraySpliceDoubles(orders.commission,   i, 1);
    ArraySpliceDoubles(orders.profit,       i, 1);
 
-   return(IsNoError(catch("Grid.DropOrder(2)")));
+   return(IsNoError(catch("Grid.DropData(2)")));
 }
 
 
@@ -4591,7 +4578,7 @@ bool SynchronizeStatus() {
             permStatusChange = true;
 
          if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]!=0) {
-            if (!Grid.DropOrder(i))
+            if (!Grid.DropData(i))
                return(false);
             sizeOfTickets--;
             permStatusChange = true;
@@ -5465,7 +5452,7 @@ int CountClosedPositions() {
  */
 bool ChartMarker.OrderSent(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (i < 0 || i >= ArraySize(orders.ticket))  return(_false(catch("ChartMarker.OrderSent()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define ODM_NONE     0     // - keine Anzeige -
    #define ODM_STOPS    1     // Pending,       ClosedBySL
@@ -5500,7 +5487,7 @@ bool ChartMarker.OrderSent(int i) {
  */
 bool ChartMarker.OrderFilled(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (i < 0 || i >= ArraySize(orders.ticket))  return(_false(catch("ChartMarker.OrderFilled()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define ODM_NONE     0     // - keine Anzeige -
    #define ODM_STOPS    1     // Pending,       ClosedBySL
@@ -5528,7 +5515,7 @@ bool ChartMarker.OrderFilled(int i) {
  */
 bool ChartMarker.PositionClosed(int i) {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) return(true);
-   if (i < 0 || ArraySize(orders.ticket) < i+1) return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (i < 0 || i >= ArraySize(orders.ticket))  return(_false(catch("ChartMarker.PositionClosed()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    /*
    #define ODM_NONE     0     // - keine Anzeige -
    #define ODM_STOPS    1     // Pending,       ClosedBySL
