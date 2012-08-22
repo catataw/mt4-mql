@@ -1743,7 +1743,7 @@ bool Grid.AddOrder(int type, int level) {
 
    // (1) Order in den Markt legen
    /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
-   int ticket = Grid.AddOrder.SubmitOrder(type, level, oe);
+   int ticket = SubmitStopOrder(type, level, oe);
 
    double pendingPrice = oe.OpenPrice(oe);
 
@@ -1809,18 +1809,18 @@ bool Grid.AddOrder(int type, int level) {
  *  -1: der StopPrice verletzt den aktuellen Spread
  *  -2: der StopPrice verletzt die StopDistance des Brokers
  */
-int Grid.AddOrder.SubmitOrder(int type, int level, int oe[]) {
+int SubmitStopOrder(int type, int level, int oe[]) {
    if (__STATUS__CANCELLED || IsLastError())                  return(-1);
-   if (IsTest()) /*&&*/ if (!IsTesting())                     return(_int(-1, catch("Grid.AddOrder.SubmitOrder(1)", ERR_ILLEGAL_STATE)));
-   if (status!=STATUS_PROGRESSING && status!=STATUS_STARTING) return(_int(-1, catch("Grid.AddOrder.SubmitOrder(2)   cannot submit stop order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (IsTest()) /*&&*/ if (!IsTesting())                     return(_int(-1, catch("SubmitStopOrder(1)", ERR_ILLEGAL_STATE)));
+   if (status!=STATUS_PROGRESSING && status!=STATUS_STARTING) return(_int(-1, catch("SubmitStopOrder(2)   cannot submit stop order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
    if (type == OP_BUYSTOP) {
-      if (level <= 0) return(_int(-1, catch("Grid.AddOrder.SubmitOrder(3)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (level <= 0) return(_int(-1, catch("SubmitStopOrder(3)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
    }
    else if (type == OP_SELLSTOP) {
-      if (level >= 0) return(_int(-1, catch("Grid.AddOrder.SubmitOrder(4)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (level >= 0) return(_int(-1, catch("SubmitStopOrder(4)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
    }
-   else               return(_int(-1, catch("Grid.AddOrder.SubmitOrder(5)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   else               return(_int(-1, catch("SubmitStopOrder(5)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    double   stopPrice   = grid.base + level * GridSize * Pips;
    double   slippage    = NULL;
