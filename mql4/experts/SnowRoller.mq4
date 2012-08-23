@@ -360,7 +360,7 @@ bool StartSequence() {
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_false(catch("StartSequence(1)", ERR_ILLEGAL_STATE)));
    if (status != STATUS_WAITING)             return(_false(catch("StartSequence(2)   cannot start "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
-   if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                  // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - StartSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -382,8 +382,8 @@ bool StartSequence() {
    datetime startTime  = TimeCurrent();
    double   startPrice = NormalizeDouble((Bid + Ask)/2, Digits);
 
-   ArrayPushInt   (sequenceStartTimes, startTime-1);                 // Wir setzen startTime 1 sec. in die Vergangenheit, um Mehrdeutigkeiten
-   ArrayPushDouble(sequenceStartPrices, startPrice);                 // bei der Sortierung der Breakeven-Events zu vermeiden.
+   ArrayPushInt   (sequenceStartTimes, startTime-1);                                   // Wir setzen startTime 1 sec. in die Vergangenheit, um Mehrdeutigkeiten
+   ArrayPushDouble(sequenceStartPrices, startPrice);                                   // bei der Sortierung der Breakeven-Events zu vermeiden.
    ArrayPushInt   (sequenceStopTimes,            0);
    ArrayPushDouble(sequenceStopPrices,           0);
 
@@ -394,7 +394,7 @@ bool StartSequence() {
 
 
    // (2) Gridbasis setzen
-   Grid.BaseReset(startTime, startPrice);                            // zeitlich immer nach sequenceStartTime
+   Grid.BaseReset(startTime, startPrice);                                              // zeitlich immer nach sequenceStartTime
 
 
    // (3) Stop-Orders in den Markt legen
@@ -414,12 +414,12 @@ bool StartSequence() {
  * @return bool - Erfolgsstatus: ob die Sequenz erfolgreich gestoppt wurde
  */
 bool StopSequence() {
-   if (__STATUS__CANCELLED || IsLastError())                                            return( false);
-   if (IsTest()) /*&&*/ if (!IsTesting())                                               return(_false(catch("StopSequence(1)", ERR_ILLEGAL_STATE)));
-   if (status!=STATUS_WAITING && status!=STATUS_PROGRESSING && status!=STATUS_STOPPING) return(_false(catch("StopSequence(2)   cannot stop "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (__STATUS__CANCELLED || IsLastError())                                                              return( false);
+   if (IsTest()) /*&&*/ if (!IsTesting())                                                                 return(_false(catch("StopSequence(1)", ERR_ILLEGAL_STATE)));
+   if (status!=STATUS_WAITING) /*&&*/ if (status!=STATUS_PROGRESSING) /*&&*/ if (status!=STATUS_STOPPING) return(_false(catch("StopSequence(2)   cannot stop "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
 
-   if (firstTick && !firstTickConfirmed) {                                             // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                                    // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - StopSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -570,11 +570,11 @@ bool StopSequence() {
  * @return bool - Erfolgsstatus
  */
 bool ResumeSequence() {
-   if (__STATUS__CANCELLED || IsLastError())              return( false);
-   if (IsTest()) /*&&*/ if (!IsTesting())                 return(_false(catch("ResumeSequence(1)", ERR_ILLEGAL_STATE)));
-   if (status!=STATUS_STOPPED && status!=STATUS_STARTING) return(_false(catch("ResumeSequence(2)   cannot resume "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (__STATUS__CANCELLED || IsLastError())                       return( false);
+   if (IsTest()) /*&&*/ if (!IsTesting())                          return(_false(catch("ResumeSequence(1)", ERR_ILLEGAL_STATE)));
+   if (status!=STATUS_STOPPED) /*&&*/ if (status!=STATUS_STARTING) return(_false(catch("ResumeSequence(2)   cannot resume "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
-   if (firstTick && !firstTickConfirmed) {                                    // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - ResumeSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to resume the sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -1026,8 +1026,8 @@ bool IsOrderClosedBySL() {
  * @return bool - ob alle konfigurierten Startbedingungen erfüllt sind
  */
 bool IsStartSignal() {
-   if (__STATUS__CANCELLED || status!=STATUS_WAITING)
-      return(false);
+   if (__STATUS__CANCELLED)                                       return(false);
+   if (status!=STATUS_WAITING) /*&&*/ if (status!=STATUS_STOPPED) return(false);
 
    static bool isTriggered = false;
 
@@ -1101,8 +1101,8 @@ bool IsResumeSignal() {
  * @return bool
  */
 bool IsWeekendResumeSignal() {
-   if (__STATUS__CANCELLED || (status!=STATUS_STOPPED && status!=STATUS_STARTING && status!=STATUS_PROGRESSING))
-      return(false);
+   if (__STATUS__CANCELLED)                                                                               return(false);
+   if (status!=STATUS_STOPPED) /*&&*/ if (status!=STATUS_STARTING) /*&&*/ if (status!=STATUS_PROGRESSING) return(false);
 
    if (weekend.resume.triggered) return( true);
    if (weekend.resume.time == 0) return(false);
@@ -1289,8 +1289,8 @@ bool IsStopSignal(bool checkWeekend=true) {
  * @return bool
  */
 bool IsWeekendStopSignal() {
-   if (__STATUS__CANCELLED || (status!=STATUS_PROGRESSING && status!=STATUS_STOPPING && status!=STATUS_STOPPED))
-      return(false);
+   if (__STATUS__CANCELLED)                                                                               return(false);
+   if (status!=STATUS_PROGRESSING) /*&&*/ if (status!=STATUS_STOPPING) /*&&*/ if (status!=STATUS_STOPPED) return(false);
 
    if (weekend.stop.triggered) return( true);
    if (weekend.stop.time == 0) return(false);
@@ -1406,7 +1406,7 @@ bool ProcessClientStops(int stops[]) {
       if (orders.ticket[i] < 0) {
          if (orders.type[i] != OP_UNDEFINED) return(_false(catch("ProcessClientStops(4)   client-side "+ OperationTypeDescription(orders.pendingType[i]) +" order at index "+ i +" already marked as open", ERR_ILLEGAL_STATE)));
 
-         if (firstTick && !firstTickConfirmed) {                                       // Bestätigungsprompt bei Traderequest beim ersten Tick
+         if (firstTick) /*&&*/ if (!firstTickConfirmed) {                              // Bestätigungsprompt bei Traderequest beim ersten Tick
             if (!IsTesting()) {
                ForceSound("notify.wav");
                button = ForceMessageBox(__NAME__ +" - ProcessClientStops()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to execute a triggered "+ OperationTypeDescription(orders.pendingType[i]) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -1437,7 +1437,7 @@ bool ProcessClientStops(int stops[]) {
          if (orders.type     [i] == OP_UNDEFINED) return(_false(catch("ProcessClientStops(6)   #"+ orders.ticket[i] +" with client-side stop-loss still marked as pending", ERR_ILLEGAL_STATE)));
          if (orders.closeTime[i] != 0           ) return(_false(catch("ProcessClientStops(7)   #"+ orders.ticket[i] +" with client-side stop-loss already marked as closed", ERR_ILLEGAL_STATE)));
 
-         if (firstTick && !firstTickConfirmed) {                                       // Bestätigungsprompt bei Traderequest beim ersten Tick
+         if (firstTick) /*&&*/ if (!firstTickConfirmed) {                              // Bestätigungsprompt bei Traderequest beim ersten Tick
             if (!IsTesting()) {
                ForceSound("notify.wav");
                button = ForceMessageBox(__NAME__ +" - ProcessClientStops()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to execute a triggered stop-loss now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -1727,7 +1727,7 @@ bool Grid.AddOrder(int type, int level) {
    if (status != STATUS_PROGRESSING)         return(_false(catch("Grid.AddOrder(2)   cannot add order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
 
-   if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                  // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - Grid.AddOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a new "+ OperationTypeDescription(type) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -1810,9 +1810,9 @@ bool Grid.AddOrder(int type, int level) {
  *  -2: der StopPrice verletzt die StopDistance des Brokers
  */
 int SubmitStopOrder(int type, int level, int oe[]) {
-   if (__STATUS__CANCELLED || IsLastError())                  return(-1);
-   if (IsTest()) /*&&*/ if (!IsTesting())                     return(_int(-1, catch("SubmitStopOrder(1)", ERR_ILLEGAL_STATE)));
-   if (status!=STATUS_PROGRESSING && status!=STATUS_STARTING) return(_int(-1, catch("SubmitStopOrder(2)   cannot submit stop order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (__STATUS__CANCELLED || IsLastError())                           return(-1);
+   if (IsTest()) /*&&*/ if (!IsTesting())                              return(_int(-1, catch("SubmitStopOrder(1)", ERR_ILLEGAL_STATE)));
+   if (status!=STATUS_PROGRESSING) /*&&*/ if (status!=STATUS_STARTING) return(_int(-1, catch("SubmitStopOrder(2)   cannot submit stop order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
    if (type == OP_BUYSTOP) {
       if (level <= 0) return(_int(-1, catch("SubmitStopOrder(3)   illegal parameter level = "+ level +" for "+ OperationTypeDescription(type), ERR_INVALID_FUNCTION_PARAMVALUE)));
@@ -1876,7 +1876,7 @@ bool Grid.AddPosition(int type, int level) {
 
    if (level == 0)                           return(_false(catch("Grid.AddPosition(3)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   if (firstTick && !firstTickConfirmed) {                                       // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                              // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - Grid.AddPosition()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a Market "+ OperationTypeDescription(type) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -2045,7 +2045,7 @@ bool Grid.TrailPendingOrder(int i) {
    if (orders.type[i] != OP_UNDEFINED)         return(_false(catch("Grid.TrailPendingOrder(4)   cannot trail position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
    if (orders.closeTime[i] != 0)               return(_false(catch("Grid.TrailPendingOrder(5)   cannot trail cancelled order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
-   if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                  // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - Grid.TrailPendingOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to modify the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ orders.ticket[i] +" now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -2088,13 +2088,13 @@ bool Grid.TrailPendingOrder(int i) {
  * @return bool - Erfolgsstatus
  */
 bool Grid.DeleteOrder(int i) {
-   if (__STATUS__CANCELLED || IsLastError())                  return( false);
-   if (IsTest()) /*&&*/ if (!IsTesting())                     return(_false(catch("Grid.DeleteOrder(1)", ERR_ILLEGAL_STATE)));
-   if (status!=STATUS_PROGRESSING && status!=STATUS_STOPPING) return(_false(catch("Grid.DeleteOrder(2)   cannot delete order of "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
-   if (i < 0 || i >= ArraySize(orders.ticket))                return(_false(catch("Grid.DeleteOrder(3)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (orders.type[i] != OP_UNDEFINED)                        return(_false(catch("Grid.DeleteOrder(4)   cannot delete "+ ifString(orders.closeTime[i]==0, "open", "closed") +" "+ OperationTypeDescription(orders.type[i]) +" position", ERR_RUNTIME_ERROR)));
+   if (__STATUS__CANCELLED || IsLastError())                           return( false);
+   if (IsTest()) /*&&*/ if (!IsTesting())                              return(_false(catch("Grid.DeleteOrder(1)", ERR_ILLEGAL_STATE)));
+   if (status!=STATUS_PROGRESSING) /*&&*/ if (status!=STATUS_STOPPING) return(_false(catch("Grid.DeleteOrder(2)   cannot delete order of "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
+   if (i < 0 || i >= ArraySize(orders.ticket))                         return(_false(catch("Grid.DeleteOrder(3)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (orders.type[i] != OP_UNDEFINED)                                 return(_false(catch("Grid.DeleteOrder(4)   cannot delete "+ ifString(orders.closeTime[i]==0, "open", "closed") +" "+ OperationTypeDescription(orders.type[i]) +" position", ERR_RUNTIME_ERROR)));
 
-   if (firstTick && !firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                  // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - Grid.DeleteOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order at level "+ orders.level[i] +" now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -3289,7 +3289,7 @@ bool ValidateConfiguration(bool interactive) {
    //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
    if (parameterChange)
       if (StartConditions != last.StartConditions)
-         if (status!=STATUS_UNINITIALIZED && status!=STATUS_WAITING)
+         if (status!=STATUS_UNINITIALIZED) /*&&*/ if (status!=STATUS_WAITING)
                                                    return(_false(HandleConfigError("ValidateConfiguration(16)", "Cannot change StartConditions of "+ StatusDescription(status) +" sequence", interactive)));
    start.conditions      = false;
    start.limit.condition = false;
@@ -4695,7 +4695,7 @@ bool SynchronizeStatus() {
       pendingOrder   = orders.type[i] == OP_UNDEFINED;
       openPosition   = !pendingOrder && orders.closeTime[i]==0;
       closedPosition = !pendingOrder && !openPosition;
-      closedBySL     = closedPosition && orders.closedBySL[i];
+      closedBySL     =  closedPosition && orders.closedBySL[i];
 
 
       // TODO: Was ist das für ein Nonsense hier???
@@ -5528,8 +5528,8 @@ bool ChartMarker.PositionClosed(int i) {
    color markerColor = CLR_NONE;
 
    if (orderDisplayMode != ODM_NONE) {
-      if ( orders.closedBySL[i] && orderDisplayMode!=ODM_PYRAMID) markerColor = CLR_CLOSE;
-      if (!orders.closedBySL[i] && orderDisplayMode>=ODM_PYRAMID) markerColor = CLR_CLOSE;
+      if ( orders.closedBySL[i]) /*&&*/ if (orderDisplayMode!=ODM_PYRAMID) markerColor = CLR_CLOSE;
+      if (!orders.closedBySL[i]) /*&&*/ if (orderDisplayMode>=ODM_PYRAMID) markerColor = CLR_CLOSE;
    }
 
    if (!ChartMarker.PositionClosed_B(orders.ticket[i], Digits, markerColor, orders.type[i], LotSize, Symbol(), orders.openTime[i], orders.openPrice[i], orders.closeTime[i], orders.closePrice[i]))
