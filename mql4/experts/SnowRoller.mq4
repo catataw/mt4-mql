@@ -6,11 +6,11 @@
  *  TODO:
  *  -----
  *  - ERR_INVALID_STOP in UpdatePendingOrders()                                                       *
- *  - BE-Anzeige reparieren                                                                           *
- *  - Equity-Anzeige in Start/Stop-Markern                                                            *
  *  - Equity-Charts generieren                                                                        *
  *  - bidirektional trailendes Grid implementieren                                                    *
  *                                                                                                    *
+ *  - Equity-Anzeige in Start/Stop-Markern                                                            *
+ *  - BE-Anzeige reparieren                                                                           *
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Start/StopConditions vervollständigen                                                           *
  *  - ResumeCondition implementieren                                                                  *
