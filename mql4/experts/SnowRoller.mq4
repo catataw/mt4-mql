@@ -2058,8 +2058,8 @@ bool Grid.TrailPendingOrder(int i) {
    }
    firstTickConfirmed = true;
 
-   double stopPrice   = grid.base +      orders.level[i]  * GridSize * Pips;
-   double stopLoss    = stopPrice - Sign(orders.level[i]) * GridSize * Pips;
+   double stopPrice   = NormalizeDouble(grid.base +      orders.level[i]  * GridSize * Pips, Digits);
+   double stopLoss    = NormalizeDouble(stopPrice - Sign(orders.level[i]) * GridSize * Pips, Digits);
    color  markerColor = CLR_PENDING;
    int    oeFlags     = NULL;
 
@@ -2068,12 +2068,12 @@ bool Grid.TrailPendingOrder(int i) {
 
    /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
    if (!OrderModifyEx(orders.ticket[i], stopPrice, stopLoss, NULL, NULL, markerColor, oeFlags, oe))
-      return(_false(SetLastError(stdlib_PeekLastError())));
+      return(_false(SetLastError(oe.Error(oe))));
 
    orders.gridBase    [i] = NormalizeDouble(grid.base, Digits);
    orders.pendingTime [i] = TimeCurrent();
-   orders.pendingPrice[i] = NormalizeDouble(stopPrice, Digits);
-   orders.stopLoss    [i] = NormalizeDouble(stopLoss,  Digits);
+   orders.pendingPrice[i] = stopPrice;
+   orders.stopLoss    [i] = stopLoss;
 
    ArrayResize(oe, 0);
    return(IsNoError(catch("Grid.TrailPendingOrder(8)")));
