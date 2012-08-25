@@ -213,15 +213,24 @@ int afterInit() {
 
 
 /**
+ * Die Statusbox besteht aus 3 nebeneinander angeordneten "Quadraten" ('g' in Webdings).
+ *
  * @return int - Fehlerstatus
  */
 int CreateStatusBox() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
-   color color.Background = C'248,248,248';                          // entspricht Chart-Background
+   /*
+   int x[]      = {0, 97, 152};                                      // eine Zeile für Start/StopCondition
+   int fontSize = 73;
+   */
+   int x[]      = {0, 108, 141};                                     // zwei Zeilen für Start/StopCondition
+   int fontSize = 81;
 
-   // (1)
+   color color.Background = C'248,248,248';                          // = Chart-Background
+
+   // 1. Quadrat
    string label = StringConcatenate(__NAME__, ".statusbox.1");
    if (ObjectFind(label) != 0) {
       if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
@@ -229,12 +238,12 @@ int CreateStatusBox() {
       //PushChartObject(label);
    }
    ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
-   ObjectSet(label, OBJPROP_XDISTANCE,  0);
-   ObjectSet(label, OBJPROP_YDISTANCE, 23);
-   ObjectSetText(label, "g", 73, "Webdings", color.Background);
+   ObjectSet(label, OBJPROP_XDISTANCE, x[0]);
+   ObjectSet(label, OBJPROP_YDISTANCE, 23  );
+   ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
 
 
-   // (2)
+   // 2. Quadrat
    label = StringConcatenate(__NAME__, ".statusbox.2");
    if (ObjectFind(label) != 0) {
       if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
@@ -242,12 +251,12 @@ int CreateStatusBox() {
       //PushChartObject(label);
    }
    ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
-   ObjectSet(label, OBJPROP_XDISTANCE, 97);
-   ObjectSet(label, OBJPROP_YDISTANCE, 23);
-   ObjectSetText(label, "g", 73, "Webdings", color.Background);
+   ObjectSet(label, OBJPROP_XDISTANCE, x[1]);
+   ObjectSet(label, OBJPROP_YDISTANCE, 23  );
+   ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
 
 
-   // (3)
+   // 3. Quadrat (überlappt 2.)
    label = StringConcatenate(__NAME__, ".statusbox.3");
    if (ObjectFind(label) != 0) {
       if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
@@ -255,9 +264,9 @@ int CreateStatusBox() {
       //PushChartObject(label);
    }
    ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
-   ObjectSet(label, OBJPROP_XDISTANCE, 152);
-   ObjectSet(label, OBJPROP_YDISTANCE,  23);
-   ObjectSetText(label, "g", 73, "Webdings", color.Background);
+   ObjectSet(label, OBJPROP_XDISTANCE, x[2]);
+   ObjectSet(label, OBJPROP_YDISTANCE, 23  );
+   ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
 
    return(catch("CreateStatusBox(4)"));
 }

@@ -22,27 +22,30 @@ int onDeinitUndefined() {
  * - Chart geschlossen                       -oder-
  * - Template wird neu geladen               -oder-
  * - Terminal-Shutdown                       -oder-
- * - im Tester nach Auslösen des "Stop"-Buttons oder nach Chart ->Close
+ * - im Tester nach Betätigen des "Stop"-Buttons oder nach Chart ->Close
  *
  * @return int - Fehlerstatus
  *
  *
- * NOTE: Der "Stop"-Button kann bei Fehler oder nach Testabschluß automatisch ausgelöst worden sein.
+ * NOTE: Der "Stop"-Button des Testers kann intern betätigt worden sein (nach einem Fehler oder nach Testabschluß).
  * -----
  */
 int onDeinitChartClose() {
-   // (1) Tester
+   // (1) Im Tester
    if (IsTesting()) {
       __STATUS__CANCELLED = true;
-
-      // !!! Vorsicht: Der EA-Status ist "undefined", alle Variablen können Datenmüll enthalten !!!
-
-      // Das Flag "StatusFile nicht löschen" kann nicht über Variablen oder den Chart kommuniziert werden: => globale Variable mit Thread-ID
-
+      /**
+       * !!! Vorsicht: Die start()-Funktion wurde gewaltsam beendet, die primitiven Variablen können Datenmüll enthalten !!!
+       *
+       * Das Flag "Statusfile nicht löschen" kann nicht über primitive Variablen oder den Chart kommuniziert werden.
+       *  => Strings/Arrays testen (ansonsten globale Variable mit Thread-ID)
+       */
       if (IsLastError()) {
-         // Statusfile löschen (der Fenstertitel des Testers kann nicht zurückgesetzt werden: SendMessage() führt in deinit() zu Deadlock)
+         // Statusfile löschen
          FileDelete(GetMqlStatusFileName());
          GetLastError();                                             // falls in FileDelete() ein Fehler auftrat
+
+         // Der Fenstertitel des Testers kann nicht zurückgesetzt werden: SendMessage() führt in deinit() zu Deadlock.
       }
       return(last_error);
    }
@@ -102,7 +105,6 @@ int onDeinitParameterChange() {
    last.StopConditions          = StringConcatenate(StopConditions,          "");
    last.Breakeven.Color         = Breakeven.Color;
    return(-1);
-
 }
 
 

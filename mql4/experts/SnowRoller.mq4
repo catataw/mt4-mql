@@ -12,7 +12,6 @@
  *  - BE-Anzeige reparieren                                                                           *
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Start/StopConditions vervollständigen                                                           *
- *  - ResumeCondition implementieren                                                                  *
  *  - StartCondition @level() implementieren                                                          *
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
@@ -29,7 +28,6 @@
  *  - Logging aller MessageBoxen
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
- *  - die letzten 100 Ticks rund um Traderequest/Ausführung tracken und grafisch aufbereiten
  *  - Upload der Statusdatei implementieren
  *  - Laufzeitumgebung auf Server auslagern
  *  - STATUS_MONITORING implementieren
@@ -2382,11 +2380,11 @@ int ShowStatus() {
                                                                                                      NL,
                            "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction, NL,
                            "LotSize:         ", str.LotSize,                                         NL,
+                           "Stops:           ", str.grid.stops, " ", str.grid.stopsPL,               NL,
                            str.startConditions,                                                             // enthält NL, wenn gesetzt
                            str.stopConditions,                                                              // enthält NL, wenn gesetzt
-                           "Stops:           ", str.grid.stops, " ", str.grid.stopsPL,               NL,
-                           "Breakeven:   ", str.grid.breakeven,                                      NL,
-                           "Profit/Loss:    ", str.grid.totalPL, "  ", str.grid.plStatistics,        NL);
+                           "Breakeven:   ",     str.grid.breakeven,                                  NL,
+                           "Profit/Loss:    ",  str.grid.totalPL, "  ", str.grid.plStatistics,       NL);
 
    // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
@@ -5251,7 +5249,7 @@ void RedrawStartStop() {
          price = sequenceStartPrices[i];
       }
 
-      label = StringConcatenate("SR.", sequenceId, ".start.", i);
+      label = StringConcatenate("SR.", sequenceId, ".start.", i+1);
       if (ObjectFind(label) == 0)
          ObjectDelete(label);
 
@@ -5270,7 +5268,7 @@ void RedrawStartStop() {
          time  = sequenceStopTimes [i];
          price = sequenceStopPrices[i];
 
-         label = StringConcatenate("SR.", sequenceId, ".stop.", i);
+         label = StringConcatenate("SR.", sequenceId, ".stop.", i+1);
          if (ObjectFind(label) == 0)
             ObjectDelete(label);
 
