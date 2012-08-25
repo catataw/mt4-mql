@@ -328,7 +328,7 @@ int onChartCommand(string commands[]) {
    else if (cmd == "breakevendisplay") return(ToggleBreakevenDisplayMode());
 
    // unbekannte Commands anzeigen, aber keinen Fehler setzen (sie dürfen den EA nicht deaktivieren können)
-   warn("onChartCommand(2)   unknown command \""+ cmd +"\"");
+   warn(StringConcatenate("onChartCommand(2)   unknown command \"", cmd, "\""));
    return(NO_ERROR);
 }
 
@@ -531,16 +531,19 @@ bool StopSequence() {
    if (__LOG) log(StringConcatenate("StopSequence()   sequence stopped at ", NumberToStr(sequenceStopPrices[n], PriceFormat), ", level ", grid.level, " (STATUS_STOPPED)"));
 
 
-   // (5) StopConditions deaktivieren und ggf. ResumeConditions aktualisieren
-   stop.conditions = false; SS.StartStopConditions();
-   if (IsWeekendStopSignal())
+   // (5) ResumeConditions/StopConditions aktualisieren bzw. deaktivieren
+   if (IsWeekendStopSignal()) {
       UpdateWeekendResume();
+   }
+   else {
+      stop.conditions = false; SS.StartStopConditions();
+   }
 
 
    // (6) Daten aktualisieren und speichern
    int iNull[];
    if (!UpdateStatus(iNull, iNull)) return(false);
-   if (!SaveStatus()              ) return(false);
+   if (!SaveStatus(true)          ) return(false);
    RedrawStartStop();
 
 
@@ -3778,19 +3781,22 @@ string GetFullStatusDirectory() {
 /**
  * Speichert den aktuellen Status der Instanz, um später die nahtlose Re-Initialisierung im selben oder einem anderen Terminal
  * zu ermöglichen.  Im Tester wird der Status zur Performancesteigerung nur beim ersten und letzten Aufruf gespeichert, es sei denn,
- * das Logging ist aktiviert.
+ * das Logging ist aktiviert oder der Parameter 'force' ist gesetzt.
+ *
+ * @param  bool force - immer Speichern (default: nein)
  *
  * @return bool - Erfolgsstatus
  */
-bool SaveStatus() {
+bool SaveStatus(bool force=false) {
    if (__STATUS__CANCELLED || IsLastError()) return( false);
    if (sequenceId == 0)                      return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
    if (IsTest()) /*&&*/ if (!IsTesting())    return(true);
 
-   if (IsTesting()) /*&&*/ if (!__LOG) {
-      static bool firstCall = true;
-      if (!firstCall) /*&&*/ if (__WHEREAMI__!=FUNC_DEINIT)
-         return(true);                                                        // "Speichern" überspringen
+   if (!force) /*&&*/ if (IsTesting()) /*&&*/ if (!__LOG) {          // Im Tester nur beim ersten und letzten Aufruf speichern, bei allen übrigen
+      static bool firstCall = true;                                  // Aufrufen Speichern überspringen.
+      if (!firstCall) /*&&*/ if (__WHEREAMI__!=FUNC_DEINIT) {
+         return(true);
+      }
       firstCall = false;
    }
 

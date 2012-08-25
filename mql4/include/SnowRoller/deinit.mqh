@@ -9,9 +9,10 @@ int onDeinitUndefined() {
       if (__STATUS__CANCELLED)
          return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
 
-      if (status==STATUS_WAITING || status==STATUS_PROGRESSING)
+      if (status==STATUS_WAITING || status==STATUS_PROGRESSING) {
          if (StopSequence())                                         // ruft intern UpdateStatus() und SaveStatus() auf
             ShowStatus();
+      }
       return(last_error);
    }
    return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wann hier jemand reinlatscht
