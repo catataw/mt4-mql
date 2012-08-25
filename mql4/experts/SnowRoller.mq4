@@ -3304,10 +3304,10 @@ bool ValidateConfiguration(bool interactive) {
    SS.LotSize();
 
 
-   // (5) StartConditions:  "@limit(1.33) && @time(12:00)" AND-verknüpft
-   // ------------------------------------------------------------------
-   //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
-   //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
+   // (5) StartConditions - AND-verknüpft: "@limit(1.33) && @time(12:00)"
+   // -------------------------------------------------------------------
+   //  @limit(1.33)     oder  1.33
+   //  @time(12:00)     oder  12:00                // Validierung unzureichend
    if (!parameterChange || StartConditions!=last.StartConditions) {
       // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben (sodaß StartConditions nur bei Änderung aktiviert werden)
       start.conditions      = false;
@@ -3359,12 +3359,12 @@ bool ValidateConfiguration(bool interactive) {
    }
 
 
-   // (6) StopConditions:  "@limit(1.33) || @time(12:00) || @profit(1234.00) || @profit(20%)" OR-verknüpft
-   // ----------------------------------------------------------------------------------------------------
-   //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
-   //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
+   // (6) StopConditions - OR-verknüpft: "@limit(1.33) || @time(12:00) || @profit(1234.00) || @profit(20%)"
+   // -----------------------------------------------------------------------------------------------------
+   //  @limit(1.33)
+   //  @time(12:00)                                // Validierung unzureichend
    //  @profit(1234.00)
-   //  @profit(20%)     oder  20%                                             // shortkey nicht implementiert
+   //  @profit(20%)
    if (!parameterChange || StopConditions!=last.StopConditions) {
       // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben (sodaß StopConditions nur bei Änderung aktiviert werden)
       stop.conditions              = false;
@@ -3451,7 +3451,7 @@ bool ValidateConfiguration(bool interactive) {
 
 
 /**
- * Exception-Handler für ungültige Input-Parameter. Je nach Laufzeitumgebung wird der Fehler weitergereicht oder zur Korrektur aufgefordert.
+ * Exception-Handler für ungültige Input-Parameter. Je nach Situation wird der Fehler weitergereicht oder zur Korrektur aufgefordert.
  *
  * @param  string location    - Ort, an dem der Fehler auftrat
  * @param  string message     - Fehlermeldung
