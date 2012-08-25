@@ -24,7 +24,7 @@ int onInitUndefined() {
 
 
 /**
- * altes Chartfenster mit neu geladenem Template, neuer EA, Input-Dialog, keine Statusdaten im Chart
+ * Altes Chartfenster mit neu geladenem Template, neuer EA, Input-Dialog, keine Statusdaten im Chart
  *
  * @return int - Fehlerstatus
  */
@@ -32,7 +32,7 @@ int onInitChartClose() {
    if (__STATUS__CANCELLED)
       return(NO_ERROR);
 
-   // (1) Zuerst eine angegebene Sequenz restaurieren
+   // (1) Zuerst eine angegebene Sequenz restaurieren...
    if (ValidateConfiguration.ID(true)) {
       status = STATUS_WAITING;
       if (RestoreStatus())
@@ -45,7 +45,7 @@ int onInitChartClose() {
    }
 
 
-   // (2) keine Eingabe, eine der laufenden Sequenzen nach Bestätigung restaurieren
+   // (2) ...dann laufende Sequenzen suchen und ggf. eine davon restaurieren...
    int ids[], button;
 
    if (GetRunningSequences(ids)) {
@@ -79,7 +79,7 @@ int onInitChartClose() {
    }
 
 
-   // (3) zum Schluß neue Sequenz anlegen.
+   // (3) ...zum Schluß neue Sequenz anlegen.
    if (ValidateConfiguration(true)) {
       instanceStartTime  = TimeCurrent() - 1;                                          // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erläuterungen siehe dort),
       instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // entsprechend wird auch instanceStartTime zurückgesetzt.
@@ -89,7 +89,7 @@ int onInitChartClose() {
       status             = STATUS_WAITING;
       InitStatusLocation();
 
-      if (start.conditions)                                                            // Ohne StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
+      if (start.conditions)                                                            // Ohne aktive StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
          SaveStatus();                                                                 // wird erst danach gespeichert.
       RedrawStartStop();
    }
@@ -155,8 +155,8 @@ int onInitParameterChange() {
       status             = STATUS_WAITING;
       InitStatusLocation();
 
-      if (start.conditions)                                                            // Ohne StartConditions erfolgt sofortiger Sequenzstart, der Status automatisch speichert.
-         SaveStatus();
+      if (start.conditions)                                                            // Ohne aktivierte StartConditions erfolgt sofortiger Sequenzstart, der Status wird dabei
+         SaveStatus();                                                                 // automatisch gespeichert.
       RedrawStartStop();
    }
    else {

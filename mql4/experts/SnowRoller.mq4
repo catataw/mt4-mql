@@ -129,13 +129,13 @@ double   sequenceStartPrices[];
 datetime sequenceStopTimes [];                              // Stop-Daten: nach Stop (Statuswechsel zu STATUS_STOPPED)
 double   sequenceStopPrices[];
 
-bool     start.conditions;                                  // ob mindestens eine StartCondition aktiv ist
+bool     start.conditions;                                  // ob die StartConditions aktiv sind
 bool     start.limit.condition;
 double   start.limit.value;
 bool     start.time.condition;
 datetime start.time.value;
 
-bool     stop.conditions;                                   // ob mindestens eine StopCondition aktiv ist
+bool     stop.conditions;                                   // ob die StopConditions aktiv sind
 bool     stop.limit.condition;
 double   stop.limit.value;
 bool     stop.time.condition;
@@ -145,11 +145,11 @@ double   stop.profitAbs.value;
 bool     stop.profitPercent.condition;
 double   stop.profitPercent.value;
 
-datetime weekend.stop.condition   = D'1970.01.01 23:05';    // StopSequence()-Zeit vor Wochenend-Pause (Freitags abend)
+datetime weekend.stop.condition   = D'1970.01.01 23:05';    // StopSequence()-Zeitpunkt vor Wochenend-Pause (Freitags abend)
 datetime weekend.stop.time;
 bool     weekend.stop.triggered;
 
-datetime weekend.resume.condition = D'1970.01.01 01:10';    // späteste ResumeSequence()-Zeit nach Wochenend-Pause (Montags morgen)
+datetime weekend.resume.condition = D'1970.01.01 01:10';    // spätester ResumeSequence()-Zeitpunkt nach Wochenend-Pause (Montags morgen)
 datetime weekend.resume.time;
 bool     weekend.resume.triggered;
 
@@ -386,15 +386,20 @@ bool StartSequence() {
 
    sequenceStartEquity = NormalizeDouble(AccountEquity()-AccountCredit(), 2);
 
+
    status = STATUS_PROGRESSING;
+
+
+   // (2) StartConditions deaktivieren und Weekend-Stop aktualisieren
+   start.conditions = false; SS.StartStopConditions();
    UpdateWeekendStop();
 
 
-   // (2) Gridbasis setzen
+   // (3) Gridbasis setzen
    Grid.BaseReset(startTime, startPrice);                                              // zeitlich immer nach sequenceStartTime
 
 
-   // (3) Stop-Orders in den Markt legen
+   // (4) Stop-Orders in den Markt legen
    if (!UpdatePendingOrders())
       return(false);
 
@@ -526,10 +531,8 @@ bool StopSequence() {
    if (__LOG) log(StringConcatenate("StopSequence()   sequence stopped at ", NumberToStr(sequenceStopPrices[n], PriceFormat), ", level ", grid.level, " (STATUS_STOPPED)"));
 
 
-   // (5) StartConditions zurücksetzen und ggf. ResumeConditions aktualisieren
-   start.conditions = false; StartConditions = "";
-   SS.StartStopConditions();
-
+   // (5) StopConditions deaktivieren und ggf. ResumeConditions aktualisieren
+   stop.conditions = false; SS.StartStopConditions();
    if (IsWeekendStopSignal())
       UpdateWeekendResume();
 
@@ -642,15 +645,19 @@ bool ResumeSequence() {
 
 
    status = STATUS_PROGRESSING;
+
+
+   // (5) StartConditions deaktivieren und Weekend-Stop aktualisieren
+   start.conditions = false; SS.StartStopConditions();
    UpdateWeekendStop();
 
 
-   // (5) Stop-Orders vervollständigen
+   // (6) Stop-Orders vervollständigen
    if (!UpdatePendingOrders())
       return(false);
 
 
-   // (6) Breakeven neu berechnen und Anzeigen aktualisieren
+   // (7) Breakeven neu berechnen und Anzeigen aktualisieren
    if (!Grid.CalculateBreakeven())
       return(false);
    RedrawStartStop();
@@ -1194,7 +1201,7 @@ void UpdateWeekendResume() {
 /**
  * Signalgeber für StopSequence(). Die einzelnen Bedingungen sind OR-verknüpft.
  *
- * @param bool checkWeekend - ob auch auf das Wochenend-Stop-Signal geprüft werden soll (default: ja)
+ * @param bool checkWeekend - ob auch auf das Wochenend-Stopsignal geprüft werden soll (default: ja)
  *
  * @return bool - ob mindestens eine Stopbedingung erfüllt ist
  */
@@ -1203,7 +1210,7 @@ bool IsStopSignal(bool checkWeekend=true) {
       return(false);
 
 
-   // (1) User-definierte Stop-Conditions prüfen
+   // (1) User-definierte StopConditions prüfen
    static bool isTriggered = false;
 
    if (stop.conditions) {
@@ -1272,7 +1279,7 @@ bool IsStopSignal(bool checkWeekend=true) {
    isTriggered = false;
 
 
-   // (2) je nach Aufruf zusätzlich interne WeekendStop-Bedingungen prüfen
+   // (2) je nach Aufruf zusätzlich interne WeekendStop-Bedingung prüfen
    if (checkWeekend)
       return(IsWeekendStopSignal());
 
@@ -2381,12 +2388,12 @@ int ShowStatus() {
                            "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction, NL,
                            "LotSize:         ", str.LotSize,                                         NL,
                            "Stops:           ", str.grid.stops, " ", str.grid.stopsPL,               NL,
-                           str.startConditions,                                                             // enthält NL, wenn gesetzt
-                           str.stopConditions,                                                              // enthält NL, wenn gesetzt
                            "Breakeven:   ",     str.grid.breakeven,                                  NL,
-                           "Profit/Loss:    ",  str.grid.totalPL, "  ", str.grid.plStatistics,       NL);
+                           "Profit/Loss:    ",  str.grid.totalPL, "  ", str.grid.plStatistics,       NL,
+                           str.startConditions,                                           // enthält NL, wenn gesetzt
+                           str.stopConditions);                                           // enthält NL, wenn gesetzt
 
-   // einige Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
+   // 2 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
    if (__WHEREAMI__ == FUNC_INIT)
       WindowRedraw();
@@ -2504,8 +2511,8 @@ void SS.StartStopConditions() {
    str.startConditions = "";
    str.stopConditions  = "";
 
-   if (start.conditions) str.startConditions = StringConcatenate("Start:           ", StartConditions, NL);
-   if (stop.conditions ) str.stopConditions  = StringConcatenate("Stop:            ", StopConditions,  NL);
+   if (StartConditions != "") str.startConditions = StringConcatenate("Start:           ", StartConditions, ifString(start.conditions, "", " (inactive)"), NL);
+   if (StopConditions  != "") str.stopConditions  = StringConcatenate("Stop:            ", StopConditions,  ifString(stop.conditions,  "", " (inactive)"), NL);
 }
 
 
@@ -3198,11 +3205,11 @@ bool ValidateConfiguration.ID(bool interactive) {
       strValue = StringRight(strValue, -1);
    }
    if (!StringIsDigit(strValue))
-      return(_false(HandleConfigError("ValidateConfiguration.ID(1)", "Illegal input parameter Sequence.ID = \""+ Sequence.ID +"\"", interactive)));
+      return(_false(ValidateConfig.HandleError("ValidateConfiguration.ID(1)", "Illegal input parameter Sequence.ID = \""+ Sequence.ID +"\"", interactive)));
 
    int iValue = StrToInteger(strValue);
    if (iValue < 1000 || iValue > 16383)
-      return(_false(HandleConfigError("ValidateConfiguration.ID(2)", "Illegal input parameter Sequence.ID = \""+ Sequence.ID +"\"", interactive)));
+      return(_false(ValidateConfig.HandleError("ValidateConfiguration.ID(2)", "Illegal input parameter Sequence.ID = \""+ Sequence.ID +"\"", interactive)));
 
    sequenceId  = InstanceId(iValue); SS.SequenceId();
    Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
@@ -3230,23 +3237,23 @@ bool ValidateConfiguration(bool interactive) {
    // (1) Sequence.ID
    if (parameterChange) {
       if (status == STATUS_UNINITIALIZED) {
-         if (Sequence.ID != last.Sequence.ID) {    return(_false(HandleConfigError("ValidateConfiguration(1)", "Loading of another sequence not yet implemented!", interactive)));
+         if (Sequence.ID != last.Sequence.ID) { return(_false(ValidateConfig.HandleError("ValidateConfiguration(1)", "Loading of another sequence not yet implemented!", interactive)));
             if (ValidateConfiguration.ID(interactive)) {
                // TODO: neue Sequenz laden
             }
          }
       }
       else {
-         if (Sequence.ID == "")                    return(_false(HandleConfigError("ValidateConfiguration(2)", "Sequence.ID missing!", interactive)));
-         if (Sequence.ID != last.Sequence.ID) {    return(_false(HandleConfigError("ValidateConfiguration(3)", "Loading of another sequence not yet implemented!", interactive)));
+         if (Sequence.ID == "")                 return(_false(ValidateConfig.HandleError("ValidateConfiguration(2)", "Sequence.ID missing!", interactive)));
+         if (Sequence.ID != last.Sequence.ID) { return(_false(ValidateConfig.HandleError("ValidateConfiguration(3)", "Loading of another sequence not yet implemented!", interactive)));
             if (ValidateConfiguration.ID(interactive)) {
                // TODO: neue Sequenz laden
             }
          }
       }
    }
-   else if (StringLen(Sequence.ID) == 0) {         // wir müssen im STATUS_UNINITIALIZED sein (sequenceId = 0)
-      if (sequenceId != 0)                         return(_false(catch("ValidateConfiguration(4)   illegal parameter Sequence.ID = \""+ Sequence.ID +"\" (sequenceId="+ sequenceId +")", ERR_RUNTIME_ERROR)));
+   else if (StringLen(Sequence.ID) == 0) {      // wir müssen im STATUS_UNINITIALIZED sein (sequenceId = 0)
+      if (sequenceId != 0)                      return(_false(catch("ValidateConfiguration(4)   illegal parameter Sequence.ID = \""+ Sequence.ID +"\" (sequenceId="+ sequenceId +")", ERR_RUNTIME_ERROR)));
    }
    else {} // wenn gesetzt, ist sie schon validiert und die Sequenz geladen (sonst landen wir nicht hier)
 
@@ -3254,18 +3261,18 @@ bool ValidateConfiguration(bool interactive) {
    // (2) GridDirection
    if (parameterChange) {
       if (GridDirection != last.GridDirection)
-         if (status != STATUS_UNINITIALIZED)       return(_false(HandleConfigError("ValidateConfiguration(5)", "Cannot change GridDirection of "+ StatusDescription(status) +" sequence", interactive)));
+         if (status != STATUS_UNINITIALIZED)    return(_false(ValidateConfig.HandleError("ValidateConfiguration(5)", "Cannot change GridDirection of "+ StatusDescription(status) +" sequence", interactive)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    }
    string directions[] = {"Bidirectional", "Long", "Short", "L+S"};
    string strValue     = StringToLower(StringTrim(StringReplace(StringReplace(StringReplace(GridDirection, "+", ""), "&", ""), " ", "")) +"b");    // b = default
    switch (StringGetChar(strValue, 0)) {
       case 'l': if (StringStartsWith(strValue, "longshort") || StringStartsWith(strValue, "ls"))
-                                                   return(_false(HandleConfigError("ValidateConfiguration(6)", "Grid mode Long+Short not yet implemented.", interactive)));
+                                                return(_false(ValidateConfig.HandleError("ValidateConfiguration(6)", "Grid mode Long+Short not yet implemented.", interactive)));
                 grid.direction = D_LONG;  break;
       case 's': grid.direction = D_SHORT; break;
       case 'b': grid.direction = D_BIDIR; break;
-      default:                                     return(_false(HandleConfigError("ValidateConfiguration(7)", "Invalid parameter GridDirection = \""+ GridDirection +"\"", interactive)));
+      default:                                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(7)", "Invalid parameter GridDirection = \""+ GridDirection +"\"", interactive)));
    }
    GridDirection = directions[grid.direction]; SS.Grid.Direction();
 
@@ -3273,27 +3280,27 @@ bool ValidateConfiguration(bool interactive) {
    // (3) GridSize
    if (parameterChange) {
       if (GridSize != last.GridSize)
-         if (status != STATUS_UNINITIALIZED)       return(_false(HandleConfigError("ValidateConfiguration(8)", "Cannot change GridSize of "+ StatusDescription(status) +" sequence", interactive)));
+         if (status != STATUS_UNINITIALIZED)    return(_false(ValidateConfig.HandleError("ValidateConfiguration(8)", "Cannot change GridSize of "+ StatusDescription(status) +" sequence", interactive)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    }
-   if (GridSize < 1)                               return(_false(HandleConfigError("ValidateConfiguration(9)", "Invalid parameter GridSize = "+ GridSize, interactive)));
+   if (GridSize < 1)                            return(_false(ValidateConfig.HandleError("ValidateConfiguration(9)", "Invalid parameter GridSize = "+ GridSize, interactive)));
 
 
    // (4) LotSize
    if (parameterChange) {
       if (NE(LotSize, last.LotSize))
-         if (status != STATUS_UNINITIALIZED)       return(_false(HandleConfigError("ValidateConfiguration(10)", "Cannot change LotSize of "+ StatusDescription(status) +" sequence", interactive)));
+         if (status != STATUS_UNINITIALIZED)    return(_false(ValidateConfig.HandleError("ValidateConfiguration(10)", "Cannot change LotSize of "+ StatusDescription(status) +" sequence", interactive)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    }
-   if (LE(LotSize, 0))                             return(_false(HandleConfigError("ValidateConfiguration(11)", "Invalid parameter LotSize = "+ NumberToStr(LotSize, ".+"), interactive)));
+   if (LE(LotSize, 0))                          return(_false(ValidateConfig.HandleError("ValidateConfiguration(11)", "Invalid parameter LotSize = "+ NumberToStr(LotSize, ".+"), interactive)));
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT );
    double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT );
    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
    int error = GetLastError();
-   if (IsError(error))                             return(_false(catch("ValidateConfiguration(12)   symbol=\""+ Symbol() +"\"", error)));
-   if (LT(LotSize, minLot))                        return(_false(HandleConfigError("ValidateConfiguration(13)", "Invalid parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", interactive)));
-   if (GT(LotSize, maxLot))                        return(_false(HandleConfigError("ValidateConfiguration(14)", "Invalid parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", interactive)));
-   if (NE(MathModFix(LotSize, lotStep), 0))        return(_false(HandleConfigError("ValidateConfiguration(15)", "Invalid parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", interactive)));
+   if (IsError(error))                          return(_false(catch("ValidateConfiguration(12)   symbol=\""+ Symbol() +"\"", error)));
+   if (LT(LotSize, minLot))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(13)", "Invalid parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", interactive)));
+   if (GT(LotSize, maxLot))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(14)", "Invalid parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", interactive)));
+   if (NE(MathModFix(LotSize, lotStep), 0))     return(_false(ValidateConfig.HandleError("ValidateConfiguration(15)", "Invalid parameter LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", interactive)));
    SS.LotSize();
 
 
@@ -3304,7 +3311,7 @@ bool ValidateConfiguration(bool interactive) {
    if (parameterChange)
       if (StartConditions != last.StartConditions)
          if (status!=STATUS_UNINITIALIZED) /*&&*/ if (status!=STATUS_WAITING)
-                                                   return(_false(HandleConfigError("ValidateConfiguration(16)", "Cannot change StartConditions of "+ StatusDescription(status) +" sequence", interactive)));
+                                                return(_false(ValidateConfig.HandleError("ValidateConfiguration(16)", "Cannot change StartConditions of "+ StatusDescription(status) +" sequence", interactive)));
    start.conditions      = false;
    start.limit.condition = false;
    start.time.condition  = false;
@@ -3316,37 +3323,37 @@ bool ValidateConfiguration(bool interactive) {
 
    // (5.2) jeden Ausdruck parsen und validieren
    for (int i=0; i < sizeOfExprs; i++) {
-      start.conditions = false;                    // im Fehlerfall ist start.conditions zurückgesetzt
+      start.conditions = false;                 // im Fehlerfall ist start.conditions zurückgesetzt
       expr = StringToLower(StringTrim(exprs[i]));
       if (StringLen(expr) == 0) {
-         if (sizeOfExprs > 1)                      return(_false(HandleConfigError("ValidateConfiguration(17)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+         if (sizeOfExprs > 1)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(17)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
          break;
       }
-      if (StringGetChar(expr, 0) != '@')           return(_false(HandleConfigError("ValidateConfiguration(18)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-      if (Explode(expr, "(", elems, NULL) != 2)    return(_false(HandleConfigError("ValidateConfiguration(19)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-      if (!StringEndsWith(elems[1], ")"))          return(_false(HandleConfigError("ValidateConfiguration(20)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+      if (StringGetChar(expr, 0) != '@')        return(_false(ValidateConfig.HandleError("ValidateConfiguration(18)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+      if (Explode(expr, "(", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(19)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+      if (!StringEndsWith(elems[1], ")"))       return(_false(ValidateConfig.HandleError("ValidateConfiguration(20)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
       key   = StringTrim(elems[0]);
       value = StringTrim(StringLeft(elems[1], -1));
-      if (StringLen(value) == 0)                   return(_false(HandleConfigError("ValidateConfiguration(21)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+      if (StringLen(value) == 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(21)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
       //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
 
       if (key == "@limit") {
-         if (!StringIsNumeric(value))              return(_false(HandleConfigError("ValidateConfiguration(22)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+         if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(22)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
          dValue = StrToDouble(value);
-         if (LE(dValue, 0))                        return(_false(HandleConfigError("ValidateConfiguration(23)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+         if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(23)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
          start.limit.condition = true;
          start.limit.value     = dValue;
          exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
       }
       else if (key == "@time") {
          time = StrToTime(value);
-         if (IsError(GetLastError()))              return(_false(HandleConfigError("ValidateConfiguration(24)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+         if (IsError(GetLastError()))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(24)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
          // TODO: Validierung von @time unzureichend
          start.time.condition = true;
          start.time.value     = time;
          exprs[i] = key +"("+ TimeToStr(time) +")";
       }
-      else                                         return(_false(HandleConfigError("ValidateConfiguration(25)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+      else                                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(25)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
       start.conditions = true;
    }
    if (start.conditions) StartConditions = JoinStrings(exprs, " && ");
@@ -3362,7 +3369,7 @@ bool ValidateConfiguration(bool interactive) {
    //  @profit(20%)     oder  20%                                             // shortkey nicht implementiert
    if (parameterChange)
       if (StopConditions != last.StopConditions)
-         if (status == STATUS_STOPPED)             return(_false(HandleConfigError("ValidateConfiguration(26)", "Cannot change StopConditions of "+ StatusDescription(status) +" sequence", interactive)));
+         if (status == STATUS_STOPPED)          return(_false(ValidateConfig.HandleError("ValidateConfiguration(26)", "Cannot change StopConditions of "+ StatusDescription(status) +" sequence", interactive)));
 
    stop.conditions              = false;
    stop.limit.condition         = false;
@@ -3375,31 +3382,31 @@ bool ValidateConfiguration(bool interactive) {
 
    // (6.2) jeden Ausdruck parsen und validieren
    for (i=0; i < sizeOfExprs; i++) {
-      stop.conditions = false;                     // im Fehlerfall ist stop.conditions zurückgesetzt
+      stop.conditions = false;                  // im Fehlerfall ist stop.conditions zurückgesetzt
       expr = StringToLower(StringTrim(exprs[i]));
       if (StringLen(expr) == 0) {
-         if (sizeOfExprs > 1)                      return(_false(HandleConfigError("ValidateConfiguration(27)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (sizeOfExprs > 1)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(27)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
          break;
       }
-      if (StringGetChar(expr, 0) != '@')           return(_false(HandleConfigError("ValidateConfiguration(28)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-      if (Explode(expr, "(", elems, NULL) != 2)    return(_false(HandleConfigError("ValidateConfiguration(29)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-      if (!StringEndsWith(elems[1], ")"))          return(_false(HandleConfigError("ValidateConfiguration(30)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+      if (StringGetChar(expr, 0) != '@')        return(_false(ValidateConfig.HandleError("ValidateConfiguration(28)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+      if (Explode(expr, "(", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(29)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+      if (!StringEndsWith(elems[1], ")"))       return(_false(ValidateConfig.HandleError("ValidateConfiguration(30)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
       key   = StringTrim(elems[0]);
       value = StringTrim(StringLeft(elems[1], -1));
-      if (StringLen(value) == 0)                   return(_false(HandleConfigError("ValidateConfiguration(31)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+      if (StringLen(value) == 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(31)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
       //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
 
       if (key == "@limit") {
-         if (!StringIsNumeric(value))              return(_false(HandleConfigError("ValidateConfiguration(32)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(32)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
          dValue = StrToDouble(value);
-         if (LE(dValue, 0))                        return(_false(HandleConfigError("ValidateConfiguration(33)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(33)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
          stop.limit.condition = true;
          stop.limit.value     = dValue;
          exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
       }
       else if (key == "@time") {
          time = StrToTime(value);
-         if (IsError(GetLastError()))              return(_false(HandleConfigError("ValidateConfiguration(34)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (IsError(GetLastError()))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(34)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
          // TODO: Validierung von @time unzureichend
          stop.time.condition = true;
          stop.time.value     = time;
@@ -3407,25 +3414,25 @@ bool ValidateConfiguration(bool interactive) {
       }
       else if (key == "@profit") {
          sizeOfElems = Explode(value, "%", elems, NULL);
-         if (sizeOfElems > 2)                      return(_false(HandleConfigError("ValidateConfiguration(35)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (sizeOfElems > 2)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(35)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
          value = StringTrim(elems[0]);
-         if (StringLen(value) == 0)                return(_false(HandleConfigError("ValidateConfiguration(36)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-         if (!StringIsNumeric(value))              return(_false(HandleConfigError("ValidateConfiguration(37)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (StringLen(value) == 0)             return(_false(ValidateConfig.HandleError("ValidateConfiguration(36)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(37)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
          dValue = StrToDouble(value);
          if (sizeOfElems == 1) {
-            if (LT(dValue, 0))                     return(_false(HandleConfigError("ValidateConfiguration(38)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (LT(dValue, 0))                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(38)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
             stop.profitAbs.condition = true;
             stop.profitAbs.value     = dValue;
             exprs[i] = key +"("+ NumberToStr(dValue, ".2") +")";
          }
          else {
-            if (LE(dValue, 0))                     return(_false(HandleConfigError("ValidateConfiguration(39)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (LE(dValue, 0))                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(39)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
             stop.profitPercent.condition = true;
             stop.profitPercent.value     = dValue;
             exprs[i] = key +"("+ NumberToStr(dValue, ".+") +"%)";
          }
       }
-      else                                         return(_false(HandleConfigError("ValidateConfiguration(40)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+      else                                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(40)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
       stop.conditions = true;
    }
    if (stop.conditions) StopConditions = JoinStrings(exprs, " || ");
@@ -3437,7 +3444,7 @@ bool ValidateConfiguration(bool interactive) {
    if (Breakeven.Color == 0xFF000000)                                   // kann vom Terminal falsch gesetzt worden sein
       Breakeven.Color = CLR_NONE;
    if (Breakeven.Color < CLR_NONE || Breakeven.Color > C'255,255,255')  // kann nur nicht-interaktiv falsch reinkommen
-                                                   return(_false(HandleConfigError("ValidateConfiguration(41)", "Invalid parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), interactive)));
+                                                return(_false(ValidateConfig.HandleError("ValidateConfiguration(41)", "Invalid parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), interactive)));
 
    // (8) __STATUS__INVALID_INPUT zurücksetzen
    if (interactive)
@@ -3456,7 +3463,7 @@ bool ValidateConfiguration(bool interactive) {
  *
  * @return int - der resultierende Fehlerstatus
  */
-int HandleConfigError(string location, string message, bool interactive) {
+int ValidateConfig.HandleError(string location, string message, bool interactive) {
    if (IsTesting())
       interactive = false;
    if (!interactive)
@@ -3872,9 +3879,9 @@ bool SaveStatus() {
    ArrayPushString(lines, /*string*/   "GridDirection="          +             GridDirection             );
    ArrayPushString(lines, /*int   */   "GridSize="               +             GridSize                  );
    ArrayPushString(lines, /*double*/   "LotSize="                + NumberToStr(LotSize, ".+")            );
-      if (StringLen(StartConditions) > 0)
+      if (start.conditions)
    ArrayPushString(lines, /*string*/   "StartConditions="        +             StartConditions           );
-      if (StringLen(StopConditions) > 0)
+      if (stop.conditions)
    ArrayPushString(lines, /*string*/   "StopConditions="         +             StopConditions            );
 
    // (1.2) Laufzeit-Variablen
