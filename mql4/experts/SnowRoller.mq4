@@ -3308,57 +3308,55 @@ bool ValidateConfiguration(bool interactive) {
    // ------------------------------------------------------------------
    //  @limit(1.33)     oder  1.33                                            // shortkey nicht implementiert
    //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
-   if (parameterChange)
-      if (StartConditions != last.StartConditions)
-         if (status!=STATUS_UNINITIALIZED) /*&&*/ if (status!=STATUS_WAITING)
-                                                return(_false(ValidateConfig.HandleError("ValidateConfiguration(16)", "Cannot change StartConditions of "+ StatusDescription(status) +" sequence", interactive)));
-   start.conditions      = false;
-   start.limit.condition = false;
-   start.time.condition  = false;
+   if (!parameterChange || StartConditions!=last.StartConditions) {
+      // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben (sodaß StartConditions nur bei Änderung aktiviert werden)
+      start.conditions      = false;
+      start.limit.condition = false;
+      start.time.condition  = false;
 
-   // (5.1) StartConditions in einzelne Ausdrücke zerlegen
-   string exprs[], expr, elems[], key, value;
-   double dValue;
-   int    time, sizeOfElems, sizeOfExprs=Explode(StartConditions, "&&", exprs, NULL);
+      // (5.1) StartConditions in einzelne Ausdrücke zerlegen
+      string exprs[], expr, elems[], key, value;
+      double dValue;
+      int    time, sizeOfElems, sizeOfExprs=Explode(StartConditions, "&&", exprs, NULL);
 
-   // (5.2) jeden Ausdruck parsen und validieren
-   for (int i=0; i < sizeOfExprs; i++) {
-      start.conditions = false;                 // im Fehlerfall ist start.conditions zurückgesetzt
-      expr = StringToLower(StringTrim(exprs[i]));
-      if (StringLen(expr) == 0) {
-         if (sizeOfExprs > 1)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(17)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-         break;
-      }
-      if (StringGetChar(expr, 0) != '@')        return(_false(ValidateConfig.HandleError("ValidateConfiguration(18)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-      if (Explode(expr, "(", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(19)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-      if (!StringEndsWith(elems[1], ")"))       return(_false(ValidateConfig.HandleError("ValidateConfiguration(20)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-      key   = StringTrim(elems[0]);
-      value = StringTrim(StringLeft(elems[1], -1));
-      if (StringLen(value) == 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(21)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-      //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
+      // (5.2) jeden Ausdruck parsen und validieren
+      for (int i=0; i < sizeOfExprs; i++) {
+         start.conditions = false;                 // im Fehlerfall ist start.conditions zurückgesetzt
+         expr = StringToLower(StringTrim(exprs[i]));
+         if (StringLen(expr) == 0) {
+            if (sizeOfExprs > 1)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(16)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+            break;
+         }
+         if (StringGetChar(expr, 0) != '@')        return(_false(ValidateConfig.HandleError("ValidateConfiguration(17)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+         if (Explode(expr, "(", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(18)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+         if (!StringEndsWith(elems[1], ")"))       return(_false(ValidateConfig.HandleError("ValidateConfiguration(19)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+         key   = StringTrim(elems[0]);
+         value = StringTrim(StringLeft(elems[1], -1));
+         if (StringLen(value) == 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(20)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+         //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
 
-      if (key == "@limit") {
-         if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(22)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-         dValue = StrToDouble(value);
-         if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(23)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-         start.limit.condition = true;
-         start.limit.value     = dValue;
-         exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
+         if (key == "@limit") {
+            if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(21)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+            dValue = StrToDouble(value);
+            if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(22)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+            start.limit.condition = true;
+            start.limit.value     = dValue;
+            exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
+         }
+         else if (key == "@time") {
+            time = StrToTime(value);
+            if (IsError(GetLastError()))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(23)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+            // TODO: Validierung von @time unzureichend
+            start.time.condition = true;
+            start.time.value     = time;
+            exprs[i] = key +"("+ TimeToStr(time) +")";
+         }
+         else                                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(24)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
+         start.conditions = true;
       }
-      else if (key == "@time") {
-         time = StrToTime(value);
-         if (IsError(GetLastError()))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(24)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-         // TODO: Validierung von @time unzureichend
-         start.time.condition = true;
-         start.time.value     = time;
-         exprs[i] = key +"("+ TimeToStr(time) +")";
-      }
-      else                                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(25)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
-      start.conditions = true;
+      if (start.conditions) StartConditions = JoinStrings(exprs, " && ");
+      else                  StartConditions = "";
    }
-   if (start.conditions) StartConditions = JoinStrings(exprs, " && ");
-   else                  StartConditions = "";
-   //debug("()   StartConditions = \""+ StartConditions +"\"");
 
 
    // (6) StopConditions:  "@limit(1.33) || @time(12:00) || @profit(1234.00) || @profit(20%)" OR-verknüpft
@@ -3367,90 +3365,88 @@ bool ValidateConfiguration(bool interactive) {
    //  @time(12:00)     oder  12:00          // Validierung unzureichend      // shortkey nicht implementiert
    //  @profit(1234.00)
    //  @profit(20%)     oder  20%                                             // shortkey nicht implementiert
-   if (parameterChange)
-      if (StopConditions != last.StopConditions)
-         if (status == STATUS_STOPPED)          return(_false(ValidateConfig.HandleError("ValidateConfiguration(26)", "Cannot change StopConditions of "+ StatusDescription(status) +" sequence", interactive)));
+   if (!parameterChange || StopConditions!=last.StopConditions) {
+      // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben (sodaß StopConditions nur bei Änderung aktiviert werden)
+      stop.conditions              = false;
+      stop.limit.condition         = false;
+      stop.time.condition          = false;
+      stop.profitAbs.condition     = false;
+      stop.profitPercent.condition = false;
 
-   stop.conditions              = false;
-   stop.limit.condition         = false;
-   stop.time.condition          = false;
-   stop.profitAbs.condition     = false;
-   stop.profitPercent.condition = false;
+      // (6.1) StopConditions in einzelne Ausdrücke zerlegen
+      sizeOfExprs = Explode(StopConditions, "||", exprs, NULL);
 
-   // (6.1) StopConditions in einzelne Ausdrücke zerlegen
-   sizeOfExprs = Explode(StopConditions, "||", exprs, NULL);
-
-   // (6.2) jeden Ausdruck parsen und validieren
-   for (i=0; i < sizeOfExprs; i++) {
-      stop.conditions = false;                  // im Fehlerfall ist stop.conditions zurückgesetzt
-      expr = StringToLower(StringTrim(exprs[i]));
-      if (StringLen(expr) == 0) {
-         if (sizeOfExprs > 1)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(27)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-         break;
-      }
-      if (StringGetChar(expr, 0) != '@')        return(_false(ValidateConfig.HandleError("ValidateConfiguration(28)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-      if (Explode(expr, "(", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(29)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-      if (!StringEndsWith(elems[1], ")"))       return(_false(ValidateConfig.HandleError("ValidateConfiguration(30)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-      key   = StringTrim(elems[0]);
-      value = StringTrim(StringLeft(elems[1], -1));
-      if (StringLen(value) == 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(31)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-      //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
-
-      if (key == "@limit") {
-         if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(32)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-         dValue = StrToDouble(value);
-         if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(33)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-         stop.limit.condition = true;
-         stop.limit.value     = dValue;
-         exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
-      }
-      else if (key == "@time") {
-         time = StrToTime(value);
-         if (IsError(GetLastError()))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(34)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-         // TODO: Validierung von @time unzureichend
-         stop.time.condition = true;
-         stop.time.value     = time;
-         exprs[i] = key +"("+ TimeToStr(time) +")";
-      }
-      else if (key == "@profit") {
-         sizeOfElems = Explode(value, "%", elems, NULL);
-         if (sizeOfElems > 2)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(35)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-         value = StringTrim(elems[0]);
-         if (StringLen(value) == 0)             return(_false(ValidateConfig.HandleError("ValidateConfiguration(36)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-         if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(37)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-         dValue = StrToDouble(value);
-         if (sizeOfElems == 1) {
-            if (LT(dValue, 0))                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(38)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-            stop.profitAbs.condition = true;
-            stop.profitAbs.value     = dValue;
-            exprs[i] = key +"("+ NumberToStr(dValue, ".2") +")";
+      // (6.2) jeden Ausdruck parsen und validieren
+      for (i=0; i < sizeOfExprs; i++) {
+         stop.conditions = false;                  // im Fehlerfall ist stop.conditions zurückgesetzt
+         expr = StringToLower(StringTrim(exprs[i]));
+         if (StringLen(expr) == 0) {
+            if (sizeOfExprs > 1)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(25)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+            break;
          }
-         else {
-            if (LE(dValue, 0))                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(39)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-            stop.profitPercent.condition = true;
-            stop.profitPercent.value     = dValue;
-            exprs[i] = key +"("+ NumberToStr(dValue, ".+") +"%)";
+         if (StringGetChar(expr, 0) != '@')        return(_false(ValidateConfig.HandleError("ValidateConfiguration(26)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (Explode(expr, "(", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(27)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (!StringEndsWith(elems[1], ")"))       return(_false(ValidateConfig.HandleError("ValidateConfiguration(28)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         key   = StringTrim(elems[0]);
+         value = StringTrim(StringLeft(elems[1], -1));
+         if (StringLen(value) == 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(29)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
+
+         if (key == "@limit") {
+            if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(30)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+            dValue = StrToDouble(value);
+            if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(31)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+            stop.limit.condition = true;
+            stop.limit.value     = dValue;
+            exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
          }
+         else if (key == "@time") {
+            time = StrToTime(value);
+            if (IsError(GetLastError()))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(32)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+            // TODO: Validierung von @time unzureichend
+            stop.time.condition = true;
+            stop.time.value     = time;
+            exprs[i] = key +"("+ TimeToStr(time) +")";
+         }
+         else if (key == "@profit") {
+            sizeOfElems = Explode(value, "%", elems, NULL);
+            if (sizeOfElems > 2)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(33)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+            value = StringTrim(elems[0]);
+            if (StringLen(value) == 0)             return(_false(ValidateConfig.HandleError("ValidateConfiguration(34)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(35)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+            dValue = StrToDouble(value);
+            if (sizeOfElems == 1) {
+               if (LT(dValue, 0))                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(36)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+               stop.profitAbs.condition = true;
+               stop.profitAbs.value     = dValue;
+               exprs[i] = key +"("+ NumberToStr(dValue, ".2") +")";
+            }
+            else {
+               if (LE(dValue, 0))                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(37)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+               stop.profitPercent.condition = true;
+               stop.profitPercent.value     = dValue;
+               exprs[i] = key +"("+ NumberToStr(dValue, ".+") +"%)";
+            }
+         }
+         else                                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(38)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
+         stop.conditions = true;
       }
-      else                                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(40)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
-      stop.conditions = true;
+      if (stop.conditions) StopConditions = JoinStrings(exprs, " || ");
+      else                 StopConditions = "";
    }
-   if (stop.conditions) StopConditions = JoinStrings(exprs, " || ");
-   else                 StopConditions = "";
-   //debug("()   StopConditions = \""+ StopConditions +"\"");
 
 
    // (7) Breakeven.Color
    if (Breakeven.Color == 0xFF000000)                                   // kann vom Terminal falsch gesetzt worden sein
       Breakeven.Color = CLR_NONE;
    if (Breakeven.Color < CLR_NONE || Breakeven.Color > C'255,255,255')  // kann nur nicht-interaktiv falsch reinkommen
-                                                return(_false(ValidateConfig.HandleError("ValidateConfiguration(41)", "Invalid parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), interactive)));
+                                                return(_false(ValidateConfig.HandleError("ValidateConfiguration(39)", "Invalid parameter Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), interactive)));
 
    // (8) __STATUS__INVALID_INPUT zurücksetzen
    if (interactive)
       __STATUS__INVALID_INPUT = false;
 
-   return(IsNoError(catch("ValidateConfiguration(42)")));
+   return(IsNoError(catch("ValidateConfiguration(40)")));
 }
 
 
