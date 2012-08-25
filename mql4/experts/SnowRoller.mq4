@@ -3340,7 +3340,7 @@ bool ValidateConfiguration(bool interactive) {
             dValue = StrToDouble(value);
             if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(22)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
             start.limit.condition = true;
-            start.limit.value     = dValue;
+            start.limit.value     = NormalizeDouble(dValue, PipDigits);
             exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
          }
          else if (key == "@time") {
@@ -3397,7 +3397,7 @@ bool ValidateConfiguration(bool interactive) {
             dValue = StrToDouble(value);
             if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(31)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
             stop.limit.condition = true;
-            stop.limit.value     = dValue;
+            stop.limit.value     = NormalizeDouble(dValue, PipDigits);
             exprs[i] = key +"("+ DoubleToStr(dValue, PipDigits) +")";
          }
          else if (key == "@time") {
@@ -3418,7 +3418,7 @@ bool ValidateConfiguration(bool interactive) {
             if (sizeOfElems == 1) {
                if (LT(dValue, 0))                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(36)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
                stop.profitAbs.condition = true;
-               stop.profitAbs.value     = dValue;
+               stop.profitAbs.value     = NormalizeDouble(dValue, 2);
                exprs[i] = key +"("+ NumberToStr(dValue, ".2") +")";
             }
             else {
