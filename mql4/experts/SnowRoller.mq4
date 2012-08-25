@@ -89,15 +89,15 @@ extern /*sticky*/ string Sequence.ID             = "";
 extern            string GridDirection           = "Bidirectional* | Long | Short | Long+Short";
 extern            int    GridSize                = 20;
 extern            double LotSize                 = 0.1;
-extern            string StartConditions         = "";                  // @limit(1.33) && @time(2012.03.12 12:00)
-extern            string StopConditions          = "@profit(20%)";      // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
+extern            string StartConditions         = "";               // @limit(1.33) && @time(2012.03.12 12:00)
+extern            string StopConditions          = "";               // @limit(1.33) || @time(2012.03.12 12:00) || @profit(1234.00) || @profit(10%)
 extern /*sticky*/ color  Breakeven.Color         = Blue;
-extern /*sticky*/ string Sequence.StatusLocation = "";                  // Unterverzeichnis
+extern /*sticky*/ string Sequence.StatusLocation = "";               // Unterverzeichnis
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-       /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;           // Sticky-Variablen werden im Chart zwischengespeichert, sie überleben
-       /*sticky*/ int    orderDisplayMode        = ODM_NONE;            // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
+       /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;        // Sticky-Variablen werden im Chart zwischengespeichert, sie überleben
+       /*sticky*/ int    orderDisplayMode        = ODM_NONE;         // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
        /*sticky*/ int    breakeven.Width         = 0;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
