@@ -3448,7 +3448,7 @@ bool ValidateConfiguration(bool interactive) {
 
 
 /**
- * "Exception-Handler" für ungültige Input-Parameter. Je nach Laufzeitumgebung wird der Fehler weitergereicht oder zur Korrektur aufgefordert.
+ * Exception-Handler für ungültige Input-Parameter. Je nach Laufzeitumgebung wird der Fehler weitergereicht oder zur Korrektur aufgefordert.
  *
  * @param  string location    - Ort, an dem der Fehler auftrat
  * @param  string message     - Fehlermeldung

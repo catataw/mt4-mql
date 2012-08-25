@@ -222,10 +222,10 @@ int CreateStatusBox() {
       return(NO_ERROR);
 
    /*
-   int x[]      = {0, 97, 152};                                      // eine Zeile für Start/StopCondition
+   int x[]      = {0, 97, 141};                                      // eine Zeile für Start/StopCondition
    int fontSize = 73;
    */
-   int x[]      = {0, 108, 141};                                     // zwei Zeilen für Start/StopCondition
+   int x[]      = {0, 108, 130};                                     // zwei Zeilen für Start/StopCondition
    int fontSize = 81;
 
    color color.Background = C'248,248,248';                          // = Chart-Background
