@@ -3304,8 +3304,8 @@ bool ValidateConfiguration(bool interactive) {
    SS.LotSize();
 
 
-   // (5) StartConditions - AND-verknüpft: "@limit(1.33) && @time(12:00)"
-   // -------------------------------------------------------------------
+   // (5) StartConditions, AND-verknüpft: "@limit(1.33) && @time(12:00)"
+   // ------------------------------------------------------------------
    //  @limit(1.33)     oder  1.33
    //  @time(12:00)     oder  12:00                // Validierung unzureichend
    if (!parameterChange || StartConditions!=last.StartConditions) {
@@ -3359,8 +3359,8 @@ bool ValidateConfiguration(bool interactive) {
    }
 
 
-   // (6) StopConditions - OR-verknüpft: "@limit(1.33) || @time(12:00) || @profit(1234.00) || @profit(20%)"
-   // -----------------------------------------------------------------------------------------------------
+   // (6) StopConditions, OR-verknüpft: "@limit(1.33) || @time(12:00) || @profit(1234.00) || @profit(20%)"
+   // ----------------------------------------------------------------------------------------------------
    //  @limit(1.33)
    //  @time(12:00)                                // Validierung unzureichend
    //  @profit(1234.00)
