@@ -543,7 +543,7 @@ bool StopSequence() {
    // (6) Daten aktualisieren und speichern
    int iNull[];
    if (!UpdateStatus(iNull, iNull)) return(false);
-   if (!SaveStatus(true)          ) return(false);
+   if (!SaveStatus()              ) return(false);
    RedrawStartStop();
 
 
@@ -3780,23 +3780,21 @@ string GetFullStatusDirectory() {
 
 /**
  * Speichert den aktuellen Status der Instanz, um später die nahtlose Re-Initialisierung im selben oder einem anderen Terminal
- * zu ermöglichen.  Im Tester wird der Status zur Performancesteigerung nur beim ersten und letzten Aufruf gespeichert, es sei denn,
- * das Logging ist aktiviert oder der Parameter 'force' ist gesetzt.
- *
- * @param  bool force - immer Speichern (default: nein)
+ * zu ermöglichen.
  *
  * @return bool - Erfolgsstatus
  */
-bool SaveStatus(bool force=false) {
+bool SaveStatus() {
    if (__STATUS__CANCELLED || IsLastError()) return( false);
    if (sequenceId == 0)                      return(_false(catch("SaveStatus(1)   illegal value of sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
    if (IsTest()) /*&&*/ if (!IsTesting())    return(true);
 
-   if (!force) /*&&*/ if (IsTesting()) /*&&*/ if (!__LOG) {          // Im Tester nur beim ersten und letzten Aufruf speichern, bei allen übrigen
-      static bool firstCall = true;                                  // Aufrufen Speichern überspringen.
-      if (!firstCall) /*&&*/ if (__WHEREAMI__!=FUNC_DEINIT) {
-         return(true);
-      }
+   // Im Tester wird der Status zur Performancesteigerung nur beim ersten und letzten Aufruf gespeichert, es sei denn,
+   // das Logging ist aktiviert oder die Sequenz wurde gestoppt.
+   if (IsTesting()) /*&&*/ if (!__LOG) {
+      static bool firstCall = true;
+      if (!firstCall) /*&&*/ if (status!=STATUS_STOPPED) /*&&*/ if (__WHEREAMI__!=FUNC_DEINIT)
+         return(true);                                               // Speichern überspringen
       firstCall = false;
    }
 
