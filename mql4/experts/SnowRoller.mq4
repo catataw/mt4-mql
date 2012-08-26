@@ -5,10 +5,10 @@
  *
  *  TODO:
  *  -----
+ *  - Start/StopConditions vervollständigen                                                           *
  *  - Equity-Charts generieren                                                                        *
  *  - bidirektional trailendes Grid implementieren                                                    *
  *  - BE-Anzeige reparieren                                                                           *
- *  - Start/StopConditions vervollständigen                                                           *
  *
  *  - Equity-Anzeige in Start/Stop-Markern                                                            *
  *  - PendingOrders nicht per Tick trailen                                                            *
