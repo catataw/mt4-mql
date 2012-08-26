@@ -7,11 +7,11 @@
  *  -----
  *  - Equity-Charts generieren                                                                        *
  *  - bidirektional trailendes Grid implementieren                                                    *
- *                                                                                                    *
- *  - Equity-Anzeige in Start/Stop-Markern                                                            *
  *  - BE-Anzeige reparieren                                                                           *
- *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Start/StopConditions vervollständigen                                                           *
+ *
+ *  - Equity-Anzeige in Start/Stop-Markern                                                            *
+ *  - PendingOrders nicht per Tick trailen                                                            *
  *  - StartCondition @level() implementieren                                                          *
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
  *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
