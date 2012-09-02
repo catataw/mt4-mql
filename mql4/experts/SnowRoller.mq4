@@ -6,6 +6,7 @@
  *  TODO:
  *  -----
  *  - Start/StopConditions vervollständigen                                                           *
+ *  - Möglichkeit, WeekendStop zu aktivieren/deaktivieren                                             *
  *  - Equity-Charts generieren                                                                        *
  *  - bidirektional trailendes Grid implementieren                                                    *
  *  - BE-Anzeige reparieren                                                                           *
