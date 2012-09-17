@@ -4714,7 +4714,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       // Daten speichern
       Grid.SetData(i, ticket, level, gridBase, pendingType, pendingTime, pendingPrice, type, openEvent, openTime, openPrice, risk, closeEvent, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit);
       lastEventId = Max(lastEventId, Max(openEvent, closeEvent));
-      //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  gridBase="+ NumberToStr(gridBase, PriceFormat) +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime='"+ TimeToStr(pendingTime, TIME_FULL) +"'  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  type="+ OperationTypeToStr(type) +"  openEvent="+ openEvent +"  openTime='"+ TimeToStr(openTime, TIME_FULL) +"'  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  risk="+ DoubleToStr(risk, 2) +"  closeEvent="+ closeEvent +"  closeTime='"+ TimeToStr(closeTime, TIME_FULL) +"'  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  clientSL="+ BoolToStr(clientSL) +"  closedBySL="+ BoolToStr(closedBySL) +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
+      //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  gridBase="+ NumberToStr(gridBase, PriceFormat) +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime="+ ifString(pendingTime==0, 0, "'"+ TimeToStr(pendingTime, TIME_FULL) +"'") +"  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  type="+ OperationTypeToStr(type) +"  openEvent="+ openEvent +"  openTime="+ ifString(openTime==0, 0, "'"+ TimeToStr(openTime, TIME_FULL) +"'") +"  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  risk="+ DoubleToStr(risk, 2) +"  closeEvent="+ closeEvent +"  closeTime="+ ifString(closeTime==0, 0, "'"+ TimeToStr(closeTime, TIME_FULL) +"'") +"  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  clientSL="+ BoolToStr(clientSL) +"  closedBySL="+ BoolToStr(closedBySL) +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
    }
 
    ArrayResize(values, 0);
@@ -4743,22 +4743,20 @@ bool SynchronizeStatus() {
 
    // (1.1) alle offenen Tickets in Datenarrays mit Online-Status synchronisieren, gestrichene PendingOrders löschen
    for (int i=0; i < sizeOfTickets; i++) {
-      if (orders.closeTime[i] != 0) continue;                           // geschlossene Tickets überspringen
-      if (orders.ticket[i] < 0)     continue;                           // client-seitige Pending-Orders überspringen
-
-      if (!OrderSelectByTicket(orders.ticket[i], "SynchronizeStatus(1)   cannot synchronize "+ OperationTypeDescription(ifInt(orders.type[i]==OP_UNDEFINED, orders.pendingType[i], orders.type[i])) +" order (#"+ orders.ticket[i] +" not found)"))
-         return(false);
-
-      if (!Sync.UpdateOrder(i, permanentTicketChange))
-         return(false);
-      if (permanentTicketChange)
-         permanentStatusChange = true;
+      if (orders.closeTime[i] == 0) {
+         if (orders.ticket[i] < 0)                                      // client-seitige PendingOrders überspringen
+            continue;
+         if (!OrderSelectByTicket(orders.ticket[i], "SynchronizeStatus(1)   cannot synchronize "+ OperationTypeDescription(ifInt(orders.type[i]==OP_UNDEFINED, orders.pendingType[i], orders.type[i])) +" order (#"+ orders.ticket[i] +" not found)"))
+            return(false);
+         if (!Sync.UpdateOrder(i, permanentTicketChange))
+            return(false);
+         permanentStatusChange = permanentStatusChange || permanentTicketChange;
+      }
 
       if (orders.type[i]==OP_UNDEFINED) /*&&*/ if (orders.closeTime[i]!=0) {
-         if (!Grid.DropData(i))
+         if (!Grid.DropData(i))                                         // geschlossene PendingOrders löschen
             return(false);
-         sizeOfTickets--;
-         i--;
+         sizeOfTickets--; i--;
          permanentStatusChange = true;
       }
    }
