@@ -10,8 +10,10 @@ int onDeinitUndefined() {
          return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
 
       if (status==STATUS_WAITING || status==STATUS_PROGRESSING) {
-         if (StopSequence())                                         // ruft intern UpdateStatus() und SaveStatus() auf
-            ShowStatus();
+         int iNull[];
+         if (UpdateStatus(iNull, iNull))
+            StopSequence();                                          // ruft intern SaveStatus() auf
+         ShowStatus();
       }
       return(last_error);
    }

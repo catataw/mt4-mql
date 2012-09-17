@@ -58,8 +58,8 @@ int onInitChartClose() {
             sequenceId  = InstanceId(ids[i]);
             Sequence.ID = sequenceId; SS.SequenceId();
             status      = STATUS_WAITING;
-            if (RestoreStatus())                                                       // TODO: erkennen, ob einer der anderen Parameter von Hand geändert wurde und
-               if (ValidateConfiguration(false))                                       //       sofort nach neuer Sequenz mit Hinweis auf die laufenden fragen
+            if (RestoreStatus())                                                       // TODO: Erkennen, ob einer der anderen Parameter von Hand geändert wurde und
+               if (ValidateConfiguration(false))                                       //       sofort nach neuer Sequenz fragen.
                   SynchronizeStatus();
             return(last_error);
          }
@@ -81,8 +81,8 @@ int onInitChartClose() {
 
    // (3) ...zum Schluß neue Sequenz anlegen.
    if (ValidateConfiguration(true)) {
-      instanceStartTime  = TimeCurrent() - 1;                                          // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erläuterungen siehe dort),
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // entsprechend wird auch instanceStartTime zurückgesetzt.
+      instanceStartTime  = TimeCurrent();
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
       test               = IsTesting(); SS.Test();
       sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
@@ -147,8 +147,8 @@ int onInitParameterChange() {
 
    if (status == STATUS_UNINITIALIZED) {
       // neue Sequenz anlegen
-      instanceStartTime  = TimeCurrent() - 1;                                          // sequenceStartTime wird 1 sec. in die Vergangenheit gesetzt (Erläuterungen siehe dort),
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);                     // entsprechend wird auch instanceStartTime zurückgesetzt.
+      instanceStartTime  = TimeCurrent();
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
       test               = IsTesting(); SS.Test();
       sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
