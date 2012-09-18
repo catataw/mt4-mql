@@ -3368,10 +3368,10 @@ bool ValidateConfiguration(bool interactive) {
 
    // (5) StartConditions, AND-verknüpft: "@limit(1.33) && @time(12:00)"
    // ------------------------------------------------------------------
-   //  @limit(1.33)     oder  1.33
-   //  @time(12:00)     oder  12:00                // Validierung unzureichend
+   //  @bid(1.33) | @ask(1.33) | @price(1.33) | @limit(1.33) | @stop(1.33)
+   //  @time(12:00)                                // Validierung unzureichend
    if (!parameterChange || StartConditions!=last.StartConditions) {
-      // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StartConditions nur bei Änderung (re-)aktiviert werden
+      // Bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StartConditions nur bei Änderung (re-)aktiviert werden.
       start.conditions           = false;
       start.conditions.triggered = false;
       start.limit.condition      = false;
@@ -3429,7 +3429,7 @@ bool ValidateConfiguration(bool interactive) {
    //  @profit(1234.00)
    //  @profit(20%)
    if (!parameterChange || StopConditions!=last.StopConditions) {
-      // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StopConditions nur bei Änderung (re-)aktiviert werden
+      // Bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StopConditions nur bei Änderung (re-)aktiviert werden.
       stop.conditions              = false;
       stop.conditions.triggered    = false;
       stop.limit.condition         = false;
