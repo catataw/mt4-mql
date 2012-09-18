@@ -5,7 +5,6 @@
  *
  *  TODO:
  *  -----
- *  - Equity-Anzeige in Start/Stop-Markern                                                            *
  *  - Start/StopConditions vervollständigen                                                           *
  *  - Equity-Charts generieren                                                                        *
  *  - bidirektional trailendes Grid implementieren                                                    *
@@ -5367,6 +5366,7 @@ void RedrawStartStop() {
 
    datetime time;
    double   price;
+   double   profit;
    string   label;
 
    int starts = ArraySize(sequenceStart.event);
@@ -5375,15 +5375,17 @@ void RedrawStartStop() {
    // (1) Start-Marker
    for (int i=0; i <= starts; i++) {
       if (starts == 0) {
-         time  = instanceStartTime;
-         price = instanceStartPrice;
+         time   = instanceStartTime;
+         price  = instanceStartPrice;
+         profit = 0;
       }
       else if (i == starts) {
          break;
       }
       else {
-         time  = sequenceStart.time [i];
-         price = sequenceStart.price[i];
+         time   = sequenceStart.time  [i];
+         price  = sequenceStart.price [i];
+         profit = sequenceStart.profit[i];
       }
 
       label = StringConcatenate("SR.", sequenceId, ".start.", i+1);
@@ -5391,10 +5393,11 @@ void RedrawStartStop() {
          ObjectDelete(label);
 
       if (startStopDisplayMode != SDM_NONE) {
-         ObjectCreate(label, OBJ_ARROW, 0, time, price);
-         ObjectSet   (label, OBJPROP_ARROWCODE, startStopDisplayMode);
-         ObjectSet   (label, OBJPROP_BACK,      false               );
-         ObjectSet   (label, OBJPROP_COLOR,     last.MarkerColor    );
+         ObjectCreate (label, OBJ_ARROW, 0, time, price);
+         ObjectSet    (label, OBJPROP_ARROWCODE, startStopDisplayMode);
+         ObjectSet    (label, OBJPROP_BACK,      false               );
+         ObjectSet    (label, OBJPROP_COLOR,     last.MarkerColor    );
+         ObjectSetText(label, StringConcatenate("Profit: ", DoubleToStr(profit, 2)));
       }
    }
 
@@ -5402,18 +5405,20 @@ void RedrawStartStop() {
    // (2) Stop-Marker
    for (i=0; i < starts; i++) {
       if (sequenceStop.time[i] > 0) {
-         time  = sequenceStop.time [i];
-         price = sequenceStop.price[i];
+         time   = sequenceStop.time [i];
+         price  = sequenceStop.price[i];
+         profit = sequenceStop.profit[i];
 
          label = StringConcatenate("SR.", sequenceId, ".stop.", i+1);
          if (ObjectFind(label) == 0)
             ObjectDelete(label);
 
          if (startStopDisplayMode != SDM_NONE) {
-            ObjectCreate(label, OBJ_ARROW, 0, time, price);
-            ObjectSet   (label, OBJPROP_ARROWCODE, startStopDisplayMode);
-            ObjectSet   (label, OBJPROP_BACK,      false               );
-            ObjectSet   (label, OBJPROP_COLOR,     last.MarkerColor    );
+            ObjectCreate (label, OBJ_ARROW, 0, time, price);
+            ObjectSet    (label, OBJPROP_ARROWCODE, startStopDisplayMode);
+            ObjectSet    (label, OBJPROP_BACK,      false               );
+            ObjectSet    (label, OBJPROP_COLOR,     last.MarkerColor    );
+            ObjectSetText(label, StringConcatenate("Profit: ", DoubleToStr(profit, 2)));
          }
       }
    }
