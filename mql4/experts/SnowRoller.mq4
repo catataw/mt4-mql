@@ -13,19 +13,17 @@
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Möglichkeit, WeekendStop zu aktivieren/deaktivieren                                             *
  *  - StartCondition @level() implementieren                                                          *
- *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
  *  - BE-Anzeige reparieren                                                                           *
  *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment                                         *
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird   *
- *  - Sounds in Tradefunktionen abschaltbar machen                                                    *
  *
- *  - Änderungen der Gridbasis während Auszeit erkennen
- *  - maxProfit/Loss analog zu PendingOrders regelmäßig speichern
- *
+ *  - maxProfit/Loss regelmäßig speichern
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Logging aller MessageBoxen
+ *  - Sounds in Tradefunktionen abschaltbar machen
+ *  - Änderungen der Gridbasis während Auszeit erkennen
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *  - Upload der Statusdatei implementieren
@@ -133,13 +131,15 @@ datetime sequenceStop.time  [];
 double   sequenceStop.price [];
 double   sequenceStop.profit[];
 
-bool     start.conditions;                                  // ob die StartConditions aktiv sind
+bool     start.conditions;                                  // ob die StartConditions aktiv sind und getriggert wurden
+bool     start.conditions.triggered;
 bool     start.limit.condition;
 double   start.limit.value;
 bool     start.time.condition;
 datetime start.time.value;
 
-bool     stop.conditions;                                   // ob die StopConditions aktiv sind
+bool     stop.conditions;                                   // ob die StopConditions aktiv sind und getriggert wurden
+bool     stop.conditions.triggered;
 bool     stop.limit.condition;
 double   stop.limit.value;
 bool     stop.time.condition;
@@ -1071,12 +1071,10 @@ bool IsStartSignal() {
    if (__STATUS__CANCELLED)                                       return(false);
    if (status!=STATUS_WAITING) /*&&*/ if (status!=STATUS_STOPPED) return(false);
 
-   static bool isTriggered = false;
-
    if (start.conditions) {
-      if (isTriggered) {
-         warn("IsStartSignal(1)   repeated triggered state call");
-         return(true);                                                     // einmal getriggert, immer getriggert (solange start.conditions aktiviert ist)
+      if (start.conditions.triggered) {
+         warn("IsStartSignal(1)   repeated triggered state call");   // Einmal getriggert, immer getriggert. Falls der Start beim aktuellen Tick nicht ausgeführt
+         return(true);                                               // werden konnte, könnten die Bedingungen beim nächsten Tick schon nicht mehr erfüllt sein.
       }
 
       // -- start.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ---------------------------------------
@@ -1090,10 +1088,10 @@ bool IsStartSignal() {
             lastBid_init = false;
          }
          else if (lastBid < start.limit.value) {
-            result = (Bid >= start.limit.value);                           // Bid hat Limit von unten nach oben gekreuzt
+            result = (Bid >= start.limit.value);                     // Bid hat Limit von unten nach oben gekreuzt
          }
          else {
-            result = (Bid <= start.limit.value);                           // Bid hat Limit von oben nach unten gekreuzt
+            result = (Bid <= start.limit.value);                     // Bid hat Limit von oben nach unten gekreuzt
          }
 
          lastBid = Bid;
@@ -1110,13 +1108,13 @@ bool IsStartSignal() {
       }
 
       // -- alle Bedingungen sind erfüllt (AND-Verknüpfung) -------------------------------------------------------------
-      isTriggered = true;
    }
    else {
-      if (__LOG) log("IsStartSignal()   no start conditions defined");     // Keine Startbedingungen sind ebenfalls gültiges Startsignal,
-      isTriggered = false;                                                 // isTriggered wird jedoch zurückgesetzt (Startbedingungen könnten sich ändern).
+      // Keine Startbedingungen sind ebenfalls gültiges Startsignal
+      if (__LOG) log("IsStartSignal()   no start conditions defined");
    }
 
+   start.conditions.triggered = true;
    return(true);
 }
 
@@ -1239,22 +1237,19 @@ void UpdateWeekendResume() {
 /**
  * Signalgeber für StopSequence(). Die einzelnen Bedingungen sind OR-verknüpft.
  *
- * @param bool checkWeekend - ob auch auf das Wochenend-Stopsignal geprüft werden soll (default: ja)
+ * @param bool checkWeekendStop - ob auch auf das Wochenend-Stopsignal geprüft werden soll (default: ja)
  *
  * @return bool - ob mindestens eine Stopbedingung erfüllt ist
  */
-bool IsStopSignal(bool checkWeekend=true) {
+bool IsStopSignal(bool checkWeekendStop=true) {
    if (__STATUS__CANCELLED || status!=STATUS_PROGRESSING)
       return(false);
 
-
    // (1) User-definierte StopConditions prüfen
-   static bool isTriggered = false;
-
    if (stop.conditions) {
-      if (isTriggered) {
-         warn("IsStopSignal(1)   repeated triggered state call");
-         return(true);                                               // einmal getriggert, immer getriggert (solange stop.conditions aktiviert ist)
+      if (stop.conditions.triggered) {
+         warn("IsStopSignal(1)   repeated triggered state call");    // Einmal getriggert, immer getriggert. Falls der Stop beim aktuellen Tick nicht ausgeführt
+         return(true);                                               // werden konnte, könnten die Bedingungen beim nächsten Tick schon nicht mehr erfüllt sein.
       }
 
       // -- stop.limit: erfüllt, wenn der Bid-Preis den Wert berührt oder kreuzt ----------------------------------------
@@ -1280,7 +1275,7 @@ bool IsStopSignal(bool checkWeekend=true) {
          lastBid = Bid;
          if (result) {
             if (__LOG) log(StringConcatenate("IsStopSignal()   price condition \"", NumberToStr(stop.limit.value, PriceFormat), "\" met"));
-            isTriggered = true;
+            stop.conditions.triggered = true;
             return(true);
          }
       }
@@ -1289,7 +1284,7 @@ bool IsStopSignal(bool checkWeekend=true) {
       if (stop.time.condition) {
          if (stop.time.value <= TimeCurrent()) {
             if (__LOG) log(StringConcatenate("IsStopSignal()   time condition \"", TimeToStr(stop.time.value, TIME_FULL), "\" met"));
-            isTriggered = true;
+            stop.conditions.triggered = true;
             return(true);
          }
       }
@@ -1298,7 +1293,7 @@ bool IsStopSignal(bool checkWeekend=true) {
       if (stop.profitAbs.condition) {
          if (GE(grid.totalPL, stop.profitAbs.value)) {
             if (__LOG) log(StringConcatenate("IsStopSignal()   profit condition \"", DoubleToStr(stop.profitAbs.value, 2), "\" met"));
-            isTriggered = true;
+            stop.conditions.triggered = true;
             return(true);
          }
       }
@@ -1307,18 +1302,18 @@ bool IsStopSignal(bool checkWeekend=true) {
       if (stop.profitPercent.condition) {
          if (GE(grid.totalPL, stop.profitPercent.value/100 * sequenceStartEquity)) {
             if (__LOG) log(StringConcatenate("IsStopSignal()   profit condition \"", NumberToStr(stop.profitPercent.value, ".+"), "%\" met"));
-            isTriggered = true;
+            stop.conditions.triggered = true;
             return(true);
          }
       }
 
       // -- keine der Bedingungen ist erfüllt (OR-Verknüpfung) ----------------------------------------------------------
    }
-   isTriggered = false;
+   stop.conditions.triggered = false;
 
 
    // (2) je nach Aufruf zusätzlich interne WeekendStop-Bedingung prüfen
-   if (checkWeekend)
+   if (checkWeekendStop)
       return(IsWeekendStopSignal());
 
    return(false);
@@ -3376,10 +3371,11 @@ bool ValidateConfiguration(bool interactive) {
    //  @limit(1.33)     oder  1.33
    //  @time(12:00)     oder  12:00                // Validierung unzureichend
    if (!parameterChange || StartConditions!=last.StartConditions) {
-      // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben (sodaß StartConditions nur bei Änderung aktiviert werden)
-      start.conditions      = false;
-      start.limit.condition = false;
-      start.time.condition  = false;
+      // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StartConditions nur bei Änderung (re-)aktiviert werden
+      start.conditions           = false;
+      start.conditions.triggered = false;
+      start.limit.condition      = false;
+      start.time.condition       = false;
 
       // (5.1) StartConditions in einzelne Ausdrücke zerlegen
       string exprs[], expr, elems[], key, value;
@@ -3388,7 +3384,7 @@ bool ValidateConfiguration(bool interactive) {
 
       // (5.2) jeden Ausdruck parsen und validieren
       for (int i=0; i < sizeOfExprs; i++) {
-         start.conditions = false;                 // im Fehlerfall ist start.conditions zurückgesetzt
+         start.conditions = false;                 // im Fehlerfall ist start.conditions deaktiviert
          expr = StringToLower(StringTrim(exprs[i]));
          if (StringLen(expr) == 0) {
             if (sizeOfExprs > 1)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(16)", "Invalid parameter StartConditions = \""+ StartConditions +"\"", interactive)));
@@ -3433,8 +3429,9 @@ bool ValidateConfiguration(bool interactive) {
    //  @profit(1234.00)
    //  @profit(20%)
    if (!parameterChange || StopConditions!=last.StopConditions) {
-      // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben (sodaß StopConditions nur bei Änderung aktiviert werden)
+      // bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StopConditions nur bei Änderung (re-)aktiviert werden
       stop.conditions              = false;
+      stop.conditions.triggered    = false;
       stop.limit.condition         = false;
       stop.time.condition          = false;
       stop.profitAbs.condition     = false;
@@ -3445,7 +3442,7 @@ bool ValidateConfiguration(bool interactive) {
 
       // (6.2) jeden Ausdruck parsen und validieren
       for (i=0; i < sizeOfExprs; i++) {
-         stop.conditions = false;                  // im Fehlerfall ist stop.conditions zurückgesetzt
+         stop.conditions = false;                  // im Fehlerfall ist stop.conditions deaktiviert
          expr = StringToLower(StringTrim(exprs[i]));
          if (StringLen(expr) == 0) {
             if (sizeOfExprs > 1)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(25)", "Invalid parameter StopConditions = \""+ StopConditions +"\"", interactive)));
@@ -3563,12 +3560,14 @@ void StoreConfiguration(bool save=true) {
    static int      _grid.direction;
 
    static bool     _start.conditions;
+   static bool     _start.conditions.triggered;
    static bool     _start.limit.condition;
    static double   _start.limit.value;
    static bool     _start.time.condition;
    static datetime _start.time.value;
 
    static bool     _stop.conditions;
+   static bool     _stop.conditions.triggered;
    static bool     _stop.limit.condition;
    static double   _stop.limit.value;
    static bool     _stop.time.condition;
@@ -3591,12 +3590,14 @@ void StoreConfiguration(bool save=true) {
       _grid.direction               = grid.direction;
 
       _start.conditions             = start.conditions;
+      _start.conditions.triggered   = start.conditions.triggered;
       _start.limit.condition        = start.limit.condition;
       _start.limit.value            = start.limit.value;
       _start.time.condition         = start.time.condition;
       _start.time.value             = start.time.value;
 
       _stop.conditions              = stop.conditions;
+      _stop.conditions.triggered    = stop.conditions.triggered;
       _stop.limit.condition         = stop.limit.condition;
       _stop.limit.value             = stop.limit.value;
       _stop.time.condition          = stop.time.condition;
@@ -3619,12 +3620,14 @@ void StoreConfiguration(bool save=true) {
       grid.direction                = _grid.direction;
 
       start.conditions              = _start.conditions;
+      start.conditions.triggered    = _start.conditions.triggered;
       start.limit.condition         = _start.limit.condition;
       start.limit.value             = _start.limit.value;
       start.time.condition          = _start.time.condition;
       start.time.value              = _start.time.value;
 
       stop.conditions               = _stop.conditions;
+      stop.conditions.triggered     = _stop.conditions.triggered;
       stop.limit.condition          = _stop.limit.condition;
       stop.limit.value              = _stop.limit.value;
       stop.time.condition           = _stop.time.condition;
