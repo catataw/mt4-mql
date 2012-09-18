@@ -5,17 +5,17 @@
  *
  *  TODO:
  *  -----
+ *  - Equity-Anzeige in Start/Stop-Markern                                                            *
  *  - Start/StopConditions vervollständigen                                                           *
- *  - Möglichkeit, WeekendStop zu aktivieren/deaktivieren                                             *
  *  - Equity-Charts generieren                                                                        *
  *  - bidirektional trailendes Grid implementieren                                                    *
- *  - BE-Anzeige reparieren                                                                           *
  *
- *  - Equity-Anzeige in Start/Stop-Markern                                                            *
+ *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
  *  - PendingOrders nicht per Tick trailen                                                            *
+ *  - Möglichkeit, WeekendStop zu aktivieren/deaktivieren                                             *
  *  - StartCondition @level() implementieren                                                          *
  *  - StartSequence: bei @level(1) Gridbase verschieben und StartCondition neu setzen                 *
- *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
+ *  - BE-Anzeige reparieren                                                                           *
  *  - BE-Anzeige laufender Sequenzen bis zum aktuellen Moment                                         *
  *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
  *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird   *
