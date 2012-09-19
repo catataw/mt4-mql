@@ -20,10 +20,17 @@
 #define STATUS_DISABLED             6
 
 
+// Start/StopCondition-PriceTypes
+#define SPC_BID                     0
+#define SPC_ASK                     1
+#define SPC_MEDIAN                  2                                   // (Bid+Ask)/2
+string scpPriceDescr[] = {"Bid", "Ask", "Avg"};
+
+
 // Start/StopDisplay-Modes
-#define SDM_NONE                    0                                      // - keine Anzeige -
-#define SDM_MARKER                159                                      // einfache Markierung (kleiner Punkt)
-#define SDM_PRICE    SYMBOL_LEFTPRICE                                      // Markierung mit Preisangabe
+#define SDM_NONE                    0                                   // - keine Anzeige -
+#define SDM_MARKER                159                                   // einfache Markierung (kleiner Punkt)
+#define SDM_PRICE    SYMBOL_LEFTPRICE                                   // Markierung mit Preisangabe
 int startStopDisplayModes[] = {SDM_NONE, SDM_MARKER, SDM_PRICE};
 
 
@@ -34,10 +41,10 @@ int startStopDisplayModes[] = {SDM_NONE, SDM_MARKER, SDM_PRICE};
 #define ODF_CLOSED                  8
 
 // OrderDisplay-Modes
-#define ODM_NONE                    0                                      // - keine Anzeige -
-#define ODM_STOPS                   1                                      // Pending,       ClosedBySL
-#define ODM_PYRAMID                 2                                      // Pending, Open,             Closed
-#define ODM_ALL                     3                                      // Pending, Open, ClosedBySL, Closed
+#define ODM_NONE                    0                                   // - keine Anzeige -
+#define ODM_STOPS                   1                                   // Pending,       ClosedBySL
+#define ODM_PYRAMID                 2                                   // Pending, Open,             Closed
+#define ODM_ALL                     3                                   // Pending, Open, ClosedBySL, Closed
 int orderDisplayModes[] = {ODM_NONE, ODM_STOPS, ODM_PYRAMID, ODM_ALL};
 
 // OrderDisplay-Farben
