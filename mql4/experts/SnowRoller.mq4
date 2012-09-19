@@ -4397,7 +4397,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
          if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(19)   illegal sequenceStop.event["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          int stopEvent = StrToInteger(value);
          if (stopEvent == 0) {
-            if (i < sizeOfValues-1 || values[i]!="0|0|0|0")                 return(_false(catch("RestoreStatus.Runtime(20)   illegal sequenceStop["+ i +"] \""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+            if (i < sizeOfValues-1)                                         return(_false(catch("RestoreStatus.Runtime(20)   illegal sequenceStop["+ i +"] \""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+            if (values[i]!="0|0|0|0")                                       return(_false(catch("RestoreStatus.Runtime(20)   illegal sequenceStop["+ i +"] \""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
             if (i==0 && ArraySize(sequenceStart.event)==0)
                break;
          }
@@ -4405,15 +4406,15 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
          value = data[1];                          // sequenceStop.time
          if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(21)   illegal sequenceStop.time["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          datetime stopTime = StrToInteger(value);
-         if (stopTime == 0)                                                 return(_false(catch("RestoreStatus.Runtime(22)   illegal sequenceStop.time["+ i +"] "+ stopTime +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-         else if (i >= ArraySize(sequenceStart.event))                      return(_false(catch("RestoreStatus.Runtime(23)   sequenceStarts("+ ArraySize(sequenceStart.event) +") / sequenceStops("+ sizeOfValues +") mis-match in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-         else if (stopTime < sequenceStart.time[i])                         return(_false(catch("RestoreStatus.Runtime(24)   sequenceStart.time["+ i +"]/sequenceStop.time["+ i +"] mis-match '"+ TimeToStr(sequenceStart.time[i], TIME_FULL) +"'/'"+ TimeToStr(stopTime, TIME_FULL) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (stopTime==0 && stopEvent!=0)                                   return(_false(catch("RestoreStatus.Runtime(22)   illegal sequenceStop.time["+ i +"] "+ stopTime +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (i >= ArraySize(sequenceStart.event))                           return(_false(catch("RestoreStatus.Runtime(23)   sequenceStarts("+ ArraySize(sequenceStart.event) +") / sequenceStops("+ sizeOfValues +") mis-match in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (stopTime!=0 && stopTime < sequenceStart.time[i])               return(_false(catch("RestoreStatus.Runtime(24)   sequenceStart.time["+ i +"]/sequenceStop.time["+ i +"] mis-match '"+ TimeToStr(sequenceStart.time[i], TIME_FULL) +"'/'"+ TimeToStr(stopTime, TIME_FULL) +"' in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
          value = data[2];                          // sequenceStop.price
          if (!StringIsNumeric(value))                                       return(_false(catch("RestoreStatus.Runtime(25)   illegal sequenceStop.price["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          double stopPrice = StrToDouble(value);
          if (LT(stopPrice, 0))                                              return(_false(catch("RestoreStatus.Runtime(26)   illegal sequenceStop.price["+ i +"] "+ NumberToStr(stopPrice, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-         if (EQ(stopPrice, 0) && stopTime!=0)                               return(_false(catch("RestoreStatus.Runtime(27)   sequenceStop.time["+ i +"]/sequenceStop.price["+ i +"] mis-match '"+ TimeToStr(stopTime, TIME_FULL) +"'/"+ NumberToStr(stopPrice, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (EQ(stopPrice, 0) && stopEvent!=0)                              return(_false(catch("RestoreStatus.Runtime(27)   sequenceStop.time["+ i +"]/sequenceStop.price["+ i +"] mis-match '"+ TimeToStr(stopTime, TIME_FULL) +"'/"+ NumberToStr(stopPrice, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
          value = data[3];                          // sequenceStop.profit
          if (!StringIsNumeric(value))                                       return(_false(catch("RestoreStatus.Runtime(28)   illegal sequenceStop.profit["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
