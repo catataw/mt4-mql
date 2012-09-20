@@ -283,7 +283,7 @@ int onTick() {
 
    // (5) Equity-Chart aktualisieren
    if (status == STATUS_PROGRESSING)
-      UpdateEquityChart(grid.totalPL);
+      RecordEquity();
 
    // (6) Status anzeigen
    ShowStatus();
@@ -565,7 +565,7 @@ bool StopSequence() {
    sequenceStop.profit[n] = grid.totalPL;
    if (!SaveStatus())
       return(false);
-   if (!UpdateEquityChart(grid.totalPL))
+   if (!RecordEquity())
       return(false);
    RedrawStartStop();
 
@@ -5953,13 +5953,38 @@ string GridDirectionDescription(int direction) {
 }
 
 
+#define HISTORY_CLOSE_AT_REMOVE     1
+#define HISTORY_FILL_GAPS           2
+
+
 /**
- * Aktualisiert den Equity-Chart der Sequenz.
- *
- * @param double profit - aktueller Profit/Loss
+ * Zeichnet die Equity-Kurve der Sequenz auf.
  *
  * @return bool - Erfolgsstatus
  */
-bool UpdateEquityChart(double profit) {
+bool RecordEquity() {
+   string symbol;
+   int    period;
+   double value = sequenceStartEquity + grid.totalPL;
+
+   UpdateHistory(symbol, period, value, HISTORY_CLOSE_AT_REMOVE|HISTORY_FILL_GAPS);
+
+   /*
+   int hWnd = WindowHandle(symbol, period);
+   if (hWnd != 0) {
+      Chart.Refresh(hWnd);
+      Chart.SendTick(hWnd, false);
+   }
+   */
+   return(true);
+}
+
+
+/**
+ * Aktualisiert den Equity-Chart der Sequenz.
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool UpdateHistory(string symbol, int period, double value, int flags) {
    return(true);
 }
