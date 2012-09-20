@@ -249,10 +249,8 @@ int onTick() {
       return(NO_ERROR);
    }
 
-
    // (1) Commands verarbeiten
    HandleEvent(EVENT_CHART_CMD);
-
 
    static int    last.grid.level, limits[], stops[];
    static double last.grid.base;
@@ -283,14 +281,16 @@ int onTick() {
       }
    }
 
+   // (5) Equity-Chart aktualisieren
+   if (status == STATUS_PROGRESSING)
+      UpdateEquityChart(grid.totalPL);
+
+   // (6) Status anzeigen
+   ShowStatus();
+
    last.grid.level = grid.level;
    last.grid.base  = grid.base;
    firstTick       = false;
-
-
-   // (5) Status anzeigen
-   ShowStatus();
-
    return(last_error);
 }
 
@@ -408,7 +408,7 @@ bool StartSequence() {
 
 
    // (3) Gridbasis setzen
-   Grid.BaseReset(startTime, startPrice);                            // zeitlich immer nach sequenceStartTime
+   Grid.BaseReset(startTime, startPrice);                            // event-m‰ﬂig nach sequenceStartTime
 
 
    // (4) Stop-Orders in den Markt legen
@@ -560,10 +560,13 @@ bool StopSequence() {
 
    // (6) Daten aktualisieren und speichern
    int iNull[];
-   if (!UpdateStatus(iNull, iNull)) return(false);
+   if (!UpdateStatus(iNull, iNull))
+      return(false);
    sequenceStop.profit[n] = grid.totalPL;
-
-   if (!SaveStatus()) return(false);
+   if (!SaveStatus())
+      return(false);
+   if (!UpdateEquityChart(grid.totalPL))
+      return(false);
    RedrawStartStop();
 
 
@@ -5947,4 +5950,16 @@ string GridDirectionDescription(int direction) {
       case D_LONG_SHORT: return("long + short" );
    }
    return(_empty(catch("GridDirectionDescription()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
+}
+
+
+/**
+ * Aktualisiert den Equity-Chart der Sequenz.
+ *
+ * @param double profit - aktueller Profit/Loss
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool UpdateEquityChart(double profit) {
+   return(true);
 }
