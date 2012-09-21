@@ -5963,7 +5963,7 @@ string GridDirectionDescription(int direction) {
  * @return bool - Erfolgsstatus
  */
 bool RecordEquity() {
-   string symbol;
+   string symbol = "";
    int    period;
    double value = sequenceStartEquity + grid.totalPL;
 
