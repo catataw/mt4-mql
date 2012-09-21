@@ -281,9 +281,10 @@ int onTick() {
       }
    }
 
-   // (5) Equity-Chart aktualisieren
-   if (status == STATUS_PROGRESSING)
+   // (5) Equity-Kurve aufzeichnen (erst nach allen Orderfunktionen, ab dem ersten ausgeführten Trade)
+   if (status==STATUS_PROGRESSING) /*&&*/ if (grid.maxLevelLong-grid.maxLevelShort!=0) {
       RecordEquity();
+   }
 
    // (6) Status anzeigen
    ShowStatus();
@@ -741,7 +742,7 @@ bool UpdateStatus(int limits[], int stops[]) {
 
    // (1) Tickets aktualisieren
    for (int i=0; i < sizeOfTickets; i++) {
-      if (orders.closeTime[i] == 0) {                                                        // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
+      if (orders.closeTime[i] == 0) {                                                  // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
          wasPending = orders.type[i] == OP_UNDEFINED;
 
          if (wasPending) /*&&*/ if (orders.ticket[i] < 0) {
@@ -757,7 +758,7 @@ bool UpdateStatus(int limits[], int stops[]) {
 
          if (wasPending) {
             // beim letzten Aufruf Pending-Order
-            if (OrderType() != orders.pendingType[i]) {                                      // Order wurde ausgeführt
+            if (OrderType() != orders.pendingType[i]) {                                // Order wurde ausgeführt
                orders.type      [i] = OrderType();
                orders.openEvent [i] = CreateEventId();
                orders.openTime  [i] = OrderOpenTime();
@@ -780,7 +781,7 @@ bool UpdateStatus(int limits[], int stops[]) {
          }
          else {
             // beim letzten Aufruf offene Position
-            if (NE(orders.swap[i], OrderSwap())) {                                           // bei Swap-Änderung activeRisk und valueAtRisk justieren
+            if (NE(orders.swap[i], OrderSwap())) {                                     // bei Swap-Änderung activeRisk und valueAtRisk justieren
                grid.activeRisk  = NormalizeDouble(grid.activeRisk  + orders.swap[i] - OrderSwap(), 2);
                grid.valueAtRisk = NormalizeDouble(grid.valueAtRisk + orders.swap[i] - OrderSwap(), 2); SS.Grid.ValueAtRisk();
                recalcBreakeven  = true;
@@ -793,7 +794,7 @@ bool UpdateStatus(int limits[], int stops[]) {
 
          isClosed = OrderCloseTime() != 0;
 
-         if (!isClosed) {                                                                    // weiterhin offenes Ticket
+         if (!isClosed) {                                                              // weiterhin offenes Ticket
             if (orders.type[i] != OP_UNDEFINED) {
                openPositions = true;
 
@@ -804,22 +805,22 @@ bool UpdateStatus(int limits[], int stops[]) {
             }
             grid.floatingPL = NormalizeDouble(grid.floatingPL + orders.swap[i] + orders.commission[i] + orders.profit[i], 2);
          }
-         else {                                                                              // jetzt geschlossenes Ticket: gestrichene Pending-Order oder geschlossene Position
-            orders.closeEvent[i] = CreateEventId();                                          // Bei Spikes kann eine Pending-Order ausgeführt *und* bereits geschlossen sein.
+         else {                                                                        // jetzt geschlossenes Ticket: gestrichene Pending-Order oder geschlossene Position
+            orders.closeEvent[i] = CreateEventId();                                    // Bei Spikes kann eine Pending-Order ausgeführt *und* bereits geschlossen sein.
             orders.closeTime [i] = OrderCloseTime();
             orders.closePrice[i] = OrderClosePrice();
 
-            if (orders.type[i] == OP_UNDEFINED) {                                            // gestrichene Pending-Order im STATUS_MONITORING
-               //ChartMarker.OrderDeleted(i);                                                // TODO: implementieren
+            if (orders.type[i] == OP_UNDEFINED) {                                      // gestrichene Pending-Order im STATUS_MONITORING
+               //ChartMarker.OrderDeleted(i);                                          // TODO: implementieren
                Grid.DropData(i);
                sizeOfTickets--; i--;
                continue;
             }
-            else {                                                                           // geschlossene Position
+            else {                                                                     // geschlossene Position
                orders.closedBySL[i] = IsOrderClosedBySL();
                ChartMarker.PositionClosed(i);
 
-               if (orders.closedBySL[i]) {                                                   // ausgestoppt
+               if (orders.closedBySL[i]) {                                             // ausgestoppt
                   if (__LOG) log(UpdateStatus.SLExecuteMsg(i));
                   grid.level      -= Sign(orders.level[i]);
                   grid.stops++;
@@ -828,7 +829,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                   grid.valueAtRisk = NormalizeDouble(grid.activeRisk - grid.stopsPL, 2); SS.Grid.ValueAtRisk();  // valueAtRisk = -stopsPL + activeRisk
                   recalcBreakeven  = true;
                }
-               else {                                                                        // Sequenzstop im STATUS_MONITORING oder autom. Close bei Testende
+               else {                                                                  // Sequenzstop im STATUS_MONITORING oder autom. Close bei Testende
                   if (status != STATUS_STOPPED)
                      status = STATUS_STOPPING;
                   if (__LOG) log(UpdateStatus.PositionCloseMsg(i));
@@ -853,7 +854,7 @@ bool UpdateStatus(int limits[], int stops[]) {
 
    // (3) ggf. Status aktualisieren
    if (status == STATUS_STOPPING) {
-      if (!openPositions) {                                                                  // Sequenzstop im STATUS_MONITORING oder autom. Close bei Testende
+      if (!openPositions) {                                                            // Sequenzstop im STATUS_MONITORING oder autom. Close bei Testende
          status = STATUS_STOPPED;
          if (__LOG) log("UpdateStatus()   STATUS_STOPPED");
 
@@ -887,8 +888,8 @@ bool UpdateStatus(int limits[], int stops[]) {
          Grid.CalculateBreakeven();
       }
       else if (grid.maxLevelLong-grid.maxLevelShort != 0) {
-         if      (  !IsTesting()) HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);              // jede Minute    TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
-         else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                               // nur onBarOpen        (langlaufendes UpdateStatus() überspringt evt. Event)
+         if      (  !IsTesting()) HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);        // jede Minute    TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
+         else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                         // nur onBarOpen        (langlaufendes UpdateStatus() überspringt evt. Event)
       }
    }
 
@@ -5953,8 +5954,7 @@ string GridDirectionDescription(int direction) {
 }
 
 
-#define HISTORY_CLOSE_AT_REMOVE     1
-#define HISTORY_FILL_GAPS           2
+#define HST_FILL_GAPS   1
 
 
 /**
@@ -5963,17 +5963,18 @@ string GridDirectionDescription(int direction) {
  * @return bool - Erfolgsstatus
  */
 bool RecordEquity() {
-   string symbol = "";
-   int    period;
-   double value = sequenceStartEquity + grid.totalPL;
+   string   symbol  = "";
+   int      periods = F_PERIODS_ALL & (~F_PERIOD_W1) & (~F_PERIOD_MN1);
+   datetime time    = Round(MarketInfo(Symbol(), MODE_TIME));
+   double   value   = sequenceStartEquity + grid.totalPL;
 
-   UpdateHistory(symbol, period, value, HISTORY_CLOSE_AT_REMOVE|HISTORY_FILL_GAPS);
+   UpdateHistory(symbol, periods, value, HST_FILL_GAPS);
 
    /*
    int hWnd = WindowHandle(symbol, period);
    if (hWnd != 0) {
-      Chart.Refresh(hWnd);
-      Chart.SendTick(hWnd, false);
+      if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
+      else                      Chart.SendTick(hWnd, false);
    }
    */
    return(true);
@@ -5981,10 +5982,10 @@ bool RecordEquity() {
 
 
 /**
- * Aktualisiert den Equity-Chart der Sequenz.
+ * Aktualisiert die Historyfiles der Equity-Kurve der Sequenz.
  *
  * @return bool - Erfolgsstatus
  */
-bool UpdateHistory(string symbol, int period, double value, int flags) {
+bool UpdateHistory(string symbol, int periods, double value, int flags) {
    return(true);
 }
