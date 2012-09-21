@@ -503,7 +503,7 @@ bool StopSequence() {
 
    if (sizeOfOpenPositions > 0) {
       int oeFlags = NULL;
-      /*ORDER_EXECUTION*/int oes[][ORDER_EXECUTION.length]; ArrayResize(oes, sizeOfOpenPositions); InitializeBuffer(oes, ORDER_EXECUTION.size);
+      /*ORDER_EXECUTION*/int oes[][ORDER_EXECUTION.intSize]; ArrayResize(oes, sizeOfOpenPositions); InitializeBuffer(oes, ORDER_EXECUTION.size);
 
       if (!OrderMultiClose(openPositions, NULL, CLR_CLOSE, oeFlags, oes))
          return(_false(SetLastError(stdlib_PeekLastError())));
@@ -5954,38 +5954,100 @@ string GridDirectionDescription(int direction) {
 }
 
 
-#define HST_FILL_GAPS   1
-
-
 /**
  * Zeichnet die Equity-Kurve der Sequenz auf.
  *
  * @return bool - Erfolgsstatus
  */
 bool RecordEquity() {
-   string   symbol  = "";
-   int      periods = F_PERIODS_ALL & (~F_PERIOD_W1) & (~F_PERIOD_MN1);
-   datetime time    = Round(MarketInfo(Symbol(), MODE_TIME));
-   double   value   = sequenceStartEquity + grid.totalPL;
+   if (!IsTesting())
+      return(true);
 
-   UpdateHistory(symbol, periods, value, HST_FILL_GAPS);
+   static string symbol;
+   static int    periods, digits=2;
 
-   /*
-   int hWnd = WindowHandle(symbol, period);
-   if (hWnd != 0) {
-      if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
-      else                      Chart.SendTick(hWnd, false);
+   if (StringLen(symbol) == 0) {
+      symbol  = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId, "c");
+      periods = F_PERIODS_ALL & (~F_PERIOD_W1) & (~F_PERIOD_MN1);
    }
-   */
-   return(true);
+
+   datetime time  = Round(MarketInfo(Symbol(), MODE_TIME));
+   double   value = NormalizeDouble(sequenceStartEquity + grid.totalPL, digits);
+
+   History.AddTick(symbol, digits, periods, time, value, HST_FILL_GAPS);
+
+   //int hWnd = WindowHandle(symbol, period);
+   //if (hWnd != 0) {
+   //   if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
+   //   else                      Chart.SendTick(hWnd, false);
+   //}
+   return(_bool(IsNoError(last_error|catch("RecordEquity()"))));
 }
 
 
 /**
- * Aktualisiert die Historyfiles der Equity-Kurve der Sequenz.
+ * Fügt den Historyfiles des angegebenen Symbols einen Tick hinzu. Der Tick wird als letzter Tick (Close) der entsprechenden Bar gespeichert.
+ *
+ * @param  string   symbol  - Symbol des Intruments
+ * @param  int      digits  - Digits der Werte der Zeitreihe (falls noch keine History des Symbols existiert)
+ * @param  int      periods - ein oder mehrere Timeframe-Flags, deren entsprechende Historyfiles modifiziert werden sollen
+ * @param  datetime time    - Zeitpunkt des Ticks
+ * @param  double   value   - Wert des Ticks
+ * @param  int      flags   - zusätzliche, das Schreiben der Historyfiles steuernde Flags (default: keine)
+ *                            HST_FILL_GAPS: entstehende Gaps werden mit dem Schlußkurs der letzten vorherigen Bar gefüllt
  *
  * @return bool - Erfolgsstatus
  */
-bool UpdateHistory(string symbol, int periods, double value, int flags) {
-   return(true);
+bool History.AddTick(string symbol, int digits, int periods, datetime time, double value, int flags=NULL) {
+   if (_bool(periods & F_PERIOD_M1)) {
+      static bool done;
+      if (!done) {
+
+         static int hFile;
+         if (hFile == 0)
+            hFile = History.OpenFile(symbol, digits, PERIOD_M1);
+         FileClose(hFile);
+         hFile = 0;
+
+         done = true;
+      }
+   }
+
+   return(_bool(IsNoError(last_error|catch("History.AddTick(2)"))));
+}
+
+
+/**
+ *
+ *
+ * @param  string symbol - Symbol des Instruments
+ * @param  int    period - Timeframe der Zeitreihe
+ * @param  int    digits - Digits der Werte (falls noch keine History des Instruments existiert)
+ *
+ * @return int - Pseudo-Handle der Datei
+ */
+int History.OpenFile(string symbol, int period, int digits) {
+   if (StringLen(symbol) > 12) return(_ZERO(catch("History.OpenFile(1)   illegal parameter symbol = "+ symbol +" (length="+ StringLen(symbol) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (period <= 0)            return(_ZERO(catch("History.OpenFile(2)   illegal parameter period = "+ period, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (digits <  0)            return(_ZERO(catch("History.OpenFile(3)   illegal parameter digits = "+ digits, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   string fileName = StringConcatenate(symbol, period, ".hst");
+
+   int hFile = FileOpenHistory(fileName, FILE_BIN|FILE_READ|FILE_WRITE);
+
+   if (FileSize(hFile) < HISTORY_HEADER.size) {
+      /*HISTORY_HEADER*/int hh[]; InitializeBuffer(hh, HISTORY_HEADER.size);
+      hh.setVersion    (hh, 400   );
+      hh.setDescription(hh, "xtrade");
+      hh.setSymbol     (hh, symbol);
+      hh.setPeriod     (hh, period);
+      hh.setDigits     (hh, digits);
+      hh.setSyncMarker (hh, TimeCurrent());
+      if (FileWriteArray(hFile, hh, 0, ArraySize(hh)) < 0)
+         return(_ZERO(catch("History.OpenFile(4)")));
+   }
+
+   if (IsError(catch("History.OpenFile(5)")))
+      return(0);
+   return(hFile);
 }
