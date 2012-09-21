@@ -5963,73 +5963,50 @@ bool RecordEquity() {
    if (!IsTesting())
       return(true);
 
-   static string symbol;
-   static int    periods, digits=2;
+   static string symbol, description;
+   static int    hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
 
    if (StringLen(symbol) == 0) {
-      symbol  = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId, "c");
-      periods = F_PERIODS_ALL & (~F_PERIOD_W1) & (~F_PERIOD_MN1);
+      symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
+      description = StringConcatenate("Equity SR.", sequenceId);
    }
 
    datetime time  = Round(MarketInfo(Symbol(), MODE_TIME));
    double   value = NormalizeDouble(sequenceStartEquity + grid.totalPL, digits);
 
-   History.AddTick(symbol, digits, periods, time, value, HST_FILL_GAPS);
+   if (hFileM1 == 0)
+      hFileM1 = History.OpenFile(symbol, description, digits, PERIOD_M1);
 
-   //int hWnd = WindowHandle(symbol, period);
-   //if (hWnd != 0) {
-   //   if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
-   //   else                      Chart.SendTick(hWnd, false);
-   //}
+   History.AddTick(hFileM1, time, value, HST_FILL_GAPS);
+
+   FileClose(hFileM1);
+   hFileM1 = 0;
+
+   /*
+   int hWnd = WindowHandle(symbol, period);
+   if (hWnd != 0) {
+      if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
+      else                      Chart.SendTick(hWnd, false);
+   }
+   */
    return(_bool(IsNoError(last_error|catch("RecordEquity()"))));
 }
 
 
 /**
- * Fügt den Historyfiles des angegebenen Symbols einen Tick hinzu. Der Tick wird als letzter Tick (Close) der entsprechenden Bar gespeichert.
+ * Öffnet eine Historydatei. Existiert die Datei noch nicht, wird sie erstellt. Die Datei wird bei Programmende automatisch geschlossen.
  *
- * @param  string   symbol  - Symbol des Intruments
- * @param  int      digits  - Digits der Werte der Zeitreihe (falls noch keine History des Symbols existiert)
- * @param  int      periods - ein oder mehrere Timeframe-Flags, deren entsprechende Historyfiles modifiziert werden sollen
- * @param  datetime time    - Zeitpunkt des Ticks
- * @param  double   value   - Wert des Ticks
- * @param  int      flags   - zusätzliche, das Schreiben der Historyfiles steuernde Flags (default: keine)
- *                            HST_FILL_GAPS: entstehende Gaps werden mit dem Schlußkurs der letzten vorherigen Bar gefüllt
+ * @param  string symbol      - Symbol des Instruments
+ * @param  string description - Beschreibung des Instruments (falls die Historydatei neu erstellt werden muß)
+ * @param  int    digits      - Digits der Werte (falls die Historydatei neu erstellt werden muß)
+ * @param  int    period      - Timeframe der Zeitreihe
  *
- * @return bool - Erfolgsstatus
+ * @return int - Dateihandle
  */
-bool History.AddTick(string symbol, int digits, int periods, datetime time, double value, int flags=NULL) {
-   if (_bool(periods & F_PERIOD_M1)) {
-      static bool done;
-      if (!done) {
-
-         static int hFile;
-         if (hFile == 0)
-            hFile = History.OpenFile(symbol, digits, PERIOD_M1);
-         FileClose(hFile);
-         hFile = 0;
-
-         done = true;
-      }
-   }
-
-   return(_bool(IsNoError(last_error|catch("History.AddTick(2)"))));
-}
-
-
-/**
- *
- *
- * @param  string symbol - Symbol des Instruments
- * @param  int    period - Timeframe der Zeitreihe
- * @param  int    digits - Digits der Werte (falls noch keine History des Instruments existiert)
- *
- * @return int - Pseudo-Handle der Datei
- */
-int History.OpenFile(string symbol, int period, int digits) {
+int History.OpenFile(string symbol, string description, int digits, int period) {
    if (StringLen(symbol) > 12) return(_ZERO(catch("History.OpenFile(1)   illegal parameter symbol = "+ symbol +" (length="+ StringLen(symbol) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (period <= 0)            return(_ZERO(catch("History.OpenFile(2)   illegal parameter period = "+ period, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (digits <  0)            return(_ZERO(catch("History.OpenFile(3)   illegal parameter digits = "+ digits, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (digits <  0)            return(_ZERO(catch("History.OpenFile(2)   illegal parameter digits = "+ digits, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (period <= 0)            return(_ZERO(catch("History.OpenFile(3)   illegal parameter period = "+ period, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    string fileName = StringConcatenate(symbol, period, ".hst");
 
@@ -6037,18 +6014,34 @@ int History.OpenFile(string symbol, int period, int digits) {
 
    if (FileSize(hFile) < HISTORY_HEADER.size) {
       /*HISTORY_HEADER*/int hh[]; InitializeBuffer(hh, HISTORY_HEADER.size);
-      hh.setVersion    (hh, 400   );
-      hh.setDescription(hh, "xtrade");
+      hh.setVersion    (hh, 400);
+      hh.setDescription(hh, StringTrim(StringConcatenate(description, " (xtrade)")));
       hh.setSymbol     (hh, symbol);
       hh.setPeriod     (hh, period);
       hh.setDigits     (hh, digits);
       hh.setSyncMarker (hh, TimeCurrent());
-      if (FileWriteArray(hFile, hh, 0, ArraySize(hh)) < 0)
-         return(_ZERO(catch("History.OpenFile(4)")));
+      FileWriteArray(hFile, hh, 0, ArraySize(hh));
       ArrayResize(hh, 0);
    }
 
-   if (IsError(catch("History.OpenFile(5)")))
+   if (IsError(catch("History.OpenFile(4)")))
       return(0);
    return(hFile);
+}
+
+
+/**
+ * Fügt der angegebenen Historydatei einen Tick hinzu. Der Tick wird als letzter Tick (Close) der entsprechenden Bar gespeichert.
+ *
+ * @param  int      hFile - Dateihandle der offenen Historydatei (muß Schreibzugriff erlauben)
+ * @param  datetime time  - Zeitpunkt des Ticks
+ * @param  double   value - Wert des Ticks
+ * @param  int      flags - zusätzliche, das Schreiben der History steuernde Flags (default: keine)
+ *                          HST_FILL_GAPS: entstehende Gaps werden mit dem Schlußkurs der vorherigen Bar gefüllt
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
+
+   return(_bool(IsNoError(last_error|catch("History.AddTick()"))));
 }
