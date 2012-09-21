@@ -6045,6 +6045,7 @@ int History.OpenFile(string symbol, int period, int digits) {
       hh.setSyncMarker (hh, TimeCurrent());
       if (FileWriteArray(hFile, hh, 0, ArraySize(hh)) < 0)
          return(_ZERO(catch("History.OpenFile(4)")));
+      ArrayResize(hh, 0);
    }
 
    if (IsError(catch("History.OpenFile(5)")))
