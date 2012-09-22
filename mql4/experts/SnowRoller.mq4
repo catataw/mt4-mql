@@ -6028,9 +6028,9 @@ int History.OpenFile(string symbol, string description, int digits, int period) 
    }
 
    // Dateinamen, FileHandle und HISTORY_HEADER zwischenspeichern
-   ArrayPushString  (hst.fileNames, fileName);
-   ArrayPushInt     (hst.hFiles,    hFile   );
-   //ArrayPushIntArray(hst.hhs,       hh      );
+   ArrayPushString(hst.fileNames, fileName);
+   ArrayPushInt   (hst.hFiles,    hFile   );
+   //ArrayPushIntArray(hst.hhs,   hh      );
    ArrayResize(hh, 0);
 
    if (IsError(catch("History.OpenFile(4)")))
@@ -6044,11 +6044,9 @@ int History.OpenFile(string symbol, string description, int digits, int period) 
  * darf nicht modul-übergreifend verwendet werden. Wurde die Datei nicht vorher geschlossen, wird sie bei Programmende automatisch geschlossen.
  *
  * @param  int hFile - Dateihandle
- *
- * @return int - Dateihandle
  */
-int History.CloseFile(int hFile) {
-   return(hFile);
+void History.CloseFile(int hFile) {
+   FileClose(hFile);
 }
 
 
