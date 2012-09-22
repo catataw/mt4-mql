@@ -31,7 +31,6 @@ int onDeinitUndefined() {
  *
  *
  * NOTE: Der "Stop"-Button des Testers kann intern bet‰tigt worden sein (nach einem Fehler oder nach Testabschluﬂ).
- * -----
  */
 int onDeinitChartClose() {
    // (1) Im Tester
