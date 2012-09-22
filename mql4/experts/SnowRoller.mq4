@@ -5942,6 +5942,11 @@ string GridDirectionDescription(int direction) {
 }
 
 
+string hst.fileNames[];
+int    hst.hFiles   [];
+int    hst.hhs      [][HISTORY_HEADER.intSize];
+
+
 /**
  * Zeichnet die Equity-Kurve der Sequenz auf.
  *
@@ -5956,19 +5961,16 @@ bool RecordEquity() {
 
    if (StringLen(symbol) == 0) {
       symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
-      description = StringConcatenate("Equity SR.", sequenceId, " (xtrade)");
+      description = StringConcatenate("Equity SR.", sequenceId);
    }
 
    datetime time  = Round(MarketInfo(Symbol(), MODE_TIME));
    double   value = NormalizeDouble(sequenceStartEquity + grid.totalPL, digits);
 
-   if (hFile == 0)
-      hFile = History.OpenFile(symbol, description, digits, PERIOD_M1);
+   if (hFile == 0) hFile = History.OpenFile(symbol, description, digits, PERIOD_M1);
+   if (hFile <= 0) return(false);
 
    History.AddTick(hFile, time, value, HST_FILL_GAPS);
-
-   History.CloseFile(hFile);
-   hFile = 0;
 
    /*
    int hWnd = WindowHandle(symbol, period);
@@ -5979,11 +5981,6 @@ bool RecordEquity() {
    */
    return(_bool(IsNoError(last_error|catch("RecordEquity()"))));
 }
-
-
-string hst.fileNames[];
-int    hst.hFiles   [];
-int    hst.hhs      [][HISTORY_HEADER.intSize];
 
 
 /**
@@ -6008,7 +6005,10 @@ int History.OpenFile(string symbol, string description, int digits, int period) 
    /*HISTORY_HEADER*/int hh[]; InitializeBuffer(hh, HISTORY_HEADER.size);
 
    string fileName = StringConcatenate(symbol, period, ".hst");
-   int    hFile    = FileOpenHistory(fileName, FILE_BIN|FILE_READ|FILE_WRITE);
+
+   int hFile = FileOpenHistory(fileName, FILE_BIN|FILE_READ|FILE_WRITE);
+   if (hFile < 0)
+      return(_ZERO(catch("History.OpenFile(4)")));
 
    if (FileSize(hFile) < HISTORY_HEADER.size) {
       // neuen HISTORY_HEADER schreiben
@@ -6033,20 +6033,9 @@ int History.OpenFile(string symbol, string description, int digits, int period) 
    //ArrayPushIntArray(hst.hhs,   hh      );
    ArrayResize(hh, 0);
 
-   if (IsError(catch("History.OpenFile(4)")))
+   if (IsError(catch("History.OpenFile(5)")))
       return(0);
    return(hFile);
-}
-
-
-/**
- * Öffnet eine Historydatei und gibt das resultierende Dateihandle zurück. Existiert die Datei noch nicht, wird sie erstellt. Das zurückgegebene Handle
- * darf nicht modul-übergreifend verwendet werden. Wurde die Datei nicht vorher geschlossen, wird sie bei Programmende automatisch geschlossen.
- *
- * @param  int hFile - Dateihandle
- */
-void History.CloseFile(int hFile) {
-   FileClose(hFile);
 }
 
 
@@ -6063,4 +6052,59 @@ void History.CloseFile(int hFile) {
  */
 bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
    return(_bool(IsNoError(last_error|catch("History.AddTick()"))));
+}
+
+
+/**
+ * Schließt alle noch offenen Dateien (wird bei Programmende automatisch aufgerufen).
+ *
+ * @param  bool warn - ob für noch offene Dateien eine Warnung ausgegeben werden soll (default: nein)
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool CloseFiles(bool warn=false) {
+   int error, size=ArraySize(hst.fileNames);
+
+   if (size > 0) {
+      for (int i=size-1; i>=0; i--) {
+         if (warn) warn(StringConcatenate("CloseFiles()   open file handle "+ hst.hFiles[i] +" found: \"", hst.fileNames[i], "\""));
+
+         if (!History.CloseFile(hst.hFiles[i]))
+            error = last_error;
+      }
+   }
+   return(IsNoError(error));
+}
+
+
+/**
+ * Schließt die Historydatei mit dem angegebenen Dateihandle. Die Datei muß vorher mit History.OpenFile() geöffnet worden sein.
+ *
+ * @param  int hFile - Dateihandle
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool History.CloseFile(int hFile) {
+   if (hFile <= 0) return(_false(catch("History.CloseFile(1)   invalid file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   int i = SearchIntArray(hst.hFiles, hFile);
+   if (i == -1)    return(_false(catch("History.CloseFile(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+
+   int error = GetLastError();
+   if (IsError(error))
+      catch("History.CloseFile(3)", error);                          // vorhandenen Fehler melden, aber noch nicht zurückkehren (Datei würde offen bleiben)
+
+   FileClose(hFile);
+   error = GetLastError();
+
+   ArraySpliceStrings(hst.fileNames, i, 1);
+   ArraySpliceInts   (hst.hFiles,    i, 1);
+   //ArraySpliceIntArrays(hst.hhs,   i, 1);
+
+   if (error == ERR_INVALID_FUNCTION_PARAMVALUE) {                   // Datei war bereits geschlossen: kann ignoriert werden
+   }
+   else if (IsError(error)) {
+      return(_false(catch("History.CloseFile(4)", error)));
+   }
+   return(true);
 }
