@@ -5968,7 +5968,7 @@ bool RecordEquity() {
 
    if (StringLen(symbol) == 0) {
       symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
-      description = StringConcatenate("Equity SR.", sequenceId);
+      description = StringConcatenate("Equity SR.", sequenceId, " (xtrade)");
    }
 
    datetime time  = Round(MarketInfo(Symbol(), MODE_TIME));
@@ -6013,13 +6013,15 @@ int History.OpenFile(string symbol, string description, int digits, int period) 
    int hFile = FileOpenHistory(fileName, FILE_BIN|FILE_READ|FILE_WRITE);
 
    if (FileSize(hFile) < HISTORY_HEADER.size) {
+      datetime now = TimeCurrent();                                  // TODO: ServerTime() implementieren; TimeCurrent() ist nicht die aktuelle Serverzeit
       /*HISTORY_HEADER*/int hh[]; InitializeBuffer(hh, HISTORY_HEADER.size);
-      hh.setVersion    (hh, 400);
-      hh.setDescription(hh, StringTrim(StringConcatenate(description, " (xtrade)")));
-      hh.setSymbol     (hh, symbol);
-      hh.setPeriod     (hh, period);
-      hh.setDigits     (hh, digits);
-      hh.setSyncMarker (hh, TimeCurrent());
+      hh.setVersion      (hh, 400        );
+      hh.setDescription  (hh, description);
+      hh.setSymbol       (hh, symbol     );
+      hh.setPeriod       (hh, period     );
+      hh.setDigits       (hh, digits     );
+      hh.setDbVersion    (hh, now        );                          // wird beim nächsten Online-Refresh mit Server-DbVersion überschrieben
+      hh.setPrevDbVersion(hh, now        );                          // derselbe Wert, wird beim nächsten Online-Refresh nicht überschrieben
       FileWriteArray(hFile, hh, 0, ArraySize(hh));
       ArrayResize(hh, 0);
    }
@@ -6042,6 +6044,5 @@ int History.OpenFile(string symbol, string description, int digits, int period) 
  * @return bool - Erfolgsstatus
  */
 bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
-
    return(_bool(IsNoError(last_error|catch("History.AddTick()"))));
 }
