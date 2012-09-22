@@ -1657,8 +1657,7 @@ bool UpdatePendingOrders() {
  * @return bool - Erfolgsstatus
  *
  *
- *  NOTE:  Im Level 0 (keine Positionen zu öffnen) werden die Variablen, auf die die übergebenen Pointer zeigen, nicht modifiziert.
- *  -----
+ * NOTE: Im Level 0 (keine Positionen zu öffnen) werden die Variablen, auf die die übergebenen Pointer zeigen, nicht modifiziert.
  */
 bool UpdateOpenPositions(datetime &lpOpenTime, double &lpOpenPrice) {
    if (__STATUS__CANCELLED || IsLastError()) return( false);
@@ -2905,11 +2904,9 @@ void RecolorBreakeven() {
  * @return double - Abstand in Pips oder 0, wenn ein Fehler auftrat
  *
  *
- *  NOTE:
- *  -----
- *  Eine direkte Berechnung anhand der zugrunde liegenden quadratischen Gleichung ist praktisch nicht ausreichend,
- *  denn sie unterschlägt auftretende Slippage. Für ein korrektes Ergebnis wird statt dessen der notwendige Abstand
- *  vom tatsächlichen Durchschnittspreis der Positionen ermittelt und in einen Abstand von der Gridbasis umgerechnet.
+ * NOTE: Eine direkte Berechnung anhand der zugrunde liegenden quadratischen Gleichung ist praktisch nicht ausreichend,
+ *       denn sie unterschlägt auftretende Slippage. Für ein korrektes Ergebnis wird statt dessen der notwendige Abstand
+ *       vom tatsächlichen Durchschnittspreis der Positionen ermittelt und in einen Abstand von der Gridbasis umgerechnet.
  */
 double ProfitToDistance(double profit, int level, bool checkOpenPositions, datetime time, int i) {
    profit = NormalizeDouble(MathAbs(profit), 2);
@@ -2977,8 +2974,7 @@ double ProfitToDistance(double profit, int level, bool checkOpenPositions, datet
  * @return double - Profit oder 0, wenn ein Fehler auftrat
  *
  *
- *  NOTE: Benötigt *nicht* die Gridbasis, die GridSize ist ausreichend.
- *  -----
+ * NOTE: Benötigt *nicht* die Gridbasis, die GridSize ist ausreichend.
  */
 double DistanceToProfit(double distance) {
    if (LE(distance, GridSize)) {
@@ -5112,16 +5108,12 @@ bool SynchronizeStatus() {
 
 
 /**
- * Aktualisiert die Daten des lokal als offen markierten Tickets mit den Online-Daten.
+ * Aktualisiert die Daten des lokal als offen markierten Tickets mit den Online-Daten. Wird nur in SynchronizeStatus() verwendet.
  *
  * @param  int  i                 - Ticketindex
  * @param  bool lpPermanentChange - Zeiger auf Variable, die anzeigt, ob dauerhafte Ticketänderungen vorliegen
  *
  * @return bool - Erfolgsstatus
- *
- *
- *  NOTE: Wird nur in SynchronizeStatus() verwendet.
- *  -----
  */
 bool Sync.UpdateOrder(int i, bool &lpPermanentChange) {
    if (i < 0 || i > ArraySize(orders.ticket)-1) return(_false(catch("Sync.UpdateOrder(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
@@ -5328,11 +5320,9 @@ double CalculateAverageOpenPrice(int level, bool checkOpenPositions, datetime ti
 
 
 /**
- * Ermittelt die StopTime der aktuell gestoppten Sequenz.
+ * Ermittelt die StopTime der aktuell gestoppten Sequenz. Wird nur in UpdateStatus() nach externem Sequencestop verwendet.
  *
  * @return datetime
- *
- * NOTE: Wird nur in UpdateStatus() nach externem Sequencestop verwendet.
  */
 datetime CalculateSequenceStopTime() {
    if (status != STATUS_STOPPED) return(_NULL(catch("CalculateSequenceStopTime(1)   cannot calculate stop time for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
@@ -5365,11 +5355,9 @@ datetime CalculateSequenceStopTime() {
 
 
 /**
- * Ermittelt den durchschnittlichen StopPrice der aktuell gestoppten Sequenz.
+ * Ermittelt den durchschnittlichen StopPrice der aktuell gestoppten Sequenz. Wird nur in UpdateStatus() nach externem Sequencestop verwendet.
  *
  * @return double
- *
- * NOTE: Wird nur in UpdateStatus() nach externem Sequencestop verwendet.
  */
 double CalculateSequenceStopPrice() {
    if (status != STATUS_STOPPED) return(_NULL(catch("CalculateSequenceStopPrice(1)   cannot calculate stop price for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
@@ -5994,14 +5982,18 @@ bool RecordEquity() {
 
 
 /**
- * Öffnet eine Historydatei. Existiert die Datei noch nicht, wird sie erstellt. Die Datei wird bei Programmende automatisch geschlossen.
+ * Öffnet eine Historydatei und gibt das resultierende Dateihandle zurück. Existiert die Datei noch nicht, wird sie erstellt. Das zurückgegebene Handle
+ * darf nicht modul-übergreifend verwendet werden. Wurde die Datei nicht vorher geschlossen, wird sie bei Programmende automatisch geschlossen.
  *
  * @param  string symbol      - Symbol des Instruments
  * @param  string description - Beschreibung des Instruments (falls die Historydatei neu erstellt werden muß)
- * @param  int    digits      - Digits der Werte (falls die Historydatei neu erstellt werden muß)
+ * @param  int    digits      - Digits der Werte             (falls die Historydatei neu erstellt werden muß)
  * @param  int    period      - Timeframe der Zeitreihe
  *
  * @return int - Dateihandle
+ *
+ *
+ * NOTE: Mit den MQL-Dateifunktionen können je Modul maximal 32 Dateien gleichzeitig offen gehalten werden.
  */
 int History.OpenFile(string symbol, string description, int digits, int period) {
    if (StringLen(symbol) > 12) return(_ZERO(catch("History.OpenFile(1)   illegal parameter symbol = "+ symbol +" (length="+ StringLen(symbol) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
@@ -6024,6 +6016,8 @@ int History.OpenFile(string symbol, string description, int digits, int period) 
       hh.setPrevDbVersion(hh, now        );                          // derselbe Wert, wird beim nächsten Online-Refresh nicht überschrieben
       FileWriteArray(hFile, hh, 0, ArraySize(hh));
       ArrayResize(hh, 0);
+
+      // TODO: FileHandle und HISTORY_HEADER cachen
    }
 
    if (IsError(catch("History.OpenFile(4)")))
