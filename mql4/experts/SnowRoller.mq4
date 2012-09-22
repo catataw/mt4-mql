@@ -5972,13 +5972,12 @@ bool RecordEquity() {
 
    History.AddTick(hFile, time, value, HST_FILL_GAPS);
 
-   /*
-   int hWnd = WindowHandle(symbol, period);
-   if (hWnd != 0) {
-      if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
-      else                      Chart.SendTick(hWnd, false);
-   }
-   */
+
+   //int hWnd = WindowHandle(symbol, period);
+   //if (hWnd != 0) {
+   //   if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
+   //   else                      Chart.SendTick(hWnd, false);
+   //}
    return(_bool(IsNoError(last_error|catch("RecordEquity()"))));
 }
 
