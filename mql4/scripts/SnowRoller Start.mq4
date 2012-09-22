@@ -1,7 +1,7 @@
 /**
  * SnowRoller Start
  */
-#include <types.mqh>
+#include <stdtypes.mqh>
 #define     __TYPE__    T_SCRIPT
 int   __INIT_FLAGS__[];
 int __DEINIT_FLAGS__[];

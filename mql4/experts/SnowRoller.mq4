@@ -71,7 +71,7 @@
  *  | ...               |                      |            |               |                    |
  *  +-------------------+----------------------+------------+---------------+--------------------+
  */
-#include <types.mqh>
+#include <stdtypes.mqh>
 #define     __TYPE__      T_EXPERT
 int   __INIT_FLAGS__[] = {INIT_TICKVALUE, INIT_TIMEZONE, LOG_INSTANCE_ID, LOG_PER_INSTANCE};
 int __DEINIT_FLAGS__[];
