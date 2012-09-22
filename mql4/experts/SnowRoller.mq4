@@ -5952,7 +5952,7 @@ bool RecordEquity() {
       return(true);
 
    static string symbol, description;
-   static int    hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
+   static int    hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
 
    if (StringLen(symbol) == 0) {
       symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
@@ -5962,13 +5962,13 @@ bool RecordEquity() {
    datetime time  = Round(MarketInfo(Symbol(), MODE_TIME));
    double   value = NormalizeDouble(sequenceStartEquity + grid.totalPL, digits);
 
-   if (hFileM1 == 0)
-      hFileM1 = History.OpenFile(symbol, description, digits, PERIOD_M1);
+   if (hFile == 0)
+      hFile = History.OpenFile(symbol, description, digits, PERIOD_M1);
 
-   History.AddTick(hFileM1, time, value, HST_FILL_GAPS);
+   History.AddTick(hFile, time, value, HST_FILL_GAPS);
 
-   FileClose(hFileM1);
-   hFileM1 = 0;
+   History.CloseFile(hFile);
+   hFile = 0;
 
    /*
    int hWnd = WindowHandle(symbol, period);
@@ -5979,6 +5979,11 @@ bool RecordEquity() {
    */
    return(_bool(IsNoError(last_error|catch("RecordEquity()"))));
 }
+
+
+string hst.fileNames[];
+int    hst.hFiles   [];
+int    hst.hhs      [][HISTORY_HEADER.intSize];
 
 
 /**
@@ -6000,13 +6005,14 @@ int History.OpenFile(string symbol, string description, int digits, int period) 
    if (digits <  0)            return(_ZERO(catch("History.OpenFile(2)   illegal parameter digits = "+ digits, ERR_INVALID_FUNCTION_PARAMVALUE)));
    if (period <= 0)            return(_ZERO(catch("History.OpenFile(3)   illegal parameter period = "+ period, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   string fileName = StringConcatenate(symbol, period, ".hst");
+   /*HISTORY_HEADER*/int hh[]; InitializeBuffer(hh, HISTORY_HEADER.size);
 
-   int hFile = FileOpenHistory(fileName, FILE_BIN|FILE_READ|FILE_WRITE);
+   string fileName = StringConcatenate(symbol, period, ".hst");
+   int    hFile    = FileOpenHistory(fileName, FILE_BIN|FILE_READ|FILE_WRITE);
 
    if (FileSize(hFile) < HISTORY_HEADER.size) {
+      // neuen HISTORY_HEADER schreiben
       datetime now = TimeCurrent();                                  // TODO: ServerTime() implementieren; TimeCurrent() ist nicht die aktuelle Serverzeit
-      /*HISTORY_HEADER*/int hh[]; InitializeBuffer(hh, HISTORY_HEADER.size);
       hh.setVersion      (hh, 400        );
       hh.setDescription  (hh, description);
       hh.setSymbol       (hh, symbol     );
@@ -6015,13 +6021,33 @@ int History.OpenFile(string symbol, string description, int digits, int period) 
       hh.setDbVersion    (hh, now        );                          // wird beim nächsten Online-Refresh mit Server-DbVersion überschrieben
       hh.setPrevDbVersion(hh, now        );                          // derselbe Wert, wird beim nächsten Online-Refresh nicht überschrieben
       FileWriteArray(hFile, hh, 0, ArraySize(hh));
-      ArrayResize(hh, 0);
-
-      // TODO: FileHandle und HISTORY_HEADER cachen
    }
+   else {
+      // vorhandenen HISTORY_HEADER auslesen
+      FileReadArray(hFile, hh, 0, ArraySize(hh));
+   }
+
+   // Dateinamen, FileHandle und HISTORY_HEADER zwischenspeichern
+   ArrayPushString  (hst.fileNames, fileName);
+   ArrayPushInt     (hst.hFiles,    hFile   );
+   //ArrayPushIntArray(hst.hhs,       hh      );
+   ArrayResize(hh, 0);
 
    if (IsError(catch("History.OpenFile(4)")))
       return(0);
+   return(hFile);
+}
+
+
+/**
+ * Öffnet eine Historydatei und gibt das resultierende Dateihandle zurück. Existiert die Datei noch nicht, wird sie erstellt. Das zurückgegebene Handle
+ * darf nicht modul-übergreifend verwendet werden. Wurde die Datei nicht vorher geschlossen, wird sie bei Programmende automatisch geschlossen.
+ *
+ * @param  int hFile - Dateihandle
+ *
+ * @return int - Dateihandle
+ */
+int History.CloseFile(int hFile) {
    return(hFile);
 }
 
