@@ -5981,8 +5981,6 @@ bool RecordEquity() {
 
 
    /*
-   History.CloseFile(hFile);
-   HISTORY_HEADER.toStr(hst.headers, true);
    int hWnd = WindowHandle(symbol, period);
    if (hWnd != 0) {
       if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
@@ -6045,10 +6043,10 @@ bool History.WriteBar(int hFile, datetime time, double value, int flags=NULL) {
  *       gleichzeitig offen gehalten werden.
  */
 int History.OpenFile(string symbol, string description, int digits, int period, int mode) {
-   if (StringLen(symbol) > MAX_SYMBOL_LENGTH) return(_ZERO(catch("History.OpenFile(1)   illegal parameter symbol = "+ symbol +" (length="+ StringLen(symbol) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (digits <  0)                           return(_ZERO(catch("History.OpenFile(2)   illegal parameter digits = "+ digits, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (period <= 0)                           return(_ZERO(catch("History.OpenFile(3)   illegal parameter period = "+ period, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (_bool(mode & FILE_CSV))                return(_ZERO(catch("History.OpenFile(4)   illegal history file access mode "+ FileAccessModeToStr(mode), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (StringLen(symbol) > MAX_SYMBOL_LENGTH)                      return(_ZERO(catch("History.OpenFile(1)   illegal parameter symbol = "+ symbol +" (length="+ StringLen(symbol) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (digits <  0)                                                return(_ZERO(catch("History.OpenFile(2)   illegal parameter digits = "+ digits, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (period <= 0)                                                return(_ZERO(catch("History.OpenFile(3)   illegal parameter period = "+ period, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (_bool(mode & FILE_CSV) || !(mode & (FILE_READ|FILE_WRITE))) return(_ZERO(catch("History.OpenFile(4)   illegal history file access mode "+ FileAccessModeToStr(mode), ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    string fileName = StringConcatenate(symbol, period, ".hst");
    mode |= FILE_BIN;
@@ -6058,29 +6056,30 @@ int History.OpenFile(string symbol, string description, int digits, int period, 
 
    /*HISTORY_HEADER*/int hh[]; InitializeBuffer(hh, HISTORY_HEADER.size);
 
-   /*
-   FILE_READ
-   FILE_WRITE
-   FILE_READ|FILE_WRITE
-   */
+   datetime from, to;
+   int fileSize = FileSize(hFile);
 
-   if (FileSize(hFile) < HISTORY_HEADER.size) {
-      if (_bool(mode & FILE_WRITE)) {
-         // neuen HISTORY_HEADER schreiben
-         datetime now = TimeCurrent();                               // TODO: ServerTime() implementieren; TimeCurrent() ist nicht die aktuelle Serverzeit
-         hh.setVersion      (hh, 400        );
-         hh.setDescription  (hh, description);
-         hh.setSymbol       (hh, symbol     );
-         hh.setPeriod       (hh, period     );
-         hh.setDigits       (hh, digits     );
-         hh.setDbVersion    (hh, now        );                       // wird beim nächsten Online-Refresh mit Server-DbVersion überschrieben
-         hh.setPrevDbVersion(hh, now        );                       // derselbe Wert, wird beim nächsten Online-Refresh *nicht* überschrieben
-         FileWriteArray(hFile, hh, 0, ArraySize(hh));
+   if (fileSize < HISTORY_HEADER.size) {
+      if (!(mode & FILE_WRITE)) {                                    // read-only mode
+         FileClose(hFile);
+         return(_ZERO(catch("History.OpenFile(6)   history file \""+ fileName +"\" corrupted (size = "+ fileSize +")", ERR_RUNTIME_ERROR)));
       }
+      // neuen HISTORY_HEADER schreiben
+      datetime now = TimeCurrent();                                  // TODO: ServerTime() implementieren; TimeCurrent() ist nicht die aktuelle Serverzeit
+      hh.setVersion      (hh, 400        );
+      hh.setDescription  (hh, description);
+      hh.setSymbol       (hh, symbol     );
+      hh.setPeriod       (hh, period     );
+      hh.setDigits       (hh, digits     );
+      hh.setDbVersion    (hh, now        );                          // wird beim nächsten Online-Refresh mit Server-DbVersion überschrieben
+      hh.setPrevDbVersion(hh, now        );                          // derselbe Wert, wird beim nächsten Online-Refresh *nicht* überschrieben
+      FileWriteArray(hFile, hh, 0, ArraySize(hh));
    }
    else {
       // vorhandenen HISTORY_HEADER auslesen
       FileReadArray(hFile, hh, 0, ArraySize(hh));
+      from = 123;
+      to   = 123;
    }
 
    // Dateinamen, FileHandle und HISTORY_HEADER zwischenspeichern
@@ -6088,9 +6087,11 @@ int History.OpenFile(string symbol, string description, int digits, int period, 
    ArrayPushString  (hst.fileName,   fileName);
    ArrayPushInt     (hst.accessMode, mode    );
    ArrayPushIntArray(hst.header,     hh      );
-   ArrayResize(hh, 0);
+   ArrayPushInt     (hst.from,       from    );
+   ArrayPushInt     (hst.to,         to      );
 
-   if (IsError(catch("History.OpenFile(6)")))
+   ArrayResize(hh, 0);
+   if (IsError(catch("History.OpenFile(7)")))
       return(0);
    return(hFile);
 }
@@ -6120,6 +6121,8 @@ bool History.CloseFile(int hFile) {
    ArraySpliceStrings  (hst.fileName,   i, 1);
    ArraySpliceInts     (hst.accessMode, i, 1);
    ArraySpliceIntArrays(hst.header,     i, 1);
+   ArraySpliceInts     (hst.from,       i, 1);
+   ArraySpliceInts     (hst.to,         i, 1);
 
    if (error == ERR_INVALID_FUNCTION_PARAMVALUE) {                   // Datei war bereits geschlossen: kann ignoriert werden
    }
