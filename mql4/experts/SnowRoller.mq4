@@ -5961,19 +5961,17 @@ bool RecordEquity() {
    if (done) return(true);
    done = true;
 
-   static string symbol, description;
-   static int    hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
+   static int hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
 
-   if (StringLen(symbol) == 0) {
-      symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
-      description = StringConcatenate("Equity SR.", sequenceId);
+   if (hFile == 0) {
+      string symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
+      string description = StringConcatenate("Equity SR.", sequenceId);
+      hFile = History.OpenFile(symbol, description, digits, PERIOD_M1, FILE_READ|FILE_WRITE);
+      if (hFile <= 0) return(false);
    }
 
    datetime time  = Round(MarketInfo(Symbol(), MODE_TIME));
    double   value = NormalizeDouble(sequenceStartEquity + grid.totalPL, digits);
-
-   if (hFile == 0) hFile = History.OpenFile(symbol, description, digits, PERIOD_M1, FILE_READ|FILE_WRITE);
-   if (hFile <= 0) return(false);
 
    History.AddTick(hFile, time, value, HST_FILL_GAPS);
    //debug("RecordEquity()   tell(hFile)="+ FileTell(hFile) +"   size(hFile)="+ FileSize(hFile));
