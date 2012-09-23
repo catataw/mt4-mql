@@ -5942,9 +5942,10 @@ string GridDirectionDescription(int direction) {
 }
 
 
-string hst.fileNames[];
-int    hst.hFiles   [];
-int    hst.hhs      [][HISTORY_HEADER.intSize];
+int    hst.hFiles     [];
+string hst.fileNames  [];
+int    hst.accessModes[];
+int    hst.headers    [][HISTORY_HEADER.intSize];
 
 
 /**
@@ -5955,6 +5956,10 @@ int    hst.hhs      [][HISTORY_HEADER.intSize];
 bool RecordEquity() {
    if (!IsTesting())
       return(true);
+
+   static bool done;
+   if (done) return(true);
+   done = true;
 
    static string symbol, description;
    static int    hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
@@ -5967,85 +5972,33 @@ bool RecordEquity() {
    datetime time  = Round(MarketInfo(Symbol(), MODE_TIME));
    double   value = NormalizeDouble(sequenceStartEquity + grid.totalPL, digits);
 
-   if (hFile == 0) hFile = History.OpenFile(symbol, description, digits, PERIOD_M1);
+   if (hFile == 0) hFile = History.OpenFile(symbol, description, digits, PERIOD_M1, FILE_READ|FILE_WRITE);
    if (hFile <= 0) return(false);
 
    History.AddTick(hFile, time, value, HST_FILL_GAPS);
+   //debug("RecordEquity()   tell(hFile)="+ FileTell(hFile) +"   size(hFile)="+ FileSize(hFile));
 
 
-   //int hWnd = WindowHandle(symbol, period);
-   //if (hWnd != 0) {
-   //   if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
-   //   else                      Chart.SendTick(hWnd, false);
-   //}
+   //History.CloseFile(hFile);
+   /*
+   int hWnd = WindowHandle(symbol, period);
+   if (hWnd != 0) {
+      if (IsOfflineChart(hWnd)) Chart.Refresh(hWnd);
+      else                      Chart.SendTick(hWnd, false);
+   }
+   */
    return(_bool(IsNoError(last_error|catch("RecordEquity()"))));
 }
 
 
 /**
- * Öffnet eine Historydatei und gibt das resultierende Dateihandle zurück. Existiert die Datei noch nicht, wird sie erstellt. Das zurückgegebene Handle
- * darf nicht modul-übergreifend verwendet werden. Wurde die Datei nicht vorher geschlossen, wird sie bei Programmende automatisch geschlossen.
+ * Fügt der angegebenen Historydatei einen Tick hinzu. Der Tick wird als letzter Tick (Close) der entsprechenden Bar interpretiert.
  *
- * @param  string symbol      - Symbol des Instruments
- * @param  string description - Beschreibung des Instruments (falls die Historydatei neu erstellt werden muß)
- * @param  int    digits      - Digits der Werte             (falls die Historydatei neu erstellt werden muß)
- * @param  int    period      - Timeframe der Zeitreihe
- *
- * @return int - Dateihandle
- *
- *
- * NOTE: Mit den MQL-Dateifunktionen können je Modul maximal 32 Dateien gleichzeitig offen gehalten werden.
- */
-int History.OpenFile(string symbol, string description, int digits, int period) {
-   if (StringLen(symbol) > 12) return(_ZERO(catch("History.OpenFile(1)   illegal parameter symbol = "+ symbol +" (length="+ StringLen(symbol) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (digits <  0)            return(_ZERO(catch("History.OpenFile(2)   illegal parameter digits = "+ digits, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (period <= 0)            return(_ZERO(catch("History.OpenFile(3)   illegal parameter period = "+ period, ERR_INVALID_FUNCTION_PARAMVALUE)));
-
-   /*HISTORY_HEADER*/int hh[]; InitializeBuffer(hh, HISTORY_HEADER.size);
-
-   string fileName = StringConcatenate(symbol, period, ".hst");
-
-   int hFile = FileOpenHistory(fileName, FILE_BIN|FILE_READ|FILE_WRITE);
-   if (hFile < 0)
-      return(_ZERO(catch("History.OpenFile(4)")));
-
-   if (FileSize(hFile) < HISTORY_HEADER.size) {
-      // neuen HISTORY_HEADER schreiben
-      datetime now = TimeCurrent();                                  // TODO: ServerTime() implementieren; TimeCurrent() ist nicht die aktuelle Serverzeit
-      hh.setVersion      (hh, 400        );
-      hh.setDescription  (hh, description);
-      hh.setSymbol       (hh, symbol     );
-      hh.setPeriod       (hh, period     );
-      hh.setDigits       (hh, digits     );
-      hh.setDbVersion    (hh, now        );                          // wird beim nächsten Online-Refresh mit Server-DbVersion überschrieben
-      hh.setPrevDbVersion(hh, now        );                          // derselbe Wert, wird beim nächsten Online-Refresh nicht überschrieben
-      FileWriteArray(hFile, hh, 0, ArraySize(hh));
-   }
-   else {
-      // vorhandenen HISTORY_HEADER auslesen
-      FileReadArray(hFile, hh, 0, ArraySize(hh));
-   }
-
-   // Dateinamen, FileHandle und HISTORY_HEADER zwischenspeichern
-   ArrayPushString(hst.fileNames, fileName);
-   ArrayPushInt   (hst.hFiles,    hFile   );
-   //ArrayPushIntArray(hst.hhs,   hh      );
-   ArrayResize(hh, 0);
-
-   if (IsError(catch("History.OpenFile(5)")))
-      return(0);
-   return(hFile);
-}
-
-
-/**
- * Fügt der angegebenen Historydatei einen Tick hinzu. Der Tick wird als letzter Tick (Close) der entsprechenden Bar gespeichert.
- *
- * @param  int      hFile - Dateihandle der offenen Historydatei (muß Schreibzugriff erlauben)
+ * @param  int      hFile - Dateihandle der Historydatei (muß Schreibzugriff erlauben)
  * @param  datetime time  - Zeitpunkt des Ticks
  * @param  double   value - Wert des Ticks
- * @param  int      flags - zusätzliche, das Schreiben der History steuernde Flags (default: keine)
- *                          HST_FILL_GAPS: entstehende Gaps werden mit dem Schlußkurs der vorherigen Bar gefüllt
+ * @param  int      flags - zusätzliche, das Schreiben steuernde Flags (default: keine)
+ *                          HST_FILL_GAPS: entstehende Gaps werden mit dem Schlußkurs der letzten vorherigen Bar gefüllt
  *
  * @return bool - Erfolgsstatus
  */
@@ -6055,24 +6008,83 @@ bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
 
 
 /**
- * Schließt alle noch offenen Dateien (wird bei Programmende automatisch aufgerufen).
+ * Schreibt eine Bar in die angegebene Historydatei. Eine ggf. vorhandene Bar mit dem selben Open-Zeitpunkt wird überschrieben.
  *
- * @param  bool warn - ob für noch offene Dateien eine Warnung ausgegeben werden soll (default: nein)
+ * @param  int      hFile - Dateihandle der Historydatei (muß Schreibzugriff erlauben)
+ * @param  datetime time  - Open-Zeitpunkt der Bar
+ * @param  double   open  - Open der Bar
+ * @param  double   high  - High der Bar
+ * @param  double   low   - Low der Bar
+ * @param  double   close - Close der Bar
+ * @param  int      flags - zusätzliche, das Schreiben steuernde Flags (default: keine)
+ *                          HST_FILL_GAPS: entstehende Gaps werden mit dem Schlußkurs der letzten vorherigen Bar gefüllt
  *
  * @return bool - Erfolgsstatus
  */
-bool CloseFiles(bool warn=false) {
-   int error, size=ArraySize(hst.fileNames);
+bool History.WriteBar(int hFile, datetime time, double value, int flags=NULL) {
+   return(_bool(IsNoError(last_error|catch("History.WriteBar()"))));
+}
 
-   if (size > 0) {
-      for (int i=size-1; i>=0; i--) {
-         if (warn) warn(StringConcatenate("CloseFiles()   open file handle "+ hst.hFiles[i] +" found: \"", hst.fileNames[i], "\""));
 
-         if (!History.CloseFile(hst.hFiles[i]))
-            error = last_error;
+/**
+ * Öffnet eine Historydatei und gibt das resultierende Dateihandle zurück. Ist der Access-Mode FILE_WRITE angegeben und die Datei existiert nicht,
+ * wird sie erstellt und ein HISTORY_HEADER geschrieben.  Wurde die Datei nicht vorher geschlossen, wird sie bei Programmende automatisch geschlossen.
+ *
+ * @param  string symbol      - Symbol des Instruments
+ * @param  string description - Beschreibung des Instruments (falls die Historydatei neu erstellt wird)
+ * @param  int    digits      - Digits der Werte             (falls die Historydatei neu erstellt wird)
+ * @param  int    period      - Timeframe der Zeitreihe
+ * @param  int    mode        - Access-Mode: FILE_READ | FILE_WRITE
+ *
+ * @return int - Dateihandle
+ *
+ *
+ * NOTE: Das zurückgegebene Handle darf nicht modul-übergreifend verwendet werden. Mit den MQL-Dateifunktionen können je Modul maximal 32 Dateien
+ *       gleichzeitig offen gehalten werden.
+ */
+int History.OpenFile(string symbol, string description, int digits, int period, int mode) {
+   if (StringLen(symbol) > MAX_SYMBOL_LENGTH) return(_ZERO(catch("History.OpenFile(1)   illegal parameter symbol = "+ symbol +" (length="+ StringLen(symbol) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (digits <  0)                           return(_ZERO(catch("History.OpenFile(2)   illegal parameter digits = "+ digits, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (period <= 0)                           return(_ZERO(catch("History.OpenFile(3)   illegal parameter period = "+ period, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (_bool(mode & FILE_CSV))                return(_ZERO(catch("History.OpenFile(4)   illegal history file access mode "+ FileAccessModeToStr(mode), ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   string fileName = StringConcatenate(symbol, period, ".hst");
+   mode |= FILE_BIN;
+   int hFile = FileOpenHistory(fileName, mode);
+   if (hFile < 0)
+      return(_ZERO(catch("History.OpenFile(5)")));
+
+   /*HISTORY_HEADER*/int hh[]; InitializeBuffer(hh, HISTORY_HEADER.size);
+
+   if (FileSize(hFile) < HISTORY_HEADER.size) {
+      if (_bool(mode & FILE_WRITE)) {
+         // neuen HISTORY_HEADER schreiben
+         datetime now = TimeCurrent();                               // TODO: ServerTime() implementieren; TimeCurrent() ist nicht die aktuelle Serverzeit
+         hh.setVersion      (hh, 400        );
+         hh.setDescription  (hh, description);
+         hh.setSymbol       (hh, symbol     );
+         hh.setPeriod       (hh, period     );
+         hh.setDigits       (hh, digits     );
+         hh.setDbVersion    (hh, now        );                       // wird beim nächsten Online-Refresh mit Server-DbVersion überschrieben
+         hh.setPrevDbVersion(hh, now        );                       // derselbe Wert, wird beim nächsten Online-Refresh *nicht* überschrieben
+         FileWriteArray(hFile, hh, 0, ArraySize(hh));
       }
    }
-   return(IsNoError(error));
+   else {
+      // vorhandenen HISTORY_HEADER auslesen
+      FileReadArray(hFile, hh, 0, ArraySize(hh));
+   }
+
+   // Dateinamen, FileHandle und HISTORY_HEADER zwischenspeichern
+   ArrayPushInt   (hst.hFiles,      hFile   );
+   ArrayPushString(hst.fileNames,   fileName);
+   ArrayPushInt   (hst.accessModes, mode    );
+   //ArrayPushIntArray(hst.headers, hh      );
+   ArrayResize(hh, 0);
+
+   if (IsError(catch("History.OpenFile(6)")))
+      return(0);
+   return(hFile);
 }
 
 
@@ -6096,9 +6108,10 @@ bool History.CloseFile(int hFile) {
    FileClose(hFile);
    error = GetLastError();
 
-   ArraySpliceStrings(hst.fileNames, i, 1);
-   ArraySpliceInts   (hst.hFiles,    i, 1);
-   //ArraySpliceIntArrays(hst.hhs,   i, 1);
+   ArraySpliceInts   (hst.hFiles,      i, 1);
+   ArraySpliceStrings(hst.fileNames,   i, 1);
+   ArraySpliceInts   (hst.accessModes, i, 1);
+   //ArraySpliceIntArrays(hst.headers, i, 1);
 
    if (error == ERR_INVALID_FUNCTION_PARAMVALUE) {                   // Datei war bereits geschlossen: kann ignoriert werden
    }
@@ -6106,4 +6119,27 @@ bool History.CloseFile(int hFile) {
       return(_false(catch("History.CloseFile(4)", error)));
    }
    return(true);
+}
+
+
+/**
+ * Schließt alle noch offenen Dateien (wird bei Programmende automatisch aufgerufen).
+ *
+ * @param  bool warn - ob für noch offene Dateien eine Warnung ausgegeben werden soll (default: nein)
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool CloseFiles(bool warn=false) {
+   int error, size=ArraySize(hst.fileNames);
+
+   if (size > 0) {
+      for (int i=size-1; i>=0; i--) {
+         if (warn) warn(StringConcatenate("CloseFiles()   open file handle "+ hst.hFiles[i] +" found: \"", hst.fileNames[i], "\""));
+
+         if (!History.CloseFile(hst.hFiles[i]))
+            error = last_error;
+      }
+   }
+   return(IsNoError(error));
+   History.WriteBar(NULL, NULL, NULL, NULL);
 }
