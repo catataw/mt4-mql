@@ -6154,3 +6154,12 @@ bool CloseFiles(bool warn=false) {
    return(IsNoError(error));
    History.WriteBar(NULL, NULL, NULL, NULL);
 }
+
+
+/**
+ * @return int - Fehlerstatus
+ */
+int afterDeinit() {
+   CloseFiles(false);
+   return(NO_ERROR);
+}
