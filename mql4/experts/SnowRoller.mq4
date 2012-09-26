@@ -5993,10 +5993,20 @@ bool RecordEquity() {
  * @return bool - Erfolgsstatus
  */
 bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
+   int error, pointer=FileTell(hFile);
+   if (pointer < 0) {
+      error = GetLastError();         return(_false(catch("History.AddTick(1)   invalid parameter hFile = "+ hFile, ifInt(IsError(error), error, ERR_INVALID_FUNCTION_PARAMVALUE))));
+   }
+   if (hFile >= ArraySize(hst.hFile)) return(_false(catch("History.AddTick(2)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hst.hFile[hFile] <= 0)         return(_false(catch("History.AddTick(3)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (time <= 0)                     return(_false(catch("History.AddTick(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (value <= 0)                    return(_false(catch("History.AddTick(5)   invalid parameter value = "+ NumberToStr(value, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    debug("History.AddTick()   time="+ TimeToStr(time, TIME_FULL));
 
    // zu modifizierende Bar ermitteln
+   //    1) innerhalb: vorhandene Bar modifizieren oder neue Bar einfügen
+   //    2) außerhalb: neue Bar am Anfang/Ende anfügen
 
    // Bar auslesen
 
@@ -6004,7 +6014,7 @@ bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
 
    // Bar schreiben
 
-   return(_bool(IsNoError(catch("History.AddTick()"))));
+   return(_bool(IsNoError(last_error|catch("History.AddTick(6)"))));
 }
 
 
@@ -6023,7 +6033,7 @@ bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
  * @return bool - Erfolgsstatus
  */
 bool History.WriteBar(int hFile, datetime time, double value, int flags=NULL) {
-   return(_bool(IsNoError(catch("History.WriteBar()"))));
+   return(_bool(IsNoError(last_error|catch("History.WriteBar()"))));
 }
 
 
