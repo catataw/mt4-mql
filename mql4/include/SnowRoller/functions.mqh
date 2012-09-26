@@ -18,7 +18,7 @@ bool FindChartSequences(string ids[], int status[]) {
       int sizeOfValues = Explode(text, ",", values, NULL);
 
       for (int i=0; i < sizeOfValues; i++) {
-         if (Explode(values[i], "|", data, NULL) != 2) return(_false(catch("FindChartSequences(1)  illegal chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
+         if (Explode(values[i], "|", data, NULL) != 2) return(_false(catch("FindChartSequences(1)   illegal chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
 
          // Sequenz-ID
          strValue  = StringTrim(data[0]);
@@ -27,7 +27,7 @@ bool FindChartSequences(string ids[], int status[]) {
             test     = true;
             strValue = StringRight(strValue, -1);
          }
-         if (!StringIsDigit(strValue))                 return(_false(catch("FindChartSequences(2)  illegal sequence id in chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
+         if (!StringIsDigit(strValue))                 return(_false(catch("FindChartSequences(2)   illegal sequence id in chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
          int iValue = StrToInteger(strValue);
          if (iValue == 0)
             continue;
@@ -35,9 +35,9 @@ bool FindChartSequences(string ids[], int status[]) {
 
          // Sequenz-Status
          strValue = StringTrim(data[1]);
-         if (!StringIsDigit(strValue))                 return(_false(catch("FindChartSequences(3)  illegal sequence status in chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
+         if (!StringIsDigit(strValue))                 return(_false(catch("FindChartSequences(3)   illegal sequence status in chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
          iValue = StrToInteger(strValue);
-         if (!IsSequenceStatus(iValue))                return(_false(catch("FindChartSequences(4)  illegal sequence status in chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
+         if (!IsSequenceStatus(iValue))                return(_false(catch("FindChartSequences(4)   illegal sequence status in chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
          int sequenceStatus = iValue;
 
          ArrayPushString(ids,    strSequenceId );

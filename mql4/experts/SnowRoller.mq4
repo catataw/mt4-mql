@@ -1165,7 +1165,7 @@ bool IsWeekendResumeSignal() {
       sessionStartTime = GetServerSessionStartTime(weekend.resume.time);         // throws ERR_INVALID_TIMEZONE_CONFIG, ERR_MARKET_CLOSED
       if (sessionStartTime == -1) {
          if (SetLastError(stdlib_GetLastError()) == ERR_MARKET_CLOSED)
-            catch("IsWeekendResumeSignal(1)  cannot resolve seesion start time for illegal weekend.resume.time '"+ TimeToStr(weekend.resume.time, TIME_FULL) +"'", ERR_RUNTIME_ERROR);
+            catch("IsWeekendResumeSignal(1)   cannot resolve seesion start time for illegal weekend.resume.time '"+ TimeToStr(weekend.resume.time, TIME_FULL) +"'", ERR_RUNTIME_ERROR);
          return(false);
       }
       last.weekend.resume.time = weekend.resume.time;
@@ -1393,7 +1393,7 @@ bool IsStopTriggered(int type, double stop) {
    if (type == OP_BUY     ) return(Bid <= stop);                         // Long-StopLoss
    if (type == OP_SELL    ) return(Ask >= stop);                         // Short-StopLoss
 
-   return(_false(catch("IsStopTriggered()  illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_false(catch("IsStopTriggered()   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -2979,7 +2979,7 @@ double ProfitToDistance(double profit, int level, bool checkOpenPositions, datet
 double DistanceToProfit(double distance) {
    if (LE(distance, GridSize)) {
       if (LT(distance, 0))
-         return(_ZERO(catch("DistanceToProfit()  invalid parameter distance = "+ NumberToStr(distance, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+         return(_ZERO(catch("DistanceToProfit()   invalid parameter distance = "+ NumberToStr(distance, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
       return(0);
    }
    /*
@@ -3098,14 +3098,14 @@ bool RestoreStickyStatus() {
          strValue = StringRight(strValue, -1);
       }
       if (!StringIsDigit(strValue))
-         return(_false(catch("RestoreStickyStatus(1)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+         return(_false(catch("RestoreStickyStatus(1)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
       int iValue = StrToInteger(strValue);
       if (iValue == 0) {
          status  = STATUS_UNINITIALIZED;
          idFound = false;
       }
       else if (iValue < 1000 || iValue > 16383) {
-         return(_false(catch("RestoreStickyStatus(2)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+         return(_false(catch("RestoreStickyStatus(2)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
       }
       else {
          sequenceId  = InstanceId(iValue); SS.SequenceId();
@@ -3123,10 +3123,10 @@ bool RestoreStickyStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
-            return(_false(catch("RestoreStickyStatus(3)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(3)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
          if (!IntInArray(startStopDisplayModes, iValue))
-            return(_false(catch("RestoreStickyStatus(4)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(4)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          startStopDisplayMode = iValue;
       }
 
@@ -3134,10 +3134,10 @@ bool RestoreStickyStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
-            return(_false(catch("RestoreStickyStatus(5)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(5)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
          if (!IntInArray(orderDisplayModes, iValue))
-            return(_false(catch("RestoreStickyStatus(6)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(6)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          orderDisplayMode = iValue;
       }
 
@@ -3145,10 +3145,10 @@ bool RestoreStickyStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
-            return(_false(catch("RestoreStickyStatus(7)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(7)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
          if (iValue < CLR_NONE || iValue > C'255,255,255')
-            return(_false(catch("RestoreStickyStatus(8)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\" (0x"+ IntToHexStr(iValue) +")", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(8)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\" (0x"+ IntToHexStr(iValue) +")", ERR_INVALID_CONFIG_PARAMVALUE)));
          Breakeven.Color = iValue;
       }
 
@@ -3156,10 +3156,10 @@ bool RestoreStickyStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsInteger(strValue))
-            return(_false(catch("RestoreStickyStatus(9)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(9)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          iValue = StrToInteger(strValue);
          if (iValue < 0 || iValue > 5)
-            return(_false(catch("RestoreStickyStatus(10)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(10)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          breakeven.Width = iValue;
       }
 
@@ -3167,7 +3167,7 @@ bool RestoreStickyStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsDigit(strValue))
-            return(_false(catch("RestoreStickyStatus(11)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(11)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          __STATUS__CANCELLED = StrToInteger(strValue) != 0;
       }
 
@@ -3175,7 +3175,7 @@ bool RestoreStickyStatus() {
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsDigit(strValue))
-            return(_false(catch("RestoreStickyStatus(12)  illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(12)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          __STATUS__INVALID_INPUT = StrToInteger(strValue) != 0;
       }
    }
@@ -3795,12 +3795,12 @@ bool ResolveStatusLocation() {
          break;
       return(_false(catch("ResolveStatusLocation(2)   status file not found", ERR_FILE_NOT_FOUND)));
    }
-   //debug("ResolveStatusLocation()  directory=\""+ directory +"\"  location=\""+ location +"\"  file=\""+ file +"\"");
+   //debug("ResolveStatusLocation()   directory=\""+ directory +"\"  location=\""+ location +"\"  file=\""+ file +"\"");
 
    status.directory        = StringRight(directory, -StringLen(filesDirectory));
    status.fileName         = file;
    Sequence.StatusLocation = location;
-   //debug("ResolveStatusLocation()  status.directory=\""+ status.directory +"\"  Sequence.StatusLocation=\""+ Sequence.StatusLocation +"\"  status.fileName=\""+ status.fileName +"\"");
+   //debug("ResolveStatusLocation()   status.directory=\""+ status.directory +"\"  Sequence.StatusLocation=\""+ Sequence.StatusLocation +"\"  status.fileName=\""+ status.fileName +"\"");
    return(true);
 }
 
@@ -5039,14 +5039,14 @@ bool SynchronizeStatus() {
             type  = Round(events[i][2]);
             index = Round(events[i][4]);
             if (type != EV_POSITION_CLOSE)
-               return(_false(catch("SynchronizeStatus(21)  unexpected "+ BreakevenEventToStr(type) +" at index "+ i, ERR_SOME_ARRAY_ERROR)));
+               return(_false(catch("SynchronizeStatus(21)   unexpected "+ BreakevenEventToStr(type) +" at index "+ i, ERR_SOME_ARRAY_ERROR)));
             price += orders.closePrice[index];
          }
          price /= Abs(grid.level);
 
          int n = ArraySize(sequenceStop.event) - 1;
          if (sequenceStop.time[n] != 0)
-            return(_false(catch("SynchronizeStatus(22)  unexpected sequenceStop.time="+ IntsToStr(sequenceStop.time, NULL), ERR_RUNTIME_ERROR)));
+            return(_false(catch("SynchronizeStatus(22)   unexpected sequenceStop.time="+ IntsToStr(sequenceStop.time, NULL), ERR_RUNTIME_ERROR)));
          sequenceStop.event [n] = CreateEventId();
          sequenceStop.time  [n] = time;
          sequenceStop.price [n] = NormalizeDouble(price, Digits);
@@ -5066,7 +5066,7 @@ bool SynchronizeStatus() {
 
    // (5) Daten für Wochenend-Pause aktualisieren
    if (weekend.stop.triggered) /*&&*/ if (status!=STATUS_STOPPED)
-      return(_false(catch("SynchronizeStatus(23)  weekend.stop.triggered="+ weekend.stop.triggered +" / status="+ StatusToStr(status)+ " mis-match", ERR_RUNTIME_ERROR)));
+      return(_false(catch("SynchronizeStatus(23)   weekend.stop.triggered="+ weekend.stop.triggered +" / status="+ StatusToStr(status)+ " mis-match", ERR_RUNTIME_ERROR)));
 
    if      (status == STATUS_PROGRESSING) UpdateWeekendStop();
    else if (status == STATUS_STOPPED)
@@ -5843,7 +5843,7 @@ string StatusToStr(int status) {
       case STATUS_STOPPED      : return("STATUS_STOPPED"      );
       case STATUS_DISABLED     : return("STATUS_DISABLED"     );
    }
-   return(_empty(catch("StatusToStr()  invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_empty(catch("StatusToStr()   invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -5864,7 +5864,7 @@ string StatusDescription(int status) {
       case STATUS_STOPPED      : return("stopped"        );
       case STATUS_DISABLED     : return("disabled"       );
    }
-   return(_empty(catch("StatusDescription()  invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_empty(catch("StatusDescription()   invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -5882,7 +5882,7 @@ string OrderDisplayModeToStr(int mode) {
       case ODM_PYRAMID: return("ODM_PYRAMID");
       case ODM_ALL    : return("ODM_ALL"    );
    }
-   return(_empty(catch("OrderDisplayModeToStr()  invalid parameter mode = "+ mode, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_empty(catch("OrderDisplayModeToStr()   invalid parameter mode = "+ mode, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -5902,7 +5902,7 @@ string BreakevenEventToStr(int type) {
       case EV_POSITION_STOPOUT: return("EV_POSITION_STOPOUT");
       case EV_POSITION_CLOSE  : return("EV_POSITION_CLOSE"  );
    }
-   return(_empty(catch("BreakevenEventToStr()  illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_empty(catch("BreakevenEventToStr()   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -5920,7 +5920,7 @@ string GridDirectionToStr(int direction) {
       case D_SHORT     : return("D_SHORT"     );
       case D_LONG_SHORT: return("D_LONG_SHORT");
    }
-   return(_empty(catch("GridDirectionToStr()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_empty(catch("GridDirectionToStr()   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -5938,7 +5938,7 @@ string GridDirectionDescription(int direction) {
       case D_SHORT     : return("short"        );
       case D_LONG_SHORT: return("long + short" );
    }
-   return(_empty(catch("GridDirectionDescription()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_empty(catch("GridDirectionDescription()   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -5946,6 +5946,7 @@ int      hst.hFile     [16];
 string   hst.fileName  [16];
 bool     hst.fileRead  [16];
 bool     hst.fileWrite [16];
+int      hst.fileSize  [16];
 int      hst.fileHeader[16][HISTORY_HEADER.intSize];
 int      hst.fileBars  [16];
 datetime hst.fileFrom  [16];
@@ -5968,8 +5969,8 @@ bool RecordEquity() {
    static int hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
 
    if (hFile == 0) {
-      //string symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
-      string symbol      = "AUDUSD";
+      string symbol = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
+      //string symbol = "AUDUSD";
 
       string description = StringConcatenate("Equity SR.", sequenceId);
       hFile = History.OpenFile(symbol, description, digits, PERIOD_M1, FILE_READ|FILE_WRITE);
@@ -6077,6 +6078,7 @@ int History.OpenFile(string symbol, string description, int digits, int period, 
       hh.setDbVersion    (hh, now        );                          // wird beim nächsten Online-Refresh mit Server-DbVersion überschrieben
       hh.setPrevDbVersion(hh, now        );                          // derselbe Wert, wird beim nächsten Online-Refresh *nicht* überschrieben
       FileWriteArray(hFile, hh, 0, ArraySize(hh));
+      fileSize = HISTORY_HEADER.size;
    }
    else {
       // vorhandenen HISTORY_HEADER auslesen
@@ -6101,7 +6103,8 @@ int History.OpenFile(string symbol, string description, int digits, int period, 
                     hst.fileName   [hFile] = fileName;
                     hst.fileRead   [hFile] = mode & FILE_READ;
                     hst.fileWrite  [hFile] = mode & FILE_WRITE;
-   ArraySetIntArray(hst.fileHeader, hFile, hh);                      // hst.fileHeader[hFile] = hh;
+                    hst.fileSize   [hFile] = fileSize;
+   ArraySetIntArray(hst.fileHeader, hFile, hh);                      // entspricht: hst.fileHeader[hFile] = hh;
                     hst.fileBars   [hFile] = bars;
                     hst.fileFrom   [hFile] = from;
                     hst.fileTo     [hFile] = to;
@@ -6157,12 +6160,145 @@ int History.ResizeArrays(int size) {
       ArrayResize(hst.fileName,   size);
       ArrayResize(hst.fileRead,   size);
       ArrayResize(hst.fileWrite,  size);
+      ArrayResize(hst.fileSize,   size);
       ArrayResize(hst.fileHeader, size);
       ArrayResize(hst.fileBars,   size);
       ArrayResize(hst.fileFrom,   size);
       ArrayResize(hst.fileTo,     size);
    }
    return(size);
+}
+
+
+/**
+ * Gibt den Namen der zu einem Handle gehörenden Historydatei zurück.
+ *
+ * @param  int hFile - Dateihandle
+ *
+ * @return string - Dateiname oder Leerstring, falls ein Fehler auftrat
+ */
+string History.FileName(int hFile) {
+   if (hFile <= 0)                    return(_empty(catch("History.FileName(1)   invalid file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile >= ArraySize(hst.hFile)) return(_empty(catch("History.FileName(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hst.hFile[hFile] <= 0)         return(_empty(catch("History.FileName(3)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+
+   return(hst.fileName[hFile]);
+}
+
+
+/**
+ * Ob das Handle einer Historydatei Lesezugriff erlaubt.
+ *
+ * @param  int hFile - Dateihandle
+ *
+ * @return bool - Ergebnis oder FALSE, falls ein Fehler auftrat
+ */
+bool History.FileRead(int hFile) {
+   if (hFile <= 0)                    return(_false(catch("History.FileRead(1)   invalid file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile >= ArraySize(hst.hFile)) return(_false(catch("History.FileRead(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hst.hFile[hFile] <= 0)         return(_false(catch("History.FileRead(3)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+
+   return(hst.fileRead[hFile]);
+}
+
+
+/**
+ * Ob das Handle einer Historydatei Schreibzugriff erlaubt.
+ *
+ * @param  int hFile - Dateihandle
+ *
+ * @return bool - Ergebnis oder FALSE, falls ein Fehler auftrat
+ */
+bool History.FileWrite(int hFile) {
+   if (hFile <= 0)                    return(_false(catch("History.FileWrite(1)   invalid file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile >= ArraySize(hst.hFile)) return(_false(catch("History.FileWrite(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hst.hFile[hFile] <= 0)         return(_false(catch("History.FileWrite(3)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+
+   return(hst.fileWrite[hFile]);
+}
+
+
+/**
+ * Gibt die aktuelle Größe der zu einem Handle gehörenden Historydatei zurück (inkl. noch ungeschriebener Daten im Schreibpuffer).
+ *
+ * @param  int hFile - Dateihandle
+ *
+ * @return int - Größe oder -1, falls ein Fehler auftrat
+ */
+int History.FileSize(int hFile) {
+   if (hFile <= 0)                    return(_int(-1, catch("History.FileSize(1)   invalid file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileSize(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hst.hFile[hFile] <= 0)         return(_int(-1, catch("History.FileSize(3)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+
+   return(hst.fileSize[hFile]);
+}
+
+
+/**
+ * Gibt den Header der zu einem Handle gehörenden Historydatei zurück.
+ *
+ * @param  int hFile   - Dateihandle
+ * @param  int array[] - Array zur Aufnahme der Headerdaten
+ *
+ * @return int - Fehlerstatus
+ */
+int History.FileHeader(int hFile, int array[]) {
+   if (hFile <= 0)                    return(catch("History.FileHeader(1)   invalid file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE));
+   if (hFile >= ArraySize(hst.hFile)) return(catch("History.FileHeader(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR));
+   if (hst.hFile[hFile] <= 0)         return(catch("History.FileHeader(3)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR));
+   if (ArrayDimension(array) > 1)     return(catch("History.FileHeader(4)   too many dimensions of parameter array = "+ ArrayDimension(array), ERR_INCOMPATIBLE_ARRAYS));
+
+   ArrayResize(array, HISTORY_HEADER.intSize);                       // entspricht: array = hst.fileHeader[hFile];
+   CopyMemory(GetBufferAddress(array), GetBufferAddress(hst.fileHeader) + hFile*HISTORY_HEADER.size, HISTORY_HEADER.size);
+   return(NO_ERROR);
+}
+
+
+/**
+ * Gibt die aktuelle Anzahl der Bars der zu einem Handle gehörenden Historydatei zurück (inkl. noch ungeschriebener Daten im Schreibpuffer).
+ *
+ * @param  int hFile - Dateihandle
+ *
+ * @return int - Anzahl oder -1, falls ein Fehler auftrat
+ */
+int History.FileBars(int hFile) {
+   if (hFile <= 0)                    return(_int(-1, catch("History.FileBars(1)   invalid file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileBars(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hst.hFile[hFile] <= 0)         return(_int(-1, catch("History.FileBars(3)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+
+   return(hst.fileBars[hFile]);
+}
+
+
+/**
+ * Gibt den Zeitpunkt der ersten Bar der zu einem Handle gehörenden Historydatei zurück (inkl. noch ungeschriebener Daten im Schreibpuffer).
+ *
+ * @param  int hFile - Dateihandle
+ *
+ * @return datetime - Zeitpunkt oder -1, falls ein Fehler auftrat
+ */
+datetime History.FileFrom(int hFile) {
+   if (hFile <= 0)                    return(_int(-1, catch("History.FileFrom(1)   invalid file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileFrom(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hst.hFile[hFile] <= 0)         return(_int(-1, catch("History.FileFrom(3)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+
+   return(hst.fileFrom[hFile]);
+}
+
+
+/**
+ * Gibt den Zeitpunkt der letzten Bar der zu einem Handle gehörenden Historydatei zurück (inkl. noch ungeschriebener Daten im Schreibpuffer).
+ *
+ * @param  int hFile - Dateihandle
+ *
+ * @return datetime - Zeitpunkt oder -1, falls ein Fehler auftrat
+ */
+datetime History.FileTo(int hFile) {
+   if (hFile <= 0)                    return(_int(-1, catch("History.FileTo(1)   invalid file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileTo(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hst.hFile[hFile] <= 0)         return(_int(-1, catch("History.FileTo(3)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+
+   return(hst.fileTo[hFile]);
 }
 
 
@@ -6197,5 +6333,14 @@ int afterDeinit() {
    return(NO_ERROR);
 
    // Dummy-Calls, unterdrücken unnütze Compilerwarnungen
+   int iNull[];
+   History.FileBars(NULL);
+   History.FileFrom(NULL);
+   History.FileHeader(NULL, iNull);
+   History.FileName(NULL);
+   History.FileRead(NULL);
+   History.FileSize(NULL);
+   History.FileTo(NULL);
+   History.FileWrite(NULL);
    History.WriteBar(NULL, NULL, NULL, NULL);
 }
