@@ -213,8 +213,7 @@ int      ignorePendingOrders  [];                                    // orphaned
 int      ignoreOpenPositions  [];
 int      ignoreClosedPositions[];
 
-string   str.test              = "";                                 // Zwischenspeicher für schnellere Abarbeitung von ShowStatus()
-string   str.LotSize           = "";
+string   str.LotSize           = "";                                 // Zwischenspeicher für schnellere Abarbeitung von ShowStatus()
 string   str.startConditions   = "";
 string   str.stopConditions    = "";
 string   str.grid.direction    = "";
@@ -2441,18 +2440,18 @@ int ShowStatus() {
    }
 
    switch (status) {
-      case STATUS_UNINITIALIZED: msg = StringConcatenate(":  ", str.test, "sequence not initialized"                                                            ); break;
-      case STATUS_WAITING:       msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " waiting"                                                   ); break;
-      case STATUS_STARTING:      msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " starting at level ", grid.level, "  ", str.grid.maxLevel   ); break;
-      case STATUS_PROGRESSING:   msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " progressing at level ", grid.level, "  ", str.grid.maxLevel); break;
-      case STATUS_STOPPING:      msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " stopping at level ", grid.level, "  ", str.grid.maxLevel   ); break;
-      case STATUS_STOPPED:       msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " stopped at level ", grid.level, "  ", str.grid.maxLevel    ); break;
-      case STATUS_DISABLED:      msg = StringConcatenate(":  ", str.test, "sequence ", sequenceId, " disabled"                                                  ); break;
+      case STATUS_UNINITIALIZED: msg = "not initialized";                                                                             break;
+      case STATUS_WAITING:       msg = StringConcatenate(Sequence.ID, " waiting"                                                   ); break;
+      case STATUS_STARTING:      msg = StringConcatenate(Sequence.ID, " starting at level ", grid.level, "  ", str.grid.maxLevel   ); break;
+      case STATUS_PROGRESSING:   msg = StringConcatenate(Sequence.ID, " progressing at level ", grid.level, "  ", str.grid.maxLevel); break;
+      case STATUS_STOPPING:      msg = StringConcatenate(Sequence.ID, " stopping at level ", grid.level, "  ", str.grid.maxLevel   ); break;
+      case STATUS_STOPPED:       msg = StringConcatenate(Sequence.ID, " stopped at level ", grid.level, "  ", str.grid.maxLevel    ); break;
+      case STATUS_DISABLED:      msg = StringConcatenate(Sequence.ID, " disabled"                                                  ); break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
-   msg = StringConcatenate(__NAME__, msg, str.error,                                                 NL,
+   msg = StringConcatenate(__NAME__, " ", msg, str.error,                                            NL,
                                                                                                      NL,
                            "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction, NL,
                            "LotSize:         ", str.LotSize,                                         NL,
@@ -2494,7 +2493,6 @@ void SS.All() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   SS.Test();
    SS.SequenceId();
    SS.Grid.Base();
    SS.Grid.Direction();
@@ -2506,18 +2504,6 @@ void SS.All() {
    SS.Grid.MaxProfit();
    SS.Grid.MaxDrawdown();
    SS.Grid.ValueAtRisk();
-}
-
-
-/**
- * ShowStatus(): Aktualisiert die String-Repräsentation von test.
- */
-void SS.Test() {
-   if (IsTesting()) /*&&*/ if (!IsVisualMode())
-      return;
-
-   if (test) str.test = "test ";
-   else      str.test = "";
 }
 
 
@@ -3094,7 +3080,7 @@ bool RestoreStickyStatus() {
    if (ObjectFind(label) == 0) {
       strValue = StringToUpper(StringTrim(ObjectDescription(label)));
       if (StringLeft(strValue, 1) == "T") {
-         test     = true; SS.Test();
+         test     = true;
          strValue = StringRight(strValue, -1);
       }
       if (!StringIsDigit(strValue))
@@ -3267,7 +3253,7 @@ bool ValidateConfiguration.ID(bool interactive) {
       return(false);
 
    if (StringLeft(strValue, 1) == "T") {
-      test     = true; SS.Test();
+      test     = true;
       strValue = StringRight(strValue, -1);
    }
    if (!StringIsDigit(strValue))
@@ -4232,7 +4218,7 @@ bool RestoreStatus() {
       else if (key == "Sequence.ID") {
          value = StringToUpper(value);
          if (StringLeft(value, 1) == "T") {
-            test  = true; SS.Test();
+            test  = true;
             value = StringRight(value, -1);
          }
          if (value != StringConcatenate("", sequenceId))                return(_false(catch("RestoreStatus(7)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));

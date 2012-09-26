@@ -54,7 +54,7 @@ int onInitChartClose() {
          ForceSound("notify.wav");
          button = ForceMessageBox(__NAME__, ifString(!IsDemo(), "- Live Account -\n\n", "") +"Running sequence"+ ifString(sizeOfIds==1, " ", "s ") + JoinInts(ids, ", ") +" found.\n\nDo you want to load "+ ifString(sizeOfIds==1, "it", ids[i]) +"?", MB_ICONQUESTION|MB_YESNOCANCEL);
          if (button == IDYES) {
-            test        = false; SS.Test();
+            test        = false;
             sequenceId  = InstanceId(ids[i]);
             Sequence.ID = sequenceId; SS.SequenceId();
             status      = STATUS_WAITING;
@@ -83,7 +83,7 @@ int onInitChartClose() {
    if (ValidateConfiguration(true)) {
       instanceStartTime  = TimeCurrent();
       instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
-      test               = IsTesting(); SS.Test();
+      test               = IsTesting();
       sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
@@ -149,7 +149,7 @@ int onInitParameterChange() {
       // neue Sequenz anlegen
       instanceStartTime  = TimeCurrent();
       instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
-      test               = IsTesting(); SS.Test();
+      test               = IsTesting();
       sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
