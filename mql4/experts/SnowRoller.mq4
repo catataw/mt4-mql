@@ -2440,18 +2440,18 @@ int ShowStatus() {
    }
 
    switch (status) {
-      case STATUS_UNINITIALIZED: msg = "not initialized";                                                                             break;
-      case STATUS_WAITING:       msg = StringConcatenate(Sequence.ID, " waiting"                                                   ); break;
-      case STATUS_STARTING:      msg = StringConcatenate(Sequence.ID, " starting at level ", grid.level, "  ", str.grid.maxLevel   ); break;
-      case STATUS_PROGRESSING:   msg = StringConcatenate(Sequence.ID, " progressing at level ", grid.level, "  ", str.grid.maxLevel); break;
-      case STATUS_STOPPING:      msg = StringConcatenate(Sequence.ID, " stopping at level ", grid.level, "  ", str.grid.maxLevel   ); break;
-      case STATUS_STOPPED:       msg = StringConcatenate(Sequence.ID, " stopped at level ", grid.level, "  ", str.grid.maxLevel    ); break;
-      case STATUS_DISABLED:      msg = StringConcatenate(Sequence.ID, " disabled"                                                  ); break;
+      case STATUS_UNINITIALIZED: msg = " not initialized";                                                                                  break;
+      case STATUS_WAITING:       msg = StringConcatenate("  ", Sequence.ID, " waiting"                                                   ); break;
+      case STATUS_STARTING:      msg = StringConcatenate("  ", Sequence.ID, " starting at level ", grid.level, "  ", str.grid.maxLevel   ); break;
+      case STATUS_PROGRESSING:   msg = StringConcatenate("  ", Sequence.ID, " progressing at level ", grid.level, "  ", str.grid.maxLevel); break;
+      case STATUS_STOPPING:      msg = StringConcatenate("  ", Sequence.ID, " stopping at level ", grid.level, "  ", str.grid.maxLevel   ); break;
+      case STATUS_STOPPED:       msg = StringConcatenate("  ", Sequence.ID, " stopped at level ", grid.level, "  ", str.grid.maxLevel    ); break;
+      case STATUS_DISABLED:      msg = StringConcatenate("  ", Sequence.ID, " disabled"                                                  ); break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
-   msg = StringConcatenate(__NAME__, " ", msg, str.error,                                            NL,
+   msg = StringConcatenate(__NAME__, msg, str.error,                                                 NL,
                                                                                                      NL,
                            "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction, NL,
                            "LotSize:         ", str.LotSize,                                         NL,
@@ -5955,9 +5955,7 @@ bool RecordEquity() {
    static int hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
 
    if (hFile == 0) {
-      string symbol;
-      symbol = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
-      //symbol = "AUDUSD";
+      string symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), "SR", sequenceId);
       string description = StringConcatenate("Equity SR.", sequenceId);
       hFile = History.OpenFile(symbol, description, digits, PERIOD_M1, FILE_READ|FILE_WRITE);
       if (hFile <= 0)
@@ -5994,13 +5992,11 @@ bool RecordEquity() {
  */
 bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
    int error, pointer=FileTell(hFile);
-   if (pointer < 0) {
-      error = GetLastError();         return(_false(catch("History.AddTick(1)   invalid parameter hFile = "+ hFile, ifInt(IsError(error), error, ERR_INVALID_FUNCTION_PARAMVALUE))));
-   }
-   if (hFile >= ArraySize(hst.hFile)) return(_false(catch("History.AddTick(2)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0)         return(_false(catch("History.AddTick(3)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time <= 0)                     return(_false(catch("History.AddTick(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (value <= 0)                    return(_false(catch("History.AddTick(5)   invalid parameter value = "+ NumberToStr(value, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (pointer < 0) { error = GetLastError(); return(_false(catch("History.AddTick(1)   invalid parameter hFile = "+ hFile, ifInt(IsError(error), error, ERR_INVALID_FUNCTION_PARAMVALUE)))); }
+   if (hFile >= ArraySize(hst.hFile))         return(_false(catch("History.AddTick(2)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hst.hFile[hFile] <= 0)                 return(_false(catch("History.AddTick(3)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (time <= 0)                             return(_false(catch("History.AddTick(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (value <= 0)                            return(_false(catch("History.AddTick(5)   invalid parameter value = "+ NumberToStr(value, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    debug("History.AddTick()   time="+ TimeToStr(time, TIME_FULL));
 
