@@ -5,10 +5,10 @@
  *
  *  TODO:
  *  -----
+ *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
  *  - Equity-Charts generieren                                                                        *
  *  - bidirektional trailendes Grid implementieren                                                    *
  *
- *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Möglichkeit, WeekendStop zu aktivieren/deaktivieren                                             *
  *  - StartCondition @level() implementieren                                                          *
