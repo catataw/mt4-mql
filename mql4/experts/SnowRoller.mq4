@@ -60,7 +60,7 @@
  *  +-------------------+----------------------+---------------------+------------+---------------+----------------------+
  *  | ResumeSequence()  | STATUS_STARTING      |                     |     0      |       -       |                      | Gridbasis ungültig
  *  | Gridbase-Änderung | STATUS_STARTING      | EV_GRIDBASE_CHANGE  |     0      |       -       |                      |
- *  | PositionReopen    | STATUS_STARTING      | EV_POSITION_OPEN    |    0..n    |               |                      |
+ *  | PositionOpen      | STATUS_STARTING      | EV_POSITION_OPEN    |    0..n    |               |                      |
  *  |                   | STATUS_PROGRESSING   | EV_SEQUENCE_START   |     n      |  ja (Beginn)  | STATUS_PROGRESSING   | sequenceStartTime = Wechsel zu STATUS_PROGRESSING
  *  |                   |                      |                     |            |               |                      |
  *  | OrderFilled       | STATUS_PROGRESSING   | EV_POSITION_OPEN    |    1..n    |      ja       |                      |
@@ -171,15 +171,15 @@ int      grid.maxLevelShort;                                         // maximal 
 double   grid.commission;                                            // Commission-Betrag je Level (falls zutreffend)
 
 int      grid.stops;                                                 // Anzahl der bisher getriggerten Stops                                       SS Stops:       Feld 1
-double   grid.stopsPL;                                               // P/L der ausgestoppten Positionen (0 oder negativ)                          SS Stops:       Feld 2
-double   grid.closedPL;                                              // P/L per StopSequence() geschlossener Positionen (realizedPL = stopsPL + closedPL)
-double   grid.floatingPL;                                            // P/L offener Positionen
-double   grid.totalPL;                                               // Gesamt-P/L der Sequenz:  realizedPL + floatingPL                           SS Profit/Loss: Feld 1
-double   grid.activeRisk;                                            // aktuelles Risiko der aktiven Level (0 oder positiv)
-double   grid.valueAtRisk;                                           // aktuelles Gesamtrisiko:  -stopsPL + activeRisk (0 oder positiv)            SS Profit/Loss: Feld 4
+double   grid.stopsPL;                                               // bisheriger P/L aller ausgestoppten Positionen (negativ)                    SS Stops:       Feld 2
+double   grid.closedPL;                                              // bisheriger P/L aller geschlossener Positionen
+double   grid.floatingPL;                                            // aktueller P/L aller offenen Positionen
+double   grid.totalPL;                                               // Gesamt-P/L der Sequenz:  stopsPL + closedPL + floatingPL                   SS Profit/Loss: Feld 1
+double   grid.activeRisk;                                            // aktuelles Verlustrisiko aller offenen Level (positiv)
+double   grid.valueAtRisk;                                           // Gesamt-Verlustrisiko bei Sequenzstop: -stopsPL + activeRisk (positiv)      SS Profit/Loss: Feld 4
 
-double   grid.maxProfit;                                             // maximal erreichter Gesamtprofit (0 oder positiv)                           SS Profit/Loss: Feld 2
-double   grid.maxDrawdown;                                           // maximal erreichter Drawdown (0 oder negativ)                               SS Profit/Loss: Feld 3
+double   grid.maxProfit;                                             // maximaler bisheriger Gesamt-P/L (positiv)                                  SS Profit/Loss: Feld 2
+double   grid.maxDrawdown;                                           // maximaler bsiheriger Drawdown (negativ)                                    SS Profit/Loss: Feld 3
 
 double   grid.breakevenLong;                                         //                                                                            SS Breakeven:   Feld 1
 double   grid.breakevenShort;                                        //                                                                            SS Breakeven:   Feld 2
@@ -196,7 +196,7 @@ int      orders.type          [];
 int      orders.openEvent     [];
 datetime orders.openTime      [];
 double   orders.openPrice     [];
-double   orders.risk          [];                                    // Risiko des Levels (0, solange Order pending, danach positiv)
+double   orders.risk          [];                                    // Verlustrisiko des einzelnen Levels (0, solange Order pending, danach positiv)
 
 int      orders.closeEvent    [];
 datetime orders.closeTime     [];
@@ -688,10 +688,15 @@ bool ResumeSequence() {
 
 
    // (7) Status aktualisieren und speichern
-   int iNull[];
-   if (!UpdateStatus(iNull, iNull)) return(false);
+   int last.grid.level=grid.level, iNull[];
+   if (!UpdateStatus(iNull, iNull))                                           // Wurde in UpdateOpenPositions() ein Pseudo-Ticket erstellt, wird es hier
+      return(false);                                                          // in UpdateStatus() geschlossen. In diesem Fall müssen die Pending-Orders
+   if (grid.level != last.grid.level) UpdatePendingOrders();                  // nochmal aktualisiert werden.
+
    sequenceStart.profit[ArraySize(sequenceStart.profit)-1] = grid.totalPL;    // aktuellen Wert speichern
-   if (  !SaveStatus())             return(false);
+
+   if (!SaveStatus())
+      return(false);
 
 
    // (8) Breakeven neu berechnen und Anzeigen aktualisieren
@@ -741,7 +746,8 @@ bool UpdateStatus(int limits[], int stops[]) {
       if (orders.closeTime[i] == 0) {                                                  // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
          wasPending = orders.type[i] == OP_UNDEFINED;
 
-         if (wasPending) /*&&*/ if (orders.ticket[i] < 0) {
+         // (1.1) getriggerte client-seitige PendingOrders
+         if (wasPending) /*&&*/ if (orders.ticket[i] == -1) {
             if (IsStopTriggered(orders.pendingType[i], orders.pendingPrice[i])) {
                if (__LOG) log(UpdateStatus.StopTriggerMsg(i));
                ArrayPushInt(stops, i);
@@ -749,6 +755,25 @@ bool UpdateStatus(int limits[], int stops[]) {
             continue;
          }
 
+         // (1.2) Pseudo-Tickets (werden sofort geschlossen)
+         if (orders.ticket[i] == -2) {
+            orders.closeEvent[i] = CreateEventId();                                    // Event-ID kann sofort vergeben werden.
+            orders.closeTime [i] = TimeCurrent();
+            orders.closePrice[i] = orders.openPrice[i];
+            orders.closedBySL[i] = true;
+            ChartMarker.PositionClosed(i);
+            if (__LOG) log(StringConcatenate("UpdateStatus()   pseudo ticket #", orders.ticket[i], " closed (level ", orders.level[i], ")"));
+
+            grid.level      -= Sign(orders.level[i]);
+            grid.stops++;
+          //grid.stopsPL     = ...                                                     // unverändert, P/L des Tickets = 0.00
+            grid.activeRisk  = NormalizeDouble(grid.activeRisk - orders.risk[i], 2);
+            grid.valueAtRisk = NormalizeDouble(grid.activeRisk - grid.stopsPL, 2); SS.Grid.ValueAtRisk();  // valueAtRisk = -stopsPL + activeRisk
+            recalcBreakeven  = true;
+            continue;
+         }
+
+         // (1.3) reguläre server-seitige Tickets
          if (!OrderSelectByTicket(orders.ticket[i], "UpdateStatus(2)"))
             return(false);
 
@@ -759,10 +784,10 @@ bool UpdateStatus(int limits[], int stops[]) {
                orders.openEvent [i] = CreateEventId();
                orders.openTime  [i] = OrderOpenTime();
                orders.openPrice [i] = OrderOpenPrice();
-               orders.risk      [i] = CalculateActiveRisk(orders.level[i], orders.ticket[i], OrderOpenPrice(), OrderSwap(), OrderCommission());
                orders.swap      [i] = OrderSwap();
                orders.commission[i] = OrderCommission(); grid.commission = OrderCommission(); SS.LotSize();
                orders.profit    [i] = OrderProfit();
+               orders.risk      [i] = CalculateActiveRisk(i);
                ChartMarker.OrderFilled(i);
                if (__LOG) log(UpdateStatus.OrderFillMsg(i));
 
@@ -1459,7 +1484,7 @@ bool ProcessClientStops(int stops[]) {
 
 
       // (2) getriggerte Pending-Order (OP_BUYSTOP, OP_SELLSTOP)
-      if (orders.ticket[i] < 0) {
+      if (orders.ticket[i] == -1) {
          if (orders.type[i] != OP_UNDEFINED) return(_false(catch("ProcessClientStops(4)   client-side "+ OperationTypeDescription(orders.pendingType[i]) +" order at index "+ i +" already marked as open", ERR_ILLEGAL_STATE)));
 
          if (firstTick) /*&&*/ if (!firstTickConfirmed) {                     // Bestätigungsprompt bei Traderequest beim ersten Tick
@@ -1487,16 +1512,17 @@ bool ProcessClientStops(int stops[]) {
          if (ticket <= 0) {
             if (Abs(level) < Abs(grid.level))     return( false);
             if (oe.Error(oe) != ERR_INVALID_STOP) return( false);
-            if (ticket < -2)                      return(_false(SetLastError(oe.Error(oe))));
+            if (ticket==0 || ticket < -2)         return(_false(catch("ProcessClientStops(6)", oe.Error(oe))));
 
             double stopLoss = oe.StopLoss(oe);
 
             // (2.2) Spread violated
-            if (ticket == -1)
-               return(_false(catch("ProcessClientStops(6)   spread violated ("+ NumberToStr(oe.Bid(oe), PriceFormat) +"/"+ NumberToStr(oe.Ask(oe), PriceFormat) +") by "+ OperationTypeDescription(type) +" at "+ NumberToStr(oe.OpenPrice(oe), PriceFormat) +", sl="+ NumberToStr(stopLoss, PriceFormat) +" (level "+ level +")", oe.Error(oe))));
+            if (ticket == -1) {
+               return(_false(catch("ProcessClientStops(7)   spread violated ("+ NumberToStr(oe.Bid(oe), PriceFormat) +"/"+ NumberToStr(oe.Ask(oe), PriceFormat) +") by "+ OperationTypeDescription(type) +" at "+ NumberToStr(oe.OpenPrice(oe), PriceFormat) +", sl="+ NumberToStr(stopLoss, PriceFormat) +" (level "+ level +")", oe.Error(oe))));
+            }
 
             // (2.3) StopDistance violated
-            if (ticket == -2) {
+            else if (ticket == -2) {
                clientSL = true;
                ticket   = SubmitMarketOrder(type, level, clientSL, oe);       // danach client-seitige Stop-Verwaltung (ab dem letzten Level)
                if (ticket <= 0)
@@ -1511,8 +1537,9 @@ bool ProcessClientStops(int stops[]) {
 
       // (3) getriggerter StopLoss
       if (orders.clientSL[i]) {
-         if (orders.type[i] == OP_UNDEFINED) return(_false(catch("ProcessClientStops(6)   #"+ orders.ticket[i] +" with client-side stop-loss still marked as pending", ERR_ILLEGAL_STATE)));
-         if (orders.closeTime[i] != 0)       return(_false(catch("ProcessClientStops(7)   #"+ orders.ticket[i] +" with client-side stop-loss already marked as closed", ERR_ILLEGAL_STATE)));
+         if (orders.ticket[i] == -2)         return(_false(catch("ProcessClientStops(8)   cannot process client-side stoploss of pseudo ticket #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
+         if (orders.type[i] == OP_UNDEFINED) return(_false(catch("ProcessClientStops(9)   #"+ orders.ticket[i] +" with client-side stop-loss still marked as pending", ERR_ILLEGAL_STATE)));
+         if (orders.closeTime[i] != 0)       return(_false(catch("ProcessClientStops(10)   #"+ orders.ticket[i] +" with client-side stop-loss already marked as closed", ERR_ILLEGAL_STATE)));
 
          if (firstTick) /*&&*/ if (!firstTickConfirmed) {                              // Bestätigungsprompt bei Traderequest beim ersten Tick
             if (!IsTesting()) {
@@ -1520,21 +1547,19 @@ bool ProcessClientStops(int stops[]) {
                button = ForceMessageBox(__NAME__ +" - ProcessClientStops()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to execute a triggered stop-loss now?", MB_ICONQUESTION|MB_OKCANCEL);
                if (button != IDOK) {
                   __STATUS__CANCELLED = true;
-                  return(_false(catch("ProcessClientStops(8)")));
+                  return(_false(catch("ProcessClientStops(11)")));
                }
                RefreshRates();
             }
          }
          firstTickConfirmed = true;
 
-                ticket      = orders.ticket[i];
          double lots        = NULL;
          double price       = NULL;
          double slippage    = 0.1;
          color  markerColor = CLR_NONE;
          int    oeFlags     = NULL;
-
-         if (!OrderCloseEx(ticket, lots, price, slippage, markerColor, oeFlags, oe))
+         if (!OrderCloseEx(orders.ticket[i], lots, price, slippage, markerColor, oeFlags, oe))
             return(_false(SetLastError(oe.Error(oe))));
 
          orders.closedBySL[i] = true;
@@ -1546,10 +1571,9 @@ bool ProcessClientStops(int stops[]) {
    // (4) Status aktualisieren und speichern
    int iNull[];
    if (!UpdateStatus(iNull, iNull)) return(false);
-   if (!SaveStatus())
-      return(false);
+   if (  !SaveStatus())             return(false);
 
-   return(IsNoError(last_error|catch("ProcessClientStops(9)")));
+   return(IsNoError(last_error|catch("ProcessClientStops(12)")));
 }
 
 
@@ -1660,7 +1684,7 @@ bool UpdatePendingOrders() {
 
 
 /**
- * Öffnet neue bzw. vervollständigt fehlende der zuletzt offenen Positionen der Sequenz.
+ * Öffnet neue bzw. vervollständigt fehlende der zuletzt offenen Positionen der Sequenz. Aufruf nur in ResumeSequence()
  *
  * @param  datetime lpOpenTime  - Zeiger auf Variable, die die OpenTime der zuletzt geöffneten Position aufnimmt
  * @param  double   lpOpenPrice - Zeiger auf Variable, die den durchschnittlichen OpenPrice aufnimmt
@@ -1831,26 +1855,29 @@ bool Grid.AddOrder(int type, int level) {
    if (ticket <= 0) {
       if (oe.Error(oe) != ERR_INVALID_STOP)
          return(false);
+      if (ticket == 0)
+         return(_false(catch("Grid.AddOrder(4)", oe.Error(oe))));
 
       // (2) Spread violated
-      if (ticket == -1)
-         return(_false(catch("Grid.AddOrder(4)   spread violated ("+ NumberToStr(oe.Bid(oe), PriceFormat) +"/"+ NumberToStr(oe.Ask(oe), PriceFormat) +") by "+ OperationTypeDescription(type) +" at "+ NumberToStr(pendingPrice, PriceFormat) +" (level "+ level +")", oe.Error(oe))));
+      if (ticket == -1) {
+         return(_false(catch("Grid.AddOrder(5)   spread violated ("+ NumberToStr(oe.Bid(oe), PriceFormat) +"/"+ NumberToStr(oe.Ask(oe), PriceFormat) +") by "+ OperationTypeDescription(type) +" at "+ NumberToStr(pendingPrice, PriceFormat) +" (level "+ level +")", oe.Error(oe))));
+      }
 
       // (3) StopDistance violated (client-seitige Stop-Verwaltung)
-      if (ticket == -2) {
+      else if (ticket == -2) {
          ticket = -1;
          if (__LOG) log(StringConcatenate("Grid.AddOrder()   client-side ", OperationTypeDescription(type), " at ", NumberToStr(pendingPrice, PriceFormat), " installed (level ", level, ")"));
       }
    }
 
    // (4) Daten speichern
-   //int    ticket       = ...                                       // unverändert
-   //int    level        = ...                                       // unverändert
-   //double grid.base    = ...                                       // unverändert
+   //int    ticket       = ...                                          // unverändert
+   //int    level        = ...                                          // unverändert
+   //double grid.base    = ...                                          // unverändert
 
    int      pendingType  = type;
-   datetime pendingTime  = ifInt(ticket > 0, oe.OpenTime(oe), TimeCurrent());
-   //double pendingPrice = ...                                       // unverändert
+   datetime pendingTime  = oe.OpenTime(oe);  if (ticket < 0) pendingTime = TimeCurrent();
+   //double pendingPrice = ...                                          // unverändert
 
    /*int*/  type         = OP_UNDEFINED;
    int      openEvent    = NULL;
@@ -1873,7 +1900,7 @@ bool Grid.AddOrder(int type, int level) {
 
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openEvent, openTime, openPrice, risk, closeEvent, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit))
       return(false);
-   return(IsNoError(catch("Grid.AddOrder(5)")));
+   return(IsNoError(catch("Grid.AddOrder(6)")));
 }
 
 
@@ -1959,7 +1986,7 @@ bool Grid.AddPosition(int type, int level) {
 
    if (level == 0)                           return(_false(catch("Grid.AddPosition(3)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
+   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                                          // Bestätigungsprompt bei Traderequest beim ersten Tick
       if (!IsTesting()) {
          ForceSound("notify.wav");
          int button = ForceMessageBox(__NAME__ +" - Grid.AddPosition()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a Market "+ OperationTypeDescription(type) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
@@ -1976,7 +2003,7 @@ bool Grid.AddPosition(int type, int level) {
    // (1) Position öffnen
    /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
    bool clientSL = false;
-   int  ticket   = SubmitMarketOrder(type, level, clientSL, oe);              // zuerst versuchen, server-seitigen StopLoss zu setzen...
+   int  ticket   = SubmitMarketOrder(type, level, clientSL, oe);        // zuerst versuchen, server-seitigen StopLoss zu setzen...
 
    double stopLoss = oe.StopLoss(oe);
 
@@ -1984,16 +2011,20 @@ bool Grid.AddPosition(int type, int level) {
       // ab dem letzten Level ggf. client-seitige Stop-Verwaltung
       if (Abs(level) < Abs(grid.level))     return( false);
       if (oe.Error(oe) != ERR_INVALID_STOP) return( false);
-      if (ticket < -2)                      return(_false(SetLastError(oe.Error(oe))));
+      if (ticket==0 || ticket < -2)         return(_false(catch("Grid.AddPosition(5)", oe.Error(oe))));
 
       // (2) Spread violated
-      if (ticket == -1)
-         return(_false(catch("Grid.AddPosition(5)   spread violated ("+ NumberToStr(oe.Bid(oe), PriceFormat) +"/"+ NumberToStr(oe.Ask(oe), PriceFormat) +") by "+ OperationTypeDescription(type) +" at "+ NumberToStr(oe.OpenPrice(oe), PriceFormat) +", sl="+ NumberToStr(stopLoss, PriceFormat) +" (level "+ level +")", oe.Error(oe))));
+      if (ticket == -1) {
+         ticket   = -2;                                                 // Pseudo-Ticket "öffnen" (wird beim nächsten UpdateStatus() mit P/L=0.00 "geschlossen")
+         clientSL = true;
+         oe.setOpenTime(oe, TimeCurrent());
+         if (__LOG) log(StringConcatenate("Grid.AddPosition()   pseudo ticket #", ticket, " opened for spread violation (", NumberToStr(oe.Bid(oe), PriceFormat), "/", NumberToStr(oe.Ask(oe), PriceFormat), ") by ", OperationTypeDescription(type), " at ", NumberToStr(oe.OpenPrice(oe), PriceFormat), ", sl=", NumberToStr(stopLoss, PriceFormat), " (level ", level, ")"));
+      }
 
       // (3) StopDistance violated
-      if (ticket == -2) {
+      else if (ticket == -2) {
          clientSL = true;
-         ticket   = SubmitMarketOrder(type, level, clientSL, oe);             // danach client-seitige Stop-Verwaltung (ab dem letzten Level)
+         ticket   = SubmitMarketOrder(type, level, clientSL, oe);       // danach client-seitige Stop-Verwaltung
          if (ticket <= 0)
             return(false);
          if (__LOG) log(StringConcatenate("Grid.AddPosition()   #", ticket, " client-side stop-loss at ", NumberToStr(stopLoss, PriceFormat), " installed (level ", level, ")"));
@@ -2001,15 +2032,15 @@ bool Grid.AddPosition(int type, int level) {
    }
 
    // (4) Daten speichern
-   //int    ticket       = ...                                                // unverändert
-   //int    level        = ...                                                // unverändert
-   //double grid.base    = ...                                                // unverändert
+   //int    ticket       = ...                                          // unverändert
+   //int    level        = ...                                          // unverändert
+   //double grid.base    = ...                                          // unverändert
 
    int      pendingType  = OP_UNDEFINED;
    datetime pendingTime  = NULL;
    double   pendingPrice = NULL;
 
-   //int    type         = ...                                                // unverändert
+   //int    type         = ...                                          // unverändert
    int      openEvent    = CreateEventId();
    datetime openTime     = oe.OpenTime (oe);
    double   openPrice    = oe.OpenPrice(oe);
@@ -2017,19 +2048,22 @@ bool Grid.AddPosition(int type, int level) {
    int      closeEvent   = NULL;
    datetime closeTime    = NULL;
    double   closePrice   = NULL;
-   //double stopLoss     = ...                                                // unverändert
-   //bool   clientSL     = ...                                                // unverändert
+   //double stopLoss     = ...                                          // unverändert
+   //bool   clientSL     = ...                                          // unverändert
    bool     closedBySL   = false;
 
-   double   swap         = oe.Swap      (oe);                                 // falls Swap bereits bei OrderOpen gesetzt sein sollte
+   double   swap         = oe.Swap      (oe);                           // falls Swap bereits bei OrderOpen gesetzt sein sollte
    double   commission   = oe.Commission(oe);
    double   profit       = NULL;
-   double   risk         = CalculateActiveRisk(level, ticket, openPrice, swap, commission);
-
-   ArrayResize(oe, 0);
+   double   risk         = NULL;                                        // wird nach Grid.PushData() gesetzt
 
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openEvent, openTime, openPrice, risk, closeEvent, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit))
       return(false);
+
+   int i = ArraySize(orders.ticket) - 1;
+   orders.risk[i] = CalculateActiveRisk(i);
+
+   ArrayResize(oe, 0);
    return(IsNoError(catch("Grid.AddPosition(6)")));
 }
 
@@ -4057,6 +4091,7 @@ bool SaveStatus() {
       double   commission   = orders.commission  [i];    // 18
       double   profit       = orders.profit      [i];    // 19
       ArrayPushString(lines, StringConcatenate("rt.order.", i, "=", ticket, ",", level, ",", NumberToStr(NormalizeDouble(gridBase, Digits), ".+"), ",", pendingType, ",", pendingTime, ",", NumberToStr(NormalizeDouble(pendingPrice, Digits), ".+"), ",", type, ",", openEvent, ",", openTime, ",", NumberToStr(NormalizeDouble(openPrice, Digits), ".+"), ",", NumberToStr(NormalizeDouble(risk, 2), ".+"), ",", closeEvent, ",", closeTime, ",", NumberToStr(NormalizeDouble(closePrice, Digits), ".+"), ",", NumberToStr(NormalizeDouble(stopLoss, Digits), ".+"), ",", clientSL, ",", closedBySL, ",", NumberToStr(swap, ".+"), ",", NumberToStr(commission, ".+"), ",", NumberToStr(profit, ".+")));
+      //rt.order.{i}={ticket},{level},{gridBase},{pendingType},{pendingTime},{pendingPrice},{type},{openEvent},{openTime},{openPrice},{risk},{closeEvent},{closeTime},{closePrice},{stopLoss},{clientSL},{closedBySL},{swap},{commission},{profit}
    }
 
 
@@ -4214,6 +4249,9 @@ bool RestoreStatus() {
    int    accountLine;
 
    for (int i=0; i < size; i++) {
+      if (StringStartsWith(StringTrim(lines[i]), "#"))                  // Kommentare überspringen
+         continue;
+
       if (Explode(lines[i], "=", parts, 2) < 2)                         return(_false(catch("RestoreStatus(5)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
       key   = StringTrim(parts[0]);
       value = StringTrim(parts[1]);
@@ -4338,7 +4376,8 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
    double   rt.grid.maxProfit=200.13
    double   rt.grid.maxDrawdown=-127.80
    string   rt.grid.base=4|1331710960|1.56743,5|1331711010|1.56714
-   string   rt.order.0=62544847,1,1.32067,4,1330932525,1.32067,0,6,1330936196,1.32067,0,0,0,1330938698,1.31897,1.31897,17,1,0,0,0,0,0,0,-17
+   string   rt.order.0=62544847,1,1.32067,4,1330932525,1.32067,1,100,1330936196,1.32067,0,101,1330938698,1.31897,1.31897,0,1,0,0,-17
+            rt.order.{i}={ticket},{level},{gridBase},{pendingType},{pendingTime},{pendingPrice},{type},{openEvent},{openTime},{openPrice},{risk},{closeEvent},{closeTime},{closePrice},{stopLoss},{clientSL},{closedBySL},{swap},{commission},{profit}
 
       int      ticket       = values[ 0];
       int      level        = values[ 1];
@@ -4555,6 +4594,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       ArrayDropString(keys, key);
    }
    else if (StringStartsWith(key, "rt.order.")) {
+      // rt.order.{i}={ticket},{level},{gridBase},{pendingType},{pendingTime},{pendingPrice},{type},{openEvent},{openTime},{openPrice},{risk},{closeEvent},{closeTime},{closePrice},{stopLoss},{clientSL},{closedBySL},{swap},{commission},{profit}
       // Orderindex
       string strIndex = StringRight(key, -9);
       if (!StringIsDigit(strIndex))                                         return(_false(catch("RestoreStatus.Runtime(47)   illegal order index \""+ key +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
@@ -4571,7 +4611,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       if (ticket > 0) {
          if (IntInArray(orders.ticket, ticket))                             return(_false(catch("RestoreStatus.Runtime(51)   duplicate ticket #"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
       }
-      else if (ticket != -1)                                                return(_false(catch("RestoreStatus.Runtime(52)   illegal ticket #"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+      else if (ticket!=-1 && ticket!=-2)                                    return(_false(catch("RestoreStatus.Runtime(52)   illegal ticket #"+ ticket +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
       // level
       string strLevel = StringTrim(values[1]);
@@ -4711,6 +4751,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       Grid.SetData(i, ticket, level, gridBase, pendingType, pendingTime, pendingPrice, type, openEvent, openTime, openPrice, risk, closeEvent, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit);
       lastEventId = Max(lastEventId, Max(openEvent, closeEvent));
       //debug("RestoreStatus.Runtime()   #"+ ticket +"  level="+ level +"  gridBase="+ NumberToStr(gridBase, PriceFormat) +"  pendingType="+ OperationTypeToStr(pendingType) +"  pendingTime="+ ifString(pendingTime==0, 0, "'"+ TimeToStr(pendingTime, TIME_FULL) +"'") +"  pendingPrice="+ NumberToStr(pendingPrice, PriceFormat) +"  type="+ OperationTypeToStr(type) +"  openEvent="+ openEvent +"  openTime="+ ifString(openTime==0, 0, "'"+ TimeToStr(openTime, TIME_FULL) +"'") +"  openPrice="+ NumberToStr(openPrice, PriceFormat) +"  risk="+ DoubleToStr(risk, 2) +"  closeEvent="+ closeEvent +"  closeTime="+ ifString(closeTime==0, 0, "'"+ TimeToStr(closeTime, TIME_FULL) +"'") +"  closePrice="+ NumberToStr(closePrice, PriceFormat) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  clientSL="+ BoolToStr(clientSL) +"  closedBySL="+ BoolToStr(closedBySL) +"  swap="+ DoubleToStr(swap, 2) +"  commission="+ DoubleToStr(commission, 2) +"  profit="+ DoubleToStr(profit, 2));
+      // rt.order.{i}={ticket},{level},{gridBase},{pendingType},{pendingTime},{pendingPrice},{type},{openEvent},{openTime},{openPrice},{risk},{closeEvent},{closeTime},{closePrice},{stopLoss},{clientSL},{closedBySL},{swap},{commission},{profit}
    }
 
    ArrayResize(values, 0);
@@ -5127,7 +5168,7 @@ bool SynchronizeStatus() {
 
 
 /**
- * Aktualisiert die Daten des lokal als offen markierten Tickets mit den Online-Daten. Wird nur in SynchronizeStatus() verwendet.
+ * Aktualisiert die Daten des lokal als offen markierten Tickets mit dem Online-Status. Wird nur in SynchronizeStatus() verwendet.
  *
  * @param  int  i                 - Ticketindex
  * @param  bool lpPermanentChange - Zeiger auf Variable, die anzeigt, ob dauerhafte Ticketänderungen vorliegen
@@ -5139,22 +5180,22 @@ bool Sync.UpdateOrder(int i, bool &lpPermanentChange) {
    if (orders.closeTime[i] != 0)                return(_false(catch("Sync.UpdateOrder(2)   cannot update ticket #"+ orders.ticket[i] +" (marked as closed in grid arrays)", ERR_RUNTIME_ERROR)));
 
    // das Ticket ist selektiert
-   bool   wasPending = orders.type[i] == OP_UNDEFINED;                              // vormals PendingOrder
-   bool   wasOpen    = !wasPending;                                                 // vormals offene Position
-   bool   isPending  = IsPendingTradeOperation(OrderType());                        // jetzt PendingOrder
-   bool   isClosed   = OrderCloseTime() != 0;                                       // jetzt geschlossen oder gestrichen
-   bool   isOpen     = !isPending && !isClosed;                                     // jetzt offene Position
+   bool   wasPending = orders.type[i] == OP_UNDEFINED;               // vormals PendingOrder
+   bool   wasOpen    = !wasPending;                                  // vormals offene Position
+   bool   isPending  = IsPendingTradeOperation(OrderType());         // jetzt PendingOrder
+   bool   isClosed   = OrderCloseTime() != 0;                        // jetzt geschlossen oder gestrichen
+   bool   isOpen     = !isPending && !isClosed;                      // jetzt offene Position
    double lastSwap   = orders.swap[i];
 
 
    // (1) Ticketdaten aktualisieren
-    //orders.ticket      [i]                                                        // unverändert
-    //orders.level       [i]                                                        // unverändert
-    //orders.gridBase    [i]                                                        // unverändert
+    //orders.ticket      [i]                                         // unverändert
+    //orders.level       [i]                                         // unverändert
+    //orders.gridBase    [i]                                         // unverändert
 
    if (isPending) {
-    //orders.pendingType [i]                                                        // unverändert
-    //orders.pendingTime [i]                                                        // unverändert
+    //orders.pendingType [i]                                         // unverändert
+    //orders.pendingTime [i]                                         // unverändert
       orders.pendingPrice[i] = OrderOpenPrice();
    }
    else if (wasPending) {
@@ -5162,7 +5203,9 @@ bool Sync.UpdateOrder(int i, bool &lpPermanentChange) {
       orders.openEvent   [i] = CreateEventId();
       orders.openTime    [i] = OrderOpenTime();
       orders.openPrice   [i] = OrderOpenPrice();
-      orders.risk        [i] = CalculateActiveRisk(orders.level[i], orders.ticket[i], OrderOpenPrice(), OrderSwap(), OrderCommission());
+      orders.swap        [i] = OrderSwap();                          // Swap und Commission werden hier schon für CalculateActiveRisk() benötigt
+      orders.commission  [i] = OrderCommission();
+      orders.risk        [i] = CalculateActiveRisk(i);
    }
 
    if (EQ(OrderStopLoss(), 0)) {
@@ -5229,44 +5272,32 @@ void Sync.PushEvent(double &events[][], int id, datetime time, int type, double 
 
 
 /**
- * Ermittelt das aktuelle Risiko des angegebenen Levels, inkl. Slippage. Dazu muß eine Position in diesem Level offen sein.
- * Ohne offene Position gibt es nur ein theoretisches, Gridsize-abhängiges Risiko, das hier nicht interessiert.
+ * Ermittelt das Verlustrisiko der angegebenen offenen Position, inkl. Slippage.
+ * Eine geschlossene Position hat ggf. einen realisierten Verlust, sie trägt kein offenes Risiko mehr.
  *
- * @param  int    level      - Level
- * @param  int    ticket     - Ticket der offenen Position
- * @param  double openPrice  - OpenPrice der offenen Position
- * @param  double swap       - aktueller Swap der offenen Position
- * @param  double commission - Commission der offenen Position (falls zutreffend)
+ * @param  int i - Index der Position in den Grid-Arrays
  *
- * @return double - Risiko (positiver Wert für Verlustrisiko)
+ * @return double - Verlustrisiko (positiver Wert)
  */
-double CalculateActiveRisk(int level, int ticket, double openPrice, double swap, double commission) {
-   if (level == 0) return(_NULL(catch("CalculateActiveRisk(1)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (ticket < 1) return(_NULL(catch("CalculateActiveRisk(2)   illegal parameter ticket = "+ ticket, ERR_INVALID_FUNCTION_PARAMVALUE)));
+double CalculateActiveRisk(int i) {
+   if (i < 0 || i >= ArraySize(orders.ticket)) return(_NULL(catch("CalculateActiveRisk()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   double realized, gridBase=grid.base;
+   double realized;
 
-   int size = ArraySize(orders.ticket);
-
-   for (int i=size-1; i >= 0; i--) {
-      if (orders.ticket[i] == ticket) {
-         gridBase = orders.gridBase[i];                              // die übrigen Daten der offenen Position sind uninteressant
+   for (int n=i-1; n >= 0; n--) {
+      if (orders.level[n] != orders.level[i])                        // Order muß zum Level gehören
          continue;
-      }
-      if (orders.level[i] != level)                                  // Order muß zum Level gehören
+      if (orders.type[n] == OP_UNDEFINED)                            // Order darf nicht pending sein
          continue;
-      if (orders.type[i] == OP_UNDEFINED)                            // Order darf nicht pending sein
-         continue;
-      if (orders.closedBySL[i])                                      // Abbruch vor erster durch StopLoss geschlossenen Position des Levels (wir iterieren rückwärts)
+      if (orders.closedBySL[n])                                      // Abbruch vor erster durch StopLoss geschlossenen Position desselben Levels (wir iterieren rückwärts)
          break;
 
-      realized += orders.swap[i] + orders.commission[i] + orders.profit[i];
+      realized += orders.swap[n] + orders.commission[n] + orders.profit[n];
    }
 
-   double stopLoss      =  gridBase + (level-Sign(level)) * GridSize * Pips;
-   double stopLossValue = -MathAbs(openPrice-stopLoss)/Pips * PipValue(LotSize);
-   double risk          =  realized + stopLossValue + swap + commission;
-   //debug("CalculateActiveRisk()   level="+ level +"  realized="+ DoubleToStr(realized, 2) +"  stopLoss="+ NumberToStr(stopLoss, PriceFormat) +"  slValue="+ DoubleToStr(stopLossValue, 2) +"  risk="+ DoubleToStr(risk, 2));
+   double stopLossValue = -MathAbs(orders.openPrice[i]-orders.stopLoss[i])/Pips * PipValue(LotSize);
+   double risk          =  realized + stopLossValue + orders.swap[i] + orders.commission[i];
+   //debug("CalculateActiveRisk()   level="+ orders.level[i] +"  realized="+ DoubleToStr(realized, 2) +"  stopLoss="+ NumberToStr(orders.stopLoss[i], PriceFormat) +"  slValue="+ DoubleToStr(stopLossValue, 2) +"  risk="+ DoubleToStr(risk, 2));
 
    return(NormalizeDouble(-risk, 2));                                // Rückgabewert für Verlustrisiko soll positiv sein
 }
