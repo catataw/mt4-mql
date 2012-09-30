@@ -678,6 +678,7 @@ bool ResumeSequence() {
    // (5) StartConditions deaktivieren und Weekend-Stop aktualisieren
    start.conditions         = false; SS.StartStopConditions();
    weekend.resume.triggered = false;
+   weekend.resume.time      = 0;
    UpdateWeekendStop();
 
 
