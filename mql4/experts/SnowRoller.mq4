@@ -2613,7 +2613,7 @@ void SS.StartStopConditions() {
    str.stopConditions  = "";
 
    if (StartConditions != "") str.startConditions = StringConcatenate("Start:           ", StartConditions, ifString(start.conditions, "", " (inactive)"), NL);
-   if (StopConditions  != "") str.stopConditions  = StringConcatenate("Stop:            ", StopConditions,  ifString(stop.conditions,  "", " (inactive)"), NL);
+   if (StopConditions  != "") str.stopConditions  = StringConcatenate("Stop:           ", StopConditions,  ifString(stop.conditions,  "", " (inactive)"), NL);
 }
 
 
