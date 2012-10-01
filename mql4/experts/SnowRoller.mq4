@@ -470,18 +470,18 @@ bool StopSequence() {
    ArrayResize(openPositions, 0);
 
    for (int i=sizeOfTickets-1; i >= 0; i--) {
-      if (orders.closeTime[i] == 0) {                                                  // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
+      if (orders.closeTime[i] == 0) {                                                                 // Ticket prüfen, wenn es beim letzten Aufruf noch offen war
          if (orders.ticket[i] < 0) {
-            if (!Grid.DropData(i))                                                     // client-seitige Pending-Orders können sofort intern gelöscht werden
+            if (!Grid.DropData(i))                                                                    // client-seitige Pending-Orders können intern gelöscht werden
                return(false);
             sizeOfTickets--;
             continue;
          }
          if (!SelectTicket(orders.ticket[i], "StopSequence(5)"))
             return(false);
-         if (OrderCloseTime() == 0) {                                                  // offene Tickets je nach Typ zwischenspeichern
-            if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendingOrders, i);  // Grid.DeleteOrder() erwartet den Array-Index
-            else                                      ArrayPushInt(openPositions, orders.ticket[i]);
+         if (OrderCloseTime() == 0) {                                                                 // offene Tickets je nach Typ zwischenspeichern
+            if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendingOrders, i);                 // Grid.DeleteOrder() erwartet den Array-Index
+            else                                      ArrayPushInt(openPositions, orders.ticket[i]);  // OrderMultiClose() erwartet das Orderticket
          }
       }
    }
@@ -496,9 +496,10 @@ bool StopSequence() {
    }
 
 
-   // (4) dann offene Positionen schließen                                             // TODO: Wurde eine PendingOrder inzwischen getriggert, muß sie hier mit verarbeitet werden.
-   int sizeOfOpenPositions = ArraySize(openPositions);
-   int n = ArraySize(sequenceStop.event) - 1;
+   // (4) dann offene Positionen schließen                           // TODO: Wurde eine PendingOrder inzwischen getriggert, muß sie hier mit verarbeitet werden.
+   int      sizeOfOpenPositions=ArraySize(openPositions), n=ArraySize(sequenceStop.event)-1;
+   datetime closeTime;
+   double   closePrice, nextLevel;
 
    if (sizeOfOpenPositions > 0) {
       int oeFlags = NULL;
@@ -511,8 +512,8 @@ bool StopSequence() {
          int pos = SearchIntArray(orders.ticket, openPositions[i]);
 
          orders.closeEvent[pos] = CreateEventId();
-         orders.closeTime [pos] = oes.CloseTime (oes, i);                              // bei allen Tickets gleich
-         orders.closePrice[pos] = oes.ClosePrice(oes, i);                              // bei allen Tickets gleich
+         orders.closeTime [pos] = oes.CloseTime (oes, i);
+         orders.closePrice[pos] = oes.ClosePrice(oes, i);
          orders.closedBySL[pos] = false;
 
          orders.swap      [pos] = oes.Swap      (oes, i);
@@ -522,16 +523,20 @@ bool StopSequence() {
          grid.closedPL          = NormalizeDouble(grid.closedPL + orders.swap[pos] + orders.commission[pos] + orders.profit[pos], 2);
        //grid.activeRisk  ändert sich nicht bei StopSequence()
        //grid.valueAtRisk ändert sich nicht bei StopSequence()
+
+         closeTime   = Max(closeTime, orders.closeTime[pos]);        // u.U. können die Close-Werte unterschiedlich sein und müssen gemittelt werden
+         closePrice += orders.closePrice[pos];                       // (i.d.R. sind sie überall gleich)
       }
+      closePrice /= Abs(grid.level);                                 // avg(ClosePrice)
       /*
-      grid.floatingPL  = ...                                                           // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte dort automatisch aktualisiert.
+      grid.floatingPL  = ...                                         // Solange unten UpdateStatus() aufgerufen wird, werden diese Werte dort automatisch aktualisiert.
       grid.totalPL     = ...
       grid.maxProfit   = ...
       grid.maxDrawdown = ...
       */
       sequenceStop.event[n] = CreateEventId();
-      sequenceStop.time [n] = oes.CloseTime (oes, 0);
-      sequenceStop.price[n] = oes.ClosePrice(oes, 0);
+      sequenceStop.time [n] = closeTime;
+      sequenceStop.price[n] = closePrice;
    }
    else if (status != STATUS_STOPPED) {
       sequenceStop.event[n] = CreateEventId();
@@ -539,8 +544,19 @@ bool StopSequence() {
       sequenceStop.price[n] = (Bid + Ask)/2;
       if      (grid.base < sequenceStop.price[n]) sequenceStop.price[n] = Bid;
       else if (grid.base > sequenceStop.price[n]) sequenceStop.price[n] = Ask;
-      sequenceStop.price[n] = NormalizeDouble(sequenceStop.price[n], Digits);
    }
+
+
+   // (5) Der StopPrice darf nicht schon den nächsten Level triggern, da sonst bei ResumeSequence() Fehler auftreten.
+   if (grid.level >= 0 && grid.direction!=D_SHORT) {
+      nextLevel = grid.base + (grid.level+1)*GridSize*Pip;
+      sequenceStop.price[n] = MathMin(nextLevel-1*Pip, sequenceStop.price[n]);   // max. 1 Pip unterm Trigger des nächsten Levels
+   }
+   if (grid.level <= 0 && grid.direction!=D_LONG) {
+      nextLevel = grid.base + (grid.level-1)*GridSize*Pip;
+      sequenceStop.price[n] = MathMax(nextLevel+1*Pip, sequenceStop.price[n]);   // min. 1 Pip überm Trigger des nächsten Levels
+   }
+   sequenceStop.price[n] = NormalizeDouble(sequenceStop.price[n], Digits);
 
 
    if (status != STATUS_STOPPED) {
@@ -549,7 +565,7 @@ bool StopSequence() {
    }
 
 
-   // (5) ResumeConditions/StopConditions aktualisieren bzw. deaktivieren
+   // (6) ResumeConditions/StopConditions aktualisieren bzw. deaktivieren
    if (IsWeekendStopSignal()) {
       UpdateWeekendResume();
    }
@@ -558,7 +574,7 @@ bool StopSequence() {
    }
 
 
-   // (6) Daten aktualisieren und speichern
+   // (7) Daten aktualisieren und speichern
    int iNull[];
    if (!UpdateStatus(iNull, iNull)) return(false);
    sequenceStop.profit[n] = grid.totalPL;
@@ -567,7 +583,7 @@ bool StopSequence() {
    RedrawStartStop();
 
 
-   // (7) ggf. Tester stoppen
+   // (8) ggf. Tester stoppen
    if (IsTesting()) {
       if      (        IsVisualMode()) Tester.Pause();
       else if (!IsWeekendStopSignal()) Tester.Stop();
@@ -945,12 +961,13 @@ bool UpdateStatus(int limits[], int stops[]) {
  * @return string
  */
 string UpdateStatus.OrderFillMsg(int i) {
-   // #1 Stop Sell 0.1 GBPUSD at 1.5457'2 was filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+   // #1 Stop Sell 0.1 GBPUSD at 1.5457'2 ("SR.8692.+17") was filled[ at 1.5457'2 (0.3 pip [positive ]slippage)]
 
    string strType         = OperationTypeDescription(orders.pendingType[i]);
    string strPendingPrice = NumberToStr(orders.pendingPrice[i], PriceFormat);
+   string comment         = StringConcatenate("SR.", sequenceId, ".", NumberToStr(orders.level[i], "+."));
 
-   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strPendingPrice, " was filled");
+   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strPendingPrice, " (\"", comment, "\") was filled");
 
    if (NE(orders.pendingPrice[i], orders.openPrice[i])) {
       double slippage = (orders.openPrice[i] - orders.pendingPrice[i])/Pip;
@@ -973,13 +990,15 @@ string UpdateStatus.OrderFillMsg(int i) {
  * @return string
  */
 string UpdateStatus.StopTriggerMsg(int i) {
+   string comment = StringConcatenate("SR.", sequenceId, ".", NumberToStr(orders.level[i], "+."));
+
    if (orders.type[i] == OP_UNDEFINED) {
-      // client-side Stop Buy at 1.5457'2 (level -3) was triggered
-      return(StringConcatenate("UpdateStatus()   client-side ", OperationTypeDescription(orders.pendingType[i]), " at ", NumberToStr(orders.pendingPrice[i], PriceFormat), " (level ", orders.level[i], ") was triggered"));
+      // client-side Stop Buy at 1.5457'2 ("SR.8692.+17") was triggered
+      return(StringConcatenate("UpdateStatus()   client-side ", OperationTypeDescription(orders.pendingType[i]), " at ", NumberToStr(orders.pendingPrice[i], PriceFormat), " (\"", comment, "\") was triggered"));
    }
    else {
-      // #1 client-side stop-loss at 1.5457'2 (level -3) was triggered
-      return(StringConcatenate("UpdateStatus()   #", orders.ticket[i], " client-side stop-loss at ", NumberToStr(orders.stopLoss[i], PriceFormat), " (level ", orders.level[i], ") was triggered"));
+      // #1 client-side stop-loss at 1.5457'2 ("SR.8692.+17") was triggered
+      return(StringConcatenate("UpdateStatus()   #", orders.ticket[i], " client-side stop-loss at ", NumberToStr(orders.stopLoss[i], PriceFormat), " (\"", comment, "\") was triggered"));
    }
 }
 
@@ -992,14 +1011,15 @@ string UpdateStatus.StopTriggerMsg(int i) {
  * @return string
  */
 string UpdateStatus.SLExecuteMsg(int i) {
-   // #1 Sell 0.1 GBPUSD at 1.5457'2, [client-side ]stop-loss 1.5457'2 was executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
+   // #1 Sell 0.1 GBPUSD at 1.5457'2 ("SR.8692.+17"), [client-side ]stop-loss 1.5457'2 was executed[ at 1.5457'2 (0.3 pip [positive ]slippage)]
 
    string strType      = OperationTypeDescription(orders.type[i]);
    string strOpenPrice = NumberToStr(orders.openPrice[i], PriceFormat);
    string strStopSide  = ifString(orders.clientSL[i], "client-side ", "");
    string strStopLoss  = NumberToStr(orders.stopLoss[i], PriceFormat);
+   string comment      = StringConcatenate("SR.", sequenceId, ".", NumberToStr(orders.level[i], "+."));
 
-   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, ", ", strStopSide, "stop-loss ", strStopLoss, " was executed");
+   string message = StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, " (\"", comment, "\"), ", strStopSide, "stop-loss ", strStopLoss, " was executed");
 
    if (NE(orders.closePrice[i], orders.stopLoss[i])) {
       double slippage = (orders.stopLoss[i] - orders.closePrice[i])/Pip;
@@ -1022,13 +1042,14 @@ string UpdateStatus.SLExecuteMsg(int i) {
  * @return string
  */
 string UpdateStatus.PositionCloseMsg(int i) {
-   // #1 Sell 0.1 GBPUSD at 1.5457'2 was closed at 1.5457'2
+   // #1 Sell 0.1 GBPUSD at 1.5457'2 ("SR.8692.+17") was closed at 1.5457'2
 
    string strType       = OperationTypeDescription(orders.type[i]);
    string strOpenPrice  = NumberToStr(orders.openPrice[i], PriceFormat);
    string strClosePrice = NumberToStr(orders.closePrice[i], PriceFormat);
+   string comment       = StringConcatenate("SR.", sequenceId, ".", NumberToStr(orders.level[i], "+."));
 
-   return(StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, " was closed at ", strClosePrice));
+   return(StringConcatenate("UpdateStatus()   #", orders.ticket[i], " ", strType, " ", NumberToStr(LotSize, ".+"), " ", Symbol(), " at ", strOpenPrice, " (\"", comment, "\") was closed at ", strClosePrice));
 }
 
 
@@ -5291,7 +5312,7 @@ void Sync.PushEvent(double &events[][], int id, datetime time, int type, double 
  * @return double - Verlustrisiko (positiver Wert)
  */
 double CalculateActiveRisk(int i) {
-   if (i < 0 || i >= ArraySize(orders.ticket)) return(_NULL(catch("CalculateActiveRisk()   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (i < 0 || i >= ArraySize(orders.ticket)) return(_NULL(catch("CalculateActiveRisk(1)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    double realized;
 
@@ -5308,8 +5329,12 @@ double CalculateActiveRisk(int i) {
 
    double stopLossValue = -MathAbs(orders.openPrice[i]-orders.stopLoss[i])/Pips * PipValue(LotSize);
    double risk          =  realized + stopLossValue + orders.swap[i] + orders.commission[i];
-   //debug("CalculateActiveRisk()   level="+ orders.level[i] +"  realized="+ DoubleToStr(realized, 2) +"  stopLoss="+ NumberToStr(orders.stopLoss[i], PriceFormat) +"  slValue="+ DoubleToStr(stopLossValue, 2) +"  risk="+ DoubleToStr(risk, 2));
 
+   if (risk >= 0) {
+               debug("CalculateActiveRisk()   level="+ orders.level[i] +"  realized="+ DoubleToStr(realized, 2) +"  stopLoss="+ NumberToStr(orders.stopLoss[i], PriceFormat) +"  slValue="+ DoubleToStr(stopLossValue, 2) +"  risk="+ DoubleToStr(risk, 2));
+      if (__LOG) log("CalculateActiveRisk()   level="+ orders.level[i] +"  realized="+ DoubleToStr(realized, 2) +"  stopLoss="+ NumberToStr(orders.stopLoss[i], PriceFormat) +"  slValue="+ DoubleToStr(stopLossValue, 2) +"  risk="+ DoubleToStr(risk, 2));
+      return(_NULL(catch("CalculateActiveRisk(2)   ticket #"+ orders.ticket[i] +": illegal risk calculated = "+ DoubleToStr(risk, 2) +" (needs to be negative)", ERR_RUNTIME_ERROR)));
+   }
    return(NormalizeDouble(-risk, 2));                                // Rückgabewert für Verlustrisiko soll positiv sein
 }
 
