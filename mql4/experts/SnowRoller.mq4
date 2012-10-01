@@ -477,7 +477,7 @@ bool StopSequence() {
             sizeOfTickets--;
             continue;
          }
-         if (!OrderSelectByTicket(orders.ticket[i], "StopSequence(5)"))
+         if (!SelectTicket(orders.ticket[i], "StopSequence(5)"))
             return(false);
          if (OrderCloseTime() == 0) {                                                  // offene Tickets je nach Typ zwischenspeichern
             if (IsPendingTradeOperation(OrderType())) ArrayPushInt(pendingOrders, i);  // Grid.DeleteOrder() erwartet den Array-Index
@@ -774,7 +774,7 @@ bool UpdateStatus(int limits[], int stops[]) {
          }
 
          // (1.3) reguläre server-seitige Tickets
-         if (!OrderSelectByTicket(orders.ticket[i], "UpdateStatus(2)"))
+         if (!SelectTicket(orders.ticket[i], "UpdateStatus(2)"))
             return(false);
 
          if (wasPending) {
@@ -4783,8 +4783,19 @@ bool SynchronizeStatus() {
       if (orders.closeTime[i] == 0) {
          if (orders.ticket[i] < 0)                                      // client-seitige PendingOrders überspringen
             continue;
-         if (!OrderSelectByTicket(orders.ticket[i], "SynchronizeStatus(1)   cannot synchronize "+ OperationTypeDescription(ifInt(orders.type[i]==OP_UNDEFINED, orders.pendingType[i], orders.type[i])) +" order (#"+ orders.ticket[i] +" not found)"))
-            return(false);                                              // TODO: Exception durch Aufforderung zur Erweiterung der History austauschen
+
+         if (!IsTicket(orders.ticket[i])) {                             // bei fehlender History zur Erweiterung auffordern
+            __STATUS__CANCELLED = true;                                 // Flag vor Aufruf setzen, falls der Dialog gewaltsam beendet wird
+            ForceSound("notify.wav");
+            int button = ForceMessageBox(__NAME__ +" - SynchronizeStatus()", "Ticket #"+ orders.ticket[i] +" not found.\nPlease expand the available trade history.", MB_ICONERROR|MB_RETRYCANCEL);
+            if (button == IDRETRY) {
+               __STATUS__CANCELLED = false;
+               return(SynchronizeStatus());
+            }
+            return(false);
+         }
+         if (!SelectTicket(orders.ticket[i], "SynchronizeStatus(1)   cannot synchronize "+ OperationTypeDescription(ifInt(orders.type[i]==OP_UNDEFINED, orders.pendingType[i], orders.type[i])) +" order (#"+ orders.ticket[i] +" not found)"))
+            return(false);
          if (!Sync.UpdateOrder(i, permanentTicketChange))
             return(false);
          permanentStatusChange = permanentStatusChange || permanentTicketChange;
@@ -4867,7 +4878,7 @@ bool SynchronizeStatus() {
    if (size > 0) {
       ArraySort(orphanedClosedPositions);
       ForceSound("notify.wav");
-      int button = ForceMessageBox(__NAME__ +" - SynchronizeStatus()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned closed position"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedClosedPositions, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", MB_ICONWARNING|MB_OKCANCEL);
+      button = ForceMessageBox(__NAME__ +" - SynchronizeStatus()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Orphaned closed position"+ ifString(size==1, "", "s") +" found: #"+ JoinInts(orphanedClosedPositions, ", #") +"\nDo you want to ignore "+ ifString(size==1, "it", "them") +"?", MB_ICONWARNING|MB_OKCANCEL);
       if (button != IDOK) {
          __STATUS__CANCELLED = true;
          return(_false(catch("SynchronizeStatus(7)")));
