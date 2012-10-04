@@ -21,7 +21,6 @@
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Logging aller MessageBoxen
- *  - Sounds in Tradefunktionen abschaltbar machen
  *  - Änderungen der Gridbasis während Auszeit erkennen
  *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
@@ -30,7 +29,7 @@
  *  - STATUS_MONITORING implementieren
  *  - Heartbeat implementieren
  *
- *  - Build 419 silently crashes (1 mal)
+ *  - Build 419 silently crashed (1 mal)
  *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec. (TCP-Socket Timeout???)
  *  - Alpari: StopOrder-Slippage EUR/USD bis 4.1 pip, GBP/AUD bis 6 pip, GBP/JPY bis 21.4 pip
  *  - FxPro: zu viele Traderequests in zu kurzer Zeit => ERR_TRADE_TIMEOUT
