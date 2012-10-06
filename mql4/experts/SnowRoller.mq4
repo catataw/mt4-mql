@@ -6110,7 +6110,7 @@ bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
    if (time <= 0)                                   return(_false(catch("History.AddTick(3)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
    if (value <= 0)                                  return(_false(catch("History.AddTick(4)   invalid parameter value = "+ NumberToStr(value, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   debug("History.AddTick()   time="+ TimeToStr(time, TIME_FULL));
+   debug("History.AddTick()   time="+ TimeToStr(time, TIME_FULL) +"   value="+ DoubleToStr(value, History.FileDigits(hFile)));
 
    // zu modifizierende Bar ermitteln
    //    1) innerhalb: vorhandene Bar modifizieren oder neue Bar einfügen
@@ -6576,6 +6576,7 @@ int afterDeinit() {
 
    // Dummy-Calls, unterdrücken unnütze Compilerwarnungen
    int iNull[];
+   History.AddTick(NULL, NULL, NULL, NULL);
    History.FileBars(NULL);
    History.FileDbVersion(NULL);
    History.FileDescription(NULL);
@@ -6592,4 +6593,5 @@ int afterDeinit() {
    History.FileVersion(NULL);
    History.FileWrite(NULL);
    History.WriteBar(NULL, NULL, NULL, NULL);
+   RecordEquity();
 }
