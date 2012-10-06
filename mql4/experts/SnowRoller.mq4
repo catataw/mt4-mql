@@ -6105,12 +6105,10 @@ bool RecordEquity() {
  * @return bool - Erfolgsstatus
  */
 bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
-   int pointer = FileTell(hFile);
-   if (pointer < 0)                   return(_false(catch("History.AddTick(1)   invalid parameter hFile = "+ hFile, ifInt(IsError(SetLastError(GetLastError())), last_error, ERR_INVALID_FUNCTION_PARAMVALUE))));
-   if (hFile >= ArraySize(hst.hFile)) return(_false(catch("History.AddTick(2)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0)         return(_false(catch("History.AddTick(3)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time <= 0)                     return(_false(catch("History.AddTick(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (value <= 0)                    return(_false(catch("History.AddTick(5)   invalid parameter value = "+ NumberToStr(value, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.AddTick(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hst.hFile[hFile] <= 0)                       return(_false(catch("History.AddTick(2)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (time <= 0)                                   return(_false(catch("History.AddTick(3)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (value <= 0)                                  return(_false(catch("History.AddTick(4)   invalid parameter value = "+ NumberToStr(value, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    debug("History.AddTick()   time="+ TimeToStr(time, TIME_FULL));
 
@@ -6124,7 +6122,7 @@ bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
 
    // Bar schreiben
 
-   return(IsNoError(last_error|catch("History.AddTick(6)")));
+   return(IsNoError(last_error|catch("History.AddTick(5)")));
 }
 
 
