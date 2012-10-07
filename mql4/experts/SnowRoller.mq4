@@ -4891,28 +4891,31 @@ bool SynchronizeStatus() {
    int  closed[][2], close[2], sizeOfTickets=ArraySize(orders.ticket); ArrayResize(closed, 0);
 
 
-   // (1.1) alle offenen Tickets in Datenarrays mit Online-Status synchronisieren, gestrichene PendingOrders löschen
+   // (1.1) alle offenen Tickets in Datenarrays synchronisieren, gestrichene PendingOrders löschen
    for (int i=0; i < sizeOfTickets; i++) {
-      if (orders.closeTime[i] == 0) {
-         if (orders.ticket[i] < 0)                                      // client-seitige PendingOrders überspringen
-            continue;
+      if (orders.ticket[i] < 0)                                            // client-seitige PendingOrders überspringen
+         continue;
 
-         if (!IsTicket(orders.ticket[i])) {                             // bei fehlender History zur Erweiterung auffordern
-            __STATUS__CANCELLED = true;                                 // Flag vor Aufruf setzen, falls der Dialog gewaltsam beendet wird
-            ForceSound("notify.wav");
-            int button = ForceMessageBox(__NAME__ +" - SynchronizeStatus()", "Ticket #"+ orders.ticket[i] +" not found.\nPlease expand the available trade history.", MB_ICONERROR|MB_RETRYCANCEL);
-            if (button == IDRETRY) {
-               __STATUS__CANCELLED = false;
-               return(SynchronizeStatus());
+      if (!IsTest() || !IsTesting()) {                                     // keine Synchronization für abgeschlossene Tests
+         if (orders.closeTime[i] == 0) {
+            if (!IsTicket(orders.ticket[i])) {                             // bei fehlender History zur Erweiterung auffordern
+               __STATUS__CANCELLED = true;                                 // Flag vor Aufruf setzen, falls der Dialog gewaltsam beendet wird
+               ForceSound("notify.wav");
+               int button = ForceMessageBox(__NAME__ +" - SynchronizeStatus()", "Ticket #"+ orders.ticket[i] +" not found.\nPlease expand the available trade history.", MB_ICONERROR|MB_RETRYCANCEL);
+               if (button == IDRETRY) {
+                  __STATUS__CANCELLED = false;
+                  return(SynchronizeStatus());
+               }
+               return(false);
             }
-            return(false);
+            if (!SelectTicket(orders.ticket[i], "SynchronizeStatus(1)   cannot synchronize "+ OperationTypeDescription(ifInt(orders.type[i]==OP_UNDEFINED, orders.pendingType[i], orders.type[i])) +" order (#"+ orders.ticket[i] +" not found)"))
+               return(false);
+            if (!Sync.UpdateOrder(i, permanentTicketChange))
+               return(false);
+            permanentStatusChange = permanentStatusChange || permanentTicketChange;
          }
-         if (!SelectTicket(orders.ticket[i], "SynchronizeStatus(1)   cannot synchronize "+ OperationTypeDescription(ifInt(orders.type[i]==OP_UNDEFINED, orders.pendingType[i], orders.type[i])) +" order (#"+ orders.ticket[i] +" not found)"))
-            return(false);
-         if (!Sync.UpdateOrder(i, permanentTicketChange))
-            return(false);
-         permanentStatusChange = permanentStatusChange || permanentTicketChange;
       }
+
       if (orders.closeTime[i] != 0) {
          if (orders.type[i] == OP_UNDEFINED) {
             if (!Grid.DropData(i))                                      // geschlossene PendingOrders löschen
@@ -4942,25 +4945,28 @@ bool SynchronizeStatus() {
       ArrayResize(close,  0);
    }
 
-   // (1.3) alle erreichbaren Online-Tickets der Sequenz auf lokale Referenz überprüfen
-   for (i=OrdersTotal()-1; i >= 0; i--) {
-      if (!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))                  // offene Tickets (FALSE: während des Auslesens wurde in einem anderen Thread eine offene Order entfernt)
-         continue;
-      if (IsMyOrder(sequenceId)) /*&&*/ if (!IntInArray(orders.ticket, OrderTicket())) {
-         pendingOrder = IsPendingTradeOperation(OrderType());           // kann PendingOrder oder offene Position sein
-         openPosition = !pendingOrder;
-         if (pendingOrder) /*&&*/ if (!IntInArray(ignorePendingOrders, OrderTicket())) ArrayPushInt(orphanedPendingOrders, OrderTicket());
-         if (openPosition) /*&&*/ if (!IntInArray(ignoreOpenPositions, OrderTicket())) ArrayPushInt(orphanedOpenPositions, OrderTicket());
+   // (1.3) alle erreichbaren Tickets der Sequenz auf lokale Referenz überprüfen (außer für abgeschlossene Tests)
+   if (!IsTest() || IsTesting()) {
+      for (i=OrdersTotal()-1; i >= 0; i--) {                               // offene Tickets
+         if (!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))                  // FALSE: während des Auslesens wurde in einem anderen Thread eine offene Order entfernt
+            continue;
+         if (IsMyOrder(sequenceId)) /*&&*/ if (!IntInArray(orders.ticket, OrderTicket())) {
+            pendingOrder = IsPendingTradeOperation(OrderType());           // kann PendingOrder oder offene Position sein
+            openPosition = !pendingOrder;
+            if (pendingOrder) /*&&*/ if (!IntInArray(ignorePendingOrders, OrderTicket())) ArrayPushInt(orphanedPendingOrders, OrderTicket());
+            if (openPosition) /*&&*/ if (!IntInArray(ignoreOpenPositions, OrderTicket())) ArrayPushInt(orphanedOpenPositions, OrderTicket());
+         }
       }
-   }
-   for (i=OrdersHistoryTotal()-1; i >= 0; i--) {
-      if (!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))                 // geschlossene Tickets (FALSE: während des Auslesens wurde der Anzeigezeitraum der History verändert)
-         continue;
-      if (IsPendingTradeOperation(OrderType()))                         // gestrichene PendingOrders ignorieren
-         continue;
-      if (IsMyOrder(sequenceId)) /*&&*/ if (!IntInArray(orders.ticket, OrderTicket())) {
-         if (!IntInArray(ignoreClosedPositions, OrderTicket()))         // kann nur geschlossene Position sein
-            ArrayPushInt(orphanedClosedPositions, OrderTicket());
+
+      for (i=OrdersHistoryTotal()-1; i >= 0; i--) {                        // geschlossene Tickets
+         if (!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))                 // FALSE: während des Auslesens wurde der Anzeigezeitraum der History verändert
+            continue;
+         if (IsPendingTradeOperation(OrderType()))                         // gestrichene PendingOrders ignorieren
+            continue;
+         if (IsMyOrder(sequenceId)) /*&&*/ if (!IntInArray(orders.ticket, OrderTicket())) {
+            if (!IntInArray(ignoreClosedPositions, OrderTicket()))         // kann nur geschlossene Position sein
+               ArrayPushInt(orphanedClosedPositions, OrderTicket());
+         }
       }
    }
 
@@ -6071,7 +6077,7 @@ bool RecordEquity() {
       return(true);
 
    static int done;
-   if (done >= 2) return(true);
+   //if (done >= 30) return(true);
    done++;
 
    static int hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
@@ -6097,7 +6103,7 @@ bool RecordEquity() {
 
 
 /**
- * Fügt der angegebenen Historydatei einen Tick hinzu. Der Tick wird als letzter Tick (Close) der entsprechenden Bar interpretiert.
+ * Fügt der angegebenen Historydatei einen Tick hinzu. Der Tick wird als letzter Tick (Close) der entsprechenden Bar gespeichert.
  *
  * @param  int      hFile - Dateihandle der Historydatei (muß Schreibzugriff erlauben)
  * @param  datetime time  - Zeitpunkt des Ticks
@@ -6118,32 +6124,18 @@ bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
    // (1) OpenTime der entsprechenden Bar berechnen
    time -= time%(History.FilePeriod(hFile)*MINUTES);
 
-   // (2) Bar-Offset suchen
+   // (2) Offset der Bar ermitteln
    bool barExists;
    int bar = History.FindBar(hFile, time, barExists);
    if (bar < 0)
       return(false);
 
-   // (3) existierende Bar aktualisieren
+   // (3) existierende Bar aktualisieren...
    if (barExists)
       return(History.UpdateBar(hFile, bar, value));
 
-   // (4) nicht existierende Bar neu einfügen
-   return(History.InsertBar(hFile, bar, time, value, value, value, value, flags));
-
-   /*
-   // zu modifizierende Bar ermitteln
-   //    1) innerhalb der History: vorhandene Bar aktualisieren oder neue Bar in Lücke einfügen
-   //    2) außerhalb der History: neue Bar am Anfang/Ende anfügen
-
-   // Bar auslesen
-
-   // Bar aktualisieren
-
-   // Bar schreiben
-   */
-
-   return(IsNoError(last_error|catch("History.AddTick(5)")));
+   // (4) ...oder nicht existierende Bar einfügen
+   return(History.InsertBar(hFile, bar, time, value, value, value, value, 1, flags));
 }
 
 
@@ -6213,19 +6205,49 @@ int History.FindBar(int hFile, datetime time, bool &lpBarExists) {
 /**
  * Liest die Bar am angegebenen Offset einer Historydatei.
  *
- * @param  int      hFile  - Dateihandle der Historydatei
- * @param  int      bar    - Offset der zu lesenden Bar innerhalb der Zeitreihe
- * @param  datetime time   - Variable zur Aufnahme von BAR.Time
- * @param  double   open   - Variable zur Aufnahme von BAR.Open
- * @param  double   high   - Variable zur Aufnahme von BAR.High
- * @param  double   low    - Variable zur Aufnahme von BAR.Low
- * @param  double   close  - Variable zur Aufnahme von BAR.Close
- * @param  double   volume - Variable zur Aufnahme von BAR.Volume
+ * @param  int       hFile  - Dateihandle der Historydatei
+ * @param  int       bar    - Offset der zu lesenden Bar innerhalb der Zeitreihe
+ * @param  datetime &time   - Variable zur Aufnahme von BAR.Time
+ * @param  double   &open   - Variable zur Aufnahme von BAR.Open
+ * @param  double   &high   - Variable zur Aufnahme von BAR.High
+ * @param  double   &low    - Variable zur Aufnahme von BAR.Low
+ * @param  double   &close  - Variable zur Aufnahme von BAR.Close
+ * @param  double   &volume - Variable zur Aufnahme von BAR.Volume
  *
  * @return bool - Erfolgsstatus
  */
 bool History.ReadBar(int hFile, int bar, datetime &time, double &open, double &high, double &low, double &close, double &volume) {
-   return(IsNoError(last_error|catch("History.History.ReadBar()", ERR_FUNCTION_NOT_IMPLEMENTED)));
+   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.ReadBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hst.hFile[hFile] <= 0)                       return(_false(catch("History.ReadBar(2)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (bar < 0 || bar >= History.FileBars(hFile))   return(_false(catch("History.ReadBar(3)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   /**
+    * struct RateInfo {
+    *   int    time;       //  4
+    *   double open;       //  8
+    *   double low;        //  8
+    *   double high;       //  8
+    *   double close;      //  8
+    *   double volume;     //  8
+    * };                   // 44 byte
+    */
+
+   // Bar lesen
+   int position = HISTORY_HEADER.size + bar*BAR.size;
+   if (!FileSeek(hFile, position, SEEK_SET))
+      return(_false(catch("History.ReadBar(4)")));
+
+   time   = FileReadInteger(hFile);
+   open   = FileReadDouble (hFile);
+   low    = FileReadDouble (hFile);
+   high   = FileReadDouble (hFile);
+   close  = FileReadDouble (hFile);
+   volume = FileReadDouble (hFile);
+
+   int digits = History.FileDigits(hFile);
+   //debug("History.ReadBar()   bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(open, digits) +"  H="+ DoubleToStr(high, digits) +"  L="+ DoubleToStr(low, digits) +"  C="+ DoubleToStr(close, digits) +"  V="+ Round(volume));
+
+   return(IsNoError(last_error|catch("History.ReadBar(5)")));
 }
 
 
@@ -6268,30 +6290,32 @@ bool History.UpdateBar(int hFile, int bar, double value) {
 /**
  * Fügt eine neue Bar am angegebenen Offset der angegebenen Historydatei ein. Die Funktion überprüft *NICHT* die Plausibilität der einzufügenden Daten.
  *
- * @param  int      hFile - Dateihandle der Historydatei (muß Schreibzugriff erlauben)
- * @param  int      bar   - Offset der hinzuzufügenden Bar innerhalb der Zeitreihe
- * @param  datetime time  - Open-Zeitpunkt der Bar (muß gültige Startzeit von Bars der entsprechenden Periode sein)
- * @param  double   open  - Open der Bar
- * @param  double   high  - High der Bar
- * @param  double   low   - Low der Bar
- * @param  double   close - Close der Bar
- * @param  int      flags - zusätzliche, das Schreiben steuernde Flags (default: keine)
- *                          HST_FILL_GAPS: beim Schreiben entstehende Gaps werden mit dem Schlußkurs der letzten Bar vor dem Gap gefüllt
+ * @param  int      hFile  - Dateihandle der Historydatei (muß Schreibzugriff erlauben)
+ * @param  int      bar    - Offset der hinzuzufügenden Bar innerhalb der Zeitreihe
+ * @param  datetime time   - BAR.Time (muß gültige Startzeit von Bars der entsprechenden Periode sein)
+ * @param  double   open   - BAR.Open
+ * @param  double   high   - BAR.High
+ * @param  double   low    - BAR.Low
+ * @param  double   close  - BAR.Close
+ * @param  double   volume - BAR.Volume
+ * @param  int      flags  - zusätzliche, das Schreiben steuernde Flags (default: keine)
+ *                           HST_FILL_GAPS: beim Schreiben entstehende Gaps werden mit dem Schlußkurs der letzten Bar vor dem Gap gefüllt
  *
  * @return bool - Erfolgsstatus
  */
-bool History.InsertBar(int hFile, int bar, datetime time, double open, double high, double low, double close, int flags=NULL) {
+bool History.InsertBar(int hFile, int bar, datetime time, double open, double high, double low, double close, double volume, int flags=NULL) {
    if (hFile <= 0 || hFile >= ArraySize(hst.hFile))           return(_false(catch("History.InsertBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
    if (hst.hFile[hFile] <= 0)                                 return(_false(catch("History.InsertBar(2)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (bar   <  0)                                            return(_false(catch("History.InsertBar(3)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time  <= 0)                                            return(_false(catch("History.InsertBar(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (open  <= 0)                                            return(_false(catch("History.InsertBar(5)   invalid parameter open = "+ NumberToStr(open, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (high  <= 0)                                            return(_false(catch("History.InsertBar(6)   invalid parameter high = "+ NumberToStr(high, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (low   <= 0)                                            return(_false(catch("History.InsertBar(7)   invalid parameter low = "+ NumberToStr(low, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (close <= 0)                                            return(_false(catch("History.InsertBar(8)   invalid parameter close = "+ NumberToStr(close, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (bar    <  0)                                           return(_false(catch("History.InsertBar(3)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (time   <= 0)                                           return(_false(catch("History.InsertBar(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (open   <= 0)                                           return(_false(catch("History.InsertBar(5)   invalid parameter open = "+ NumberToStr(open, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (high   <= 0)                                           return(_false(catch("History.InsertBar(6)   invalid parameter high = "+ NumberToStr(high, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (low    <= 0)                                           return(_false(catch("History.InsertBar(7)   invalid parameter low = "+ NumberToStr(low, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (close  <= 0)                                           return(_false(catch("History.InsertBar(8)   invalid parameter close = "+ NumberToStr(close, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (volume <= 0)                                           return(_false(catch("History.InsertBar(9)   invalid parameter volume = "+ NumberToStr(volume, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    int digits = History.FileDigits(hFile);
-   debug("History.InsertBar()  bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(open, digits) +"  H="+ DoubleToStr(high, digits) +"  L="+ DoubleToStr(low, digits) +"  C="+ DoubleToStr(close, digits));
+   debug("History.InsertBar() bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(open, digits) +"  H="+ DoubleToStr(high, digits) +"  L="+ DoubleToStr(low, digits) +"  C="+ DoubleToStr(close, digits) +"  V="+ Round(volume));
 
    // (1) ggf. Lücke für neue Bar schaffen
    if (bar < History.FileBars(hFile)) {
@@ -6313,14 +6337,14 @@ bool History.InsertBar(int hFile, int bar, datetime time, double open, double hi
    // (2) Bar schreiben
    int position = HISTORY_HEADER.size + bar*BAR.size;
    if (!FileSeek(hFile, position, SEEK_SET))
-      return(_false(catch("History.InsertBar(9)")));
+      return(_false(catch("History.InsertBar(10)")));
 
-   FileWriteInteger(hFile, time );
-   FileWriteDouble (hFile, open );
-   FileWriteDouble (hFile, low  );
-   FileWriteDouble (hFile, high );
-   FileWriteDouble (hFile, close);
-   FileWriteDouble (hFile, 1    );
+   FileWriteInteger(hFile, time  );
+   FileWriteDouble (hFile, open  );
+   FileWriteDouble (hFile, low   );
+   FileWriteDouble (hFile, high  );
+   FileWriteDouble (hFile, close );
+   FileWriteDouble (hFile, volume);
 
    // (3) interne Daten aktualisieren
    if (bar >= History.FileBars(hFile)) { hst.fileSize  [hFile] = position + BAR.size;
@@ -6329,7 +6353,7 @@ bool History.InsertBar(int hFile, int bar, datetime time, double open, double hi
    if (bar == History.FileBars(hFile)-1) hst.fileTo    [hFile] = time;
                                          hst.fileBuffer[hFile] = true;
 
-   return(IsNoError(last_error|catch("History.InsertBar(10)")));
+   return(IsNoError(last_error|catch("History.InsertBar(11)")));
 }
 
 
@@ -6352,19 +6376,48 @@ bool History.InsertBar(int hFile, int bar, datetime time, double open, double hi
 bool History.WriteBar(int hFile, int bar, datetime time, double open, double high, double low, double close, double volume, int flags=NULL) {
    if (hFile <= 0 || hFile >= ArraySize(hst.hFile))           return(_false(catch("History.WriteBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
    if (hst.hFile[hFile] <= 0)                                 return(_false(catch("History.WriteBar(2)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time  <= 0)                                            return(_false(catch("History.WriteBar(3)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time != time-time%(History.FilePeriod(hFile)*MINUTES)) return(_false(catch("History.WriteBar(4)   invalid bar start time = '"+ TimeToStr(time, TIME_FULL) +"' ("+ PeriodToStr(History.FilePeriod(hFile)) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (open  <= 0)                                            return(_false(catch("History.WriteBar(5)   invalid parameter open = "+ NumberToStr(open, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (high  <= 0)                                            return(_false(catch("History.WriteBar(6)   invalid parameter high = "+ NumberToStr(high, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (low   <= 0)                                            return(_false(catch("History.WriteBar(7)   invalid parameter low = "+ NumberToStr(low, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (close <= 0)                                            return(_false(catch("History.WriteBar(8)   invalid parameter close = "+ NumberToStr(close, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (bar   <  0)                                            return(_false(catch("History.WriteBar(3)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (time  <= 0)                                            return(_false(catch("History.WriteBar(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (time != time-time%(History.FilePeriod(hFile)*MINUTES)) return(_false(catch("History.WriteBar(5)   invalid bar start time = '"+ TimeToStr(time, TIME_FULL) +"' ("+ PeriodToStr(History.FilePeriod(hFile)) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (open  <= 0)                                            return(_false(catch("History.WriteBar(6)   invalid parameter open = "+ NumberToStr(open, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (high  <= 0)                                            return(_false(catch("History.WriteBar(7)   invalid parameter high = "+ NumberToStr(high, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (low   <= 0)                                            return(_false(catch("History.WriteBar(8)   invalid parameter low = "+ NumberToStr(low, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (close <= 0)                                            return(_false(catch("History.WriteBar(9)   invalid parameter close = "+ NumberToStr(close, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    int digits = History.FileDigits(hFile);
-   debug("History.WriteBar()  bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(open, digits) +"  H="+ DoubleToStr(high, digits) +"  L="+ DoubleToStr(low, digits) +"  C="+ DoubleToStr(close, digits));
+   debug("History.WriteBar()  bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(open, digits) +"  H="+ DoubleToStr(high, digits) +"  L="+ DoubleToStr(low, digits) +"  C="+ DoubleToStr(close, digits) +"  V="+ Round(volume));
 
-   // Bar schreiben
+   /**
+    * struct RateInfo {
+    *   int    time;       //  4
+    *   double open;       //  8
+    *   double low;        //  8
+    *   double high;       //  8
+    *   double close;      //  8
+    *   double volume;     //  8
+    * };                   // 44 byte
+    */
 
-   return(IsNoError(last_error|catch("History.WriteBar(9)", ERR_FUNCTION_NOT_IMPLEMENTED)));
+   // (1) Bar schreiben
+   int position = HISTORY_HEADER.size + bar*BAR.size;
+   if (!FileSeek(hFile, position, SEEK_SET))
+      return(_false(catch("History.WriteBar(10)")));
+
+   FileWriteInteger(hFile, time  );
+   FileWriteDouble (hFile, open  );
+   FileWriteDouble (hFile, low   );
+   FileWriteDouble (hFile, high  );
+   FileWriteDouble (hFile, close );
+   FileWriteDouble (hFile, volume);
+
+   // (2) interne Daten aktualisieren
+   if (bar >= History.FileBars(hFile)) { hst.fileSize  [hFile] = position + BAR.size;
+                                         hst.fileBars  [hFile] = bar + 1; }
+   if (bar == 0)                         hst.fileFrom  [hFile] = time;
+   if (bar == History.FileBars(hFile)-1) hst.fileTo    [hFile] = time;
+                                         hst.fileBuffer[hFile] = true;
+
+   return(IsNoError(last_error|catch("History.WriteBar(11)")));
 }
 
 
@@ -6852,7 +6905,7 @@ int afterDeinit() {
    History.FileVersion(NULL);
    History.FileWrite(NULL);
    History.FindBar(NULL, NULL, bNull);
-   History.InsertBar(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+   History.InsertBar(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
    History.MoveBars(NULL, NULL, NULL);
    History.OpenFile(NULL, NULL, NULL, NULL, NULL);
    History.ReadBar(NULL, NULL, iNull, dNull, dNull, dNull, dNull, dNull);
