@@ -72,7 +72,7 @@
  */
 #include <stdtypes.mqh>
 #define     __TYPE__      T_EXPERT
-int   __INIT_FLAGS__[] = {INIT_TICKVALUE, INIT_TIMEZONE, LOG_INSTANCE_ID, LOG_PER_INSTANCE};
+int   __INIT_FLAGS__[] = {INIT_TIMEZONE, INIT_PIPVALUE, LOG_INSTANCE_ID, LOG_PER_INSTANCE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 #include <win32api.mqh>
@@ -85,8 +85,8 @@ extern /*sticky*/ string Sequence.ID             = "";
 extern            string GridDirection           = "Bidirectional* | Long | Short | Long+Short";
 extern            int    GridSize                = 20;
 extern            double LotSize                 = 0.1;
-extern            string StartConditions         = "";            // AND: @bid(double), @ask(double), @price(double), @limit(double), @time(datetime)
-extern            string StopConditions          = "";            // OR:  @bid(double), @ask(double), @price(double), @limit(double), @time(datetime), @profit(double), @profit(double%)
+extern            string StartConditions         = "";            // @bid(double) && @ask(double) && @price(double) && @limit(double) && @time(datetime)
+extern            string StopConditions          = "";            // @bid(double) || @ask(double) || @price(double) || @limit(double) || @time(datetime) || @profit(double) || @profit(double%)
 extern /*sticky*/ color  Breakeven.Color         = Blue;
 extern /*sticky*/ string Sequence.StatusLocation = "";            // Unterverzeichnis
 
@@ -3048,7 +3048,7 @@ void RecolorBreakeven() {
  * @param  datetime time               - wenn checkOpenPositions=TRUE: Zeitpunkt innerhalb der Sequenz
  * @param  int      i                  - wenn checkOpenPositions=TRUE: Index innerhalb der Gridarrays
  *
- * @return double - Abstand in Pips oder 0, wenn ein Fehler auftrat
+ * @return double - Abstand in Pips oder 0, falls ein Fehler auftrat
  *
  *
  * NOTE: Eine direkte Berechnung anhand der zugrunde liegenden quadratischen Gleichung ist praktisch nicht ausreichend,
@@ -3118,7 +3118,7 @@ double ProfitToDistance(double profit, int level, bool checkOpenPositions, datet
  *
  * @param  double distance - Abstand in Pips von der Gridbasis
  *
- * @return double - Profit oder 0, wenn ein Fehler auftrat
+ * @return double - Profit oder 0, falls ein Fehler auftrat
  *
  *
  * NOTE: Benötigt *nicht* die Gridbasis, die GridSize ist ausreichend.
