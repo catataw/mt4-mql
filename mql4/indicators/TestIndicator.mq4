@@ -21,10 +21,8 @@ bool done;
  * @return int - Fehlerstatus
  */
 int onTick() {
-
    if (!done) {
       done = true;
    }
-
    return(catch("onTick()"));
 }
