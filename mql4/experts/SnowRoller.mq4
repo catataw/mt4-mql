@@ -70,13 +70,15 @@
  *  | ...               |                      |                     |            |               |                      |
  *  +-------------------+----------------------+---------------------+------------+---------------+----------------------+
  */
-#include <stdtypes.mqh>
+#include <core.define.mqh>
 #define     __TYPE__      T_EXPERT
 int   __INIT_FLAGS__[] = {INIT_TIMEZONE, INIT_PIPVALUE, LOG_INSTANCE_ID, LOG_PER_INSTANCE};
 int __DEINIT_FLAGS__[];
 #include <stddefine.mqh>
 #include <stdlib.mqh>
 #include <win32api.mqh>
+
+#include <core.expert.mqh>
 #include <SnowRoller/define.mqh>
 
 
