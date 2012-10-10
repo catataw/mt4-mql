@@ -5,9 +5,10 @@
  *
  *  TODO:
  *  -----
- *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
  *  - Equity-Charts generieren                                                                        *
  *  - bidirektional trailendes Grid implementieren                                                    *
+ *  - Orderabbruch bei IsStopped()=TRUE abfangen                                                      *
+ *  - Orderabbruch bei geändertem Ticketstatus abfangen                                               *
  *
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Möglichkeit, WeekendStop zu aktivieren/deaktivieren                                             *
@@ -22,7 +23,6 @@
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Logging aller MessageBoxen
  *  - Änderungen der Gridbasis während Auszeit erkennen
- *  - alle Tradeoperationen müssen einen geänderten Ticketstatus verarbeiten können
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *  - Upload der Statusdatei implementieren
  *  - Laufzeitumgebung auf Server auslagern
@@ -102,48 +102,48 @@ extern /*sticky*/ string Sequence.StatusLocation = "";            // Unterverzei
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-string   last.Sequence.ID             = "";                          // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
-string   last.Sequence.StatusLocation = "";                          // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
-string   last.GridDirection           = "";                          // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
-int      last.GridSize;                                              // in init() daraus restauriert.
+string   last.Sequence.ID             = "";                       // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
+string   last.Sequence.StatusLocation = "";                       // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
+string   last.GridDirection           = "";                       // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
+int      last.GridSize;                                           // in init() daraus restauriert.
 double   last.LotSize;
 string   last.StartConditions         = "";
 string   last.StopConditions          = "";
 color    last.Breakeven.Color;
 
 int      sequenceId;
-bool     test;                                                       // ob dies eine Testsequenz ist (im Tester oder im Online-Chart)
+bool     test;                                                    // ob dies eine Testsequenz ist (im Tester oder im Online-Chart)
 
 int      status = STATUS_UNINITIALIZED;
-string   status.directory;                                           // MQL-Verzeichnis der Statusdatei (unterhalb ".\files\")
-string   status.fileName;                                            // einfacher Dateiname der Statusdatei
+string   status.directory;                                        // MQL-Verzeichnis der Statusdatei (unterhalb ".\files\")
+string   status.fileName;                                         // einfacher Dateiname der Statusdatei
 
-datetime instanceStartTime;                                          // Start des EA's
+datetime instanceStartTime;                                       // Start des EA's
 double   instanceStartPrice;
-double   sequenceStartEquity;                                        // Equity bei Start der Sequenz
+double   sequenceStartEquity;                                     // Equity bei Start der Sequenz
 
-int      sequenceStart.event [];                                     // Start-Daten (Moment von Statuswechsel zu STATUS_PROGRESSING)
+int      sequenceStart.event [];                                  // Start-Daten (Moment von Statuswechsel zu STATUS_PROGRESSING)
 datetime sequenceStart.time  [];
 double   sequenceStart.price [];
 double   sequenceStart.profit[];
 
-int      sequenceStop.event [];                                      // Stop-Daten (Moment von Statuswechsel zu STATUS_STOPPED)
+int      sequenceStop.event [];                                   // Stop-Daten (Moment von Statuswechsel zu STATUS_STOPPED)
 datetime sequenceStop.time  [];
 double   sequenceStop.price [];
 double   sequenceStop.profit[];
 
-bool     start.conditions;                                           // ob die StartConditions aktiv sind und getriggert wurden
+bool     start.conditions;                                        // ob die StartConditions aktiv sind und getriggert wurden
 bool     start.conditions.triggered;
 bool     start.price.condition;
-int      start.price.type;                                           // PRICE_BID | PRICE_ASK | PRICE_MEDIAN
+int      start.price.type;                                        // PRICE_BID | PRICE_ASK | PRICE_MEDIAN
 double   start.price.value;
 bool     start.time.condition;
 datetime start.time.value;
 
-bool     stop.conditions;                                            // ob die StopConditions aktiv sind und getriggert wurden
+bool     stop.conditions;                                         // ob die StopConditions aktiv sind und getriggert wurden
 bool     stop.conditions.triggered;
 bool     stop.price.condition;
-int      stop.price.type;                                            // PRICE_BID | PRICE_ASK | PRICE_MEDIAN
+int      stop.price.type;                                         // PRICE_BID | PRICE_ASK | PRICE_MEDIAN
 double   stop.price.value;
 bool     stop.time.condition;
 datetime stop.time.value;
@@ -152,70 +152,70 @@ double   stop.profitAbs.value;
 bool     stop.profitPercent.condition;
 double   stop.profitPercent.value;
 
-datetime weekend.stop.condition   = D'1970.01.01 23:05';             // StopSequence()-Zeitpunkt vor Wochenend-Pause (Freitags abend)
+datetime weekend.stop.condition   = D'1970.01.01 23:05';          // StopSequence()-Zeitpunkt vor Wochenend-Pause (Freitags abend)
 datetime weekend.stop.time;
 bool     weekend.stop.triggered;
 
-datetime weekend.resume.condition = D'1970.01.01 01:10';             // spätester ResumeSequence()-Zeitpunkt nach Wochenend-Pause (Montags morgen)
+datetime weekend.resume.condition = D'1970.01.01 01:10';          // spätester ResumeSequence()-Zeitpunkt nach Wochenend-Pause (Montags morgen)
 datetime weekend.resume.time;
 bool     weekend.resume.triggered;
 
 int      grid.direction = D_BIDIR;
 
 int      grid.base.event[];
-datetime grid.base.time [];                                          // Gridbasis-Daten
+datetime grid.base.time [];                                       // Gridbasis-Daten
 double   grid.base.value[];
-double   grid.base;                                                  // aktuelle Gridbasis
+double   grid.base;                                               // aktuelle Gridbasis
 
-int      grid.level;                                                 // aktueller Grid-Level
-int      grid.maxLevelLong;                                          // maximal erreichter Long-Level
-int      grid.maxLevelShort;                                         // maximal erreichter Short-Level
-double   grid.commission;                                            // Commission-Betrag je Level (falls zutreffend)
+int      grid.level;                                              // aktueller Grid-Level
+int      grid.maxLevelLong;                                       // maximal erreichter Long-Level
+int      grid.maxLevelShort;                                      // maximal erreichter Short-Level
+double   grid.commission;                                         // Commission-Betrag je Level (falls zutreffend)
 
-int      grid.stops;                                                 // Anzahl der bisher getriggerten Stops
-double   grid.stopsPL;                                               // kumulierter P/L aller bisher ausgestoppten Positionen
-double   grid.closedPL;                                              // kumulierter P/L aller bisher bei Sequencestop geschlossenen Positionen
-double   grid.floatingPL;                                            // kumulierter P/L aller aktuell offenen Positionen
-double   grid.totalPL;                                               // aktueller Gesamt-P/L der Sequenz: grid.stopsPL + grid.closedPL + grid.floatingPL
-double   grid.openRisk;                                              // vorraussichtlicher kumulierter P/L aller aktuell offenen Level bei deren Stopout: sum(orders.openRisk)
-double   grid.valueAtRisk;                                           // vorraussichtlicher Gesamt-P/L der Sequenz bei Stop in Level 0: grid.stopsPL + grid.openRisk
+int      grid.stops;                                              // Anzahl der bisher getriggerten Stops
+double   grid.stopsPL;                                            // kumulierter P/L aller bisher ausgestoppten Positionen
+double   grid.closedPL;                                           // kumulierter P/L aller bisher bei Sequencestop geschlossenen Positionen
+double   grid.floatingPL;                                         // kumulierter P/L aller aktuell offenen Positionen
+double   grid.totalPL;                                            // aktueller Gesamt-P/L der Sequenz: grid.stopsPL + grid.closedPL + grid.floatingPL
+double   grid.openRisk;                                           // vorraussichtlicher kumulierter P/L aller aktuell offenen Level bei deren Stopout: sum(orders.openRisk)
+double   grid.valueAtRisk;                                        // vorraussichtlicher Gesamt-P/L der Sequenz bei Stop in Level 0: grid.stopsPL + grid.openRisk
 
-double   grid.maxProfit;                                             // maximaler bisheriger Gesamt-Profit   (>= 0)
-double   grid.maxDrawdown;                                           // maximaler bisheriger Gesamt-Drawdown (<= 0)
+double   grid.maxProfit;                                          // maximaler bisheriger Gesamt-Profit   (>= 0)
+double   grid.maxDrawdown;                                        // maximaler bisheriger Gesamt-Drawdown (<= 0)
 
-double   grid.breakevenLong;                                         //
-double   grid.breakevenShort;                                        //
+double   grid.breakevenLong;
+double   grid.breakevenShort;
 
 int      orders.ticket        [];
-int      orders.level         [];                                    // Gridlevel der Order
-double   orders.gridBase      [];                                    // Gridbasis der Order
+int      orders.level         [];                                 // Gridlevel der Order
+double   orders.gridBase      [];                                 // Gridbasis der Order
 
-int      orders.pendingType   [];                                    // Pending-Orderdaten (falls zutreffend)
-datetime orders.pendingTime   [];                                    // Zeitpunkt von OrderOpen() bzw. letztem OrderModify()
+int      orders.pendingType   [];                                 // Pending-Orderdaten (falls zutreffend)
+datetime orders.pendingTime   [];                                 // Zeitpunkt von OrderOpen() bzw. letztem OrderModify()
 double   orders.pendingPrice  [];
 
 int      orders.type          [];
 int      orders.openEvent     [];
 datetime orders.openTime      [];
 double   orders.openPrice     [];
-double   orders.openRisk      [];                                    // vorraussichtlicher P/L des Levels seit letztem Stopout bei erneutem Stopout
+double   orders.openRisk      [];                                 // vorraussichtlicher P/L des Levels seit letztem Stopout bei erneutem Stopout
 
 int      orders.closeEvent    [];
 datetime orders.closeTime     [];
 double   orders.closePrice    [];
 double   orders.stopLoss      [];
-bool     orders.clientSL      [];                                    // client- oder server-seitiger StopLoss
+bool     orders.clientSL      [];                                 // client- oder server-seitiger StopLoss
 bool     orders.closedBySL    [];
 
 double   orders.swap          [];
 double   orders.commission    [];
 double   orders.profit        [];
 
-int      ignorePendingOrders  [];                                    // orphaned tickets to ignore
+int      ignorePendingOrders  [];                                 // orphaned tickets to ignore
 int      ignoreOpenPositions  [];
 int      ignoreClosedPositions[];
 
-string   str.LotSize           = "";                                 // Zwischenspeicher für schnellere Abarbeitung von ShowStatus()
+string   str.LotSize           = "";                              // Zwischenspeicher für schnellere Abarbeitung von ShowStatus()
 string   str.startConditions   = "";
 string   str.stopConditions    = "";
 string   str.grid.direction    = "";
@@ -230,9 +230,9 @@ string   str.grid.maxDrawdown  = "0.00";
 string   str.grid.valueAtRisk  = "0.00";
 string   str.grid.plStatistics = "";
 
-int      lastEventId;
 bool     firstTick             = true;
 bool     firstTickConfirmed    = false;
+int      lastEventId;
 
 
 #include <SnowRoller/init.mqh>
@@ -6853,7 +6853,7 @@ int afterDeinit() {
    CloseFiles(false);
    return(NO_ERROR);
 
-   // Dummy-Calls, unterdrücken unnütze Compilerwarnungen
+   // Compilerwarnungen unterdrücken
    bool   bNull;
    int    iNull, iNulls[];
    double dNull;
