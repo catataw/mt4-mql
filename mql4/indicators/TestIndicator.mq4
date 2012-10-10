@@ -22,8 +22,7 @@ bool done;
  * @return int - Fehlerstatus
  */
 int onInit() {
-   debug("onInit()");
-   DebugMarketInfo();
+   DebugMarketInfo("onInit()");
    return(catch("onInit()"));
 }
 
@@ -36,8 +35,7 @@ int onInit() {
 int onTick() {
    bool done;
    if (!done) {
-      debug("onTick()");
-      DebugMarketInfo();
+      DebugMarketInfo("onTick()");
       done = true;
    }
    return(catch("onTick()"));
