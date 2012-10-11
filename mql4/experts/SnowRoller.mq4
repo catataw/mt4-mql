@@ -6091,6 +6091,7 @@ bool RecordEquity() {
       time1 = GetTickCount();
    ticks++;
 
+   //return(true);
 
    static int hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
 
