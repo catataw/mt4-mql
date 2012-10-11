@@ -6084,8 +6084,9 @@ bool RecordEquity() {
       return(true);
 
    /*
-   Laptop - ohne Schreiben:         17.613 ticks/sec
-   Laptop - Schreiben jedes Ticks:   5.871 ticks/sec
+   Laptop v419 - ohne Schreiben:         17.613 ticks/sec
+   Laptop v225 - Schreiben jedes Ticks:   6.426 ticks/sec
+   Laptop v419 - Schreiben jedes Ticks:   5.871 ticks/sec
    */
    if (ticks == 0)
       time1 = GetTickCount();
