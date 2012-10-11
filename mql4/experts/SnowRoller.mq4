@@ -6174,7 +6174,7 @@ int History.FindBar(int hFile, datetime time, bool &lpBarExists) {
    // OpenTime der entsprechenden Bar berechnen
    time -= time%(History.FilePeriod(hFile)*MINUTES);
 
-   // Zur Beschleunigung der Suche werden die beiden am häufigsten auftretenden Fälle sofort zu Beginn geprüft.
+   // Zur Beschleunigung der Suche werden die beiden am häufigsten auftretenden Fälle zu Beginn geprüft.
 
    // (1) Zeitpunkt ist der Zeitpunkt der letzten Bar
    if (time == History.FileTo(hFile)) {
