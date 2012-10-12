@@ -6067,13 +6067,14 @@ int      hst.fileHeader [16][HISTORY_HEADER.intSize];
 int      hst.fileBars   [16];
 datetime hst.fileFrom   [16];
 datetime hst.fileTo     [16];
-int      hst.fileBar    [16];             // Cache der zuletzt gelesenen/geschriebenen Bardaten
+int      hst.fileBar    [16];                         // Cache der zuletzt gelesenen/geschriebenen Bardaten
 datetime hst.fileBarTime[16];
 double   hst.fileBarO   [16];
 double   hst.fileBarH   [16];
 double   hst.fileBarL   [16];
 double   hst.fileBarC   [16];
 double   hst.fileBarV   [16];
+int      hst.hFile.valid = -1;                        // Cache des zuletzt validierten Dateihandles
 
 
 static int ticks;
@@ -6091,19 +6092,17 @@ bool RecordEquity() {
 
    /*
     Test EUR/USD 04.10.2012, long, GridSize 18
-   +-------------------------------------+--------------+-----------+--------------+-------------+--------------+
-   |                                     |   original   | optimiert | FindBar opt. | Arrays opt. | ReadBar opt. |
-   +-------------------------------------+--------------+-----------+--------------+-------------+--------------+
-   | Laptop v419 - ohne Schreiben:       | 17.613 t/sec |           |              |             |              |
-   | Laptop v225 - Schreiben jedes Ticks |  6.426 t/sec |           |              |             |              |
-   | Laptop v419 - Schreiben jedes Ticks |  5.871 t/sec | 6.877 t/s |   7.381 t/s  |  7.870 t/s  |   9.097 t/s  |
-   +-------------------------------------+--------------+-----------+--------------+-------------+--------------+
+   +-------------------------------------+--------------+-----------+--------------+-------------+-------------+--------------+--------------+
+   |                                     |     alt      | optimiert | FindBar opt. | Arrays opt. |  Read opt.  |  Write opt.  |  Valid. opt. |
+   +-------------------------------------+--------------+-----------+--------------+-------------+-------------+--------------+--------------+
+   | Laptop v419 - ohne Schreiben:       | 17.613 t/sec |           |              |             |             |              |              |
+   | Laptop v225 - Schreiben jedes Ticks |  6.426 t/sec |           |              |             |             |              |              |
+   | Laptop v419 - Schreiben jedes Ticks |  5.871 t/sec | 6.877 t/s |   7.381 t/s  |  7.870 t/s  |  9.097 t/s  |   9.966 t/s  |  10.305 t/s  |
+   +-------------------------------------+--------------+-----------+--------------+-------------+-------------+--------------+--------------+
    */
    if (ticks == 0)
       time1 = GetTickCount();
    ticks++;
-
-   //return(true);
 
    static int hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
 
@@ -6137,13 +6136,18 @@ bool RecordEquity() {
  *                          HST_FILL_GAPS: entstehende Gaps werden mit dem Schlußkurs der letzten Bar vor dem Gap gefüllt
  *
  * @return bool - Erfolgsstatus
+ *
+ *
+ * NOTE: Zur Performancesteigerung werden die Tickdaten nicht zusätzlich validiert.
  */
 bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.AddTick(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] == 0)                       return(_false(catch("History.AddTick(2)   invalid parameter hFile = "+ hFile +" (unknow handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <  0)                       return(_false(catch("History.AddTick(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time  <= 0)                                  return(_false(catch("History.AddTick(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (value <= 0)                                  return(_false(catch("History.AddTick(5)   invalid parameter value = "+ NumberToStr(value, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.AddTick(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] == 0)                       return(_false(catch("History.AddTick(2)   invalid parameter hFile = "+ hFile +" (unknow handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <  0)                       return(_false(catch("History.AddTick(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      hst.hFile.valid = hFile;
+   }
+   if (time <= 0)                                      return(_false(catch("History.AddTick(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    //debug("History.AddTick()   time="+ TimeToStr(time, TIME_FULL) +"   value="+ DoubleToStr(value, History.FileDigits(hFile)));
 
@@ -6155,7 +6159,7 @@ bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
    bool barExists = true;
 
    if (hst.fileBarTime[hFile] == time) {
-      bar = hst.fileBar[hFile];                                      // möglichst Cache verwenden
+      bar = hst.fileBar[hFile];                                      // möglichst den Cache verwenden
    }
    else {
       bar = History.FindBar(hFile, time, barExists);
@@ -6186,10 +6190,13 @@ bool History.AddTick(int hFile, datetime time, double value, int flags=NULL) {
  * @return int - Bar-Offset oder -1, falls ein Fehler auftrat
  */
 int History.FindBar(int hFile, datetime time, bool &lpBarExists) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FindBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] == 0)                       return(_int(-1, catch("History.FindBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <  0)                       return(_int(-1, catch("History.FindBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time <= 0)                                   return(_int(-1, catch("History.FindBar(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FindBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] == 0)                       return(_int(-1, catch("History.FindBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <  0)                       return(_int(-1, catch("History.FindBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      hst.hFile.valid = hFile;
+   }
+   if (time <= 0)                                      return(_int(-1, catch("History.FindBar(4)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    // OpenTime der entsprechenden Bar berechnen
    time -= time%(hhs.Period(hst.fileHeader, hFile)*MINUTES);
@@ -6249,10 +6256,13 @@ int History.FindBar(int hFile, datetime time, bool &lpBarExists) {
  * @return bool - Erfolgsstatus
  */
 bool History.ReadBar(int hFile, int bar, datetime &time, double &open, double &high, double &low, double &close, double &volume) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.ReadBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] == 0)                       return(_false(catch("History.ReadBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <  0)                       return(_false(catch("History.ReadBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (bar < 0 || bar >= hst.fileBars[hFile])       return(_false(catch("History.ReadBar(4)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.ReadBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] == 0)                       return(_false(catch("History.ReadBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <  0)                       return(_false(catch("History.ReadBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      hst.hFile.valid = hFile;
+   }
+   if (bar < 0 || bar >= hst.fileBars[hFile])          return(_false(catch("History.ReadBar(4)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    /**
     * struct RateInfo {
@@ -6300,38 +6310,35 @@ bool History.ReadBar(int hFile, int bar, datetime &time, double &open, double &h
  * @param  double value - hinzuzufügender Wert
  *
  * @return bool - Erfolgsstatus
+ *
+ *
+ * NOTE: Zur Performancesteigerung werden die Tickdaten nicht zusätzlich validiert.
  */
 bool History.UpdateBar(int hFile, int bar, double value) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.UpdateBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] == 0)                       return(_false(catch("History.UpdateBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <  0)                       return(_false(catch("History.UpdateBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (bar < 0 || bar >= hst.fileBars[hFile])       return(_false(catch("History.UpdateBar(4)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (value <= 0)                                  return(_false(catch("History.UpdateBar(5)   invalid parameter value = "+ NumberToStr(value, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-
-   datetime time;
-   double O, H, L, C, V;
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.UpdateBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] == 0)                       return(_false(catch("History.UpdateBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <  0)                       return(_false(catch("History.UpdateBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      hst.hFile.valid = hFile;
+   }
+   if (bar < 0 || bar >= hst.fileBars[hFile])          return(_false(catch("History.UpdateBar(4)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    // (1) Bar lesen
-   if (hst.fileBar[hFile] == bar) {                                  // möglichst Cache verwenden
-      time = hst.fileBarTime[hFile];
-      O    = hst.fileBarO   [hFile];
-      H    = hst.fileBarH   [hFile];
-      L    = hst.fileBarL   [hFile];
-      C    = hst.fileBarC   [hFile];
-      V    = hst.fileBarV   [hFile];
-   }
-   else if (!History.ReadBar(hFile, bar, time, O, H, L, C, V)) {
-      return(false);
+   if (hst.fileBar[hFile] != bar) {                // möglichst den Cache verwenden
+      int    iNull;
+      double dNull;
+      if (!History.ReadBar(hFile, bar, iNull, dNull, dNull, dNull, dNull, dNull))
+         return(false);
    }
 
-   // (2) Daten aktualisieren
-   H  = MathMax(H, value);
-   L  = MathMin(L, value);
-   C  = value;
-   V += 1;
+   // (2) Daten zur Performancesteigerung direkt im Cache modifizieren
+   hst.fileBarH[hFile]  = MathMax(hst.fileBarH[hFile], value);
+   hst.fileBarL[hFile]  = MathMin(hst.fileBarL[hFile], value);
+   hst.fileBarC[hFile]  = value;
+   hst.fileBarV[hFile] += 1;
 
    // (3) Bar schreiben
-   return(History.WriteBar(hFile, bar, time, O, H, L, C, V, NULL));
+   return(History.WriteCachedBar(hFile));
 }
 
 
@@ -6350,18 +6357,19 @@ bool History.UpdateBar(int hFile, int bar, double value) {
  *                           HST_FILL_GAPS: beim Schreiben entstehende Gaps werden mit dem Schlußkurs der letzten Bar vor dem Gap gefüllt
  *
  * @return bool - Erfolgsstatus
+ *
+ *
+ * NOTE: Zur Performancesteigerung werden die Tickdaten nicht zusätzlich validiert.
  */
 bool History.InsertBar(int hFile, int bar, datetime time, double open, double high, double low, double close, double volume, int flags=NULL) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.InsertBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] == 0)                       return(_false(catch("History.InsertBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <  0)                       return(_false(catch("History.InsertBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (bar    <  0)                                 return(_false(catch("History.InsertBar(4)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time   <= 0)                                 return(_false(catch("History.InsertBar(5)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (open   <= 0)                                 return(_false(catch("History.InsertBar(6)   invalid parameter open = "+ NumberToStr(open, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (high   <= 0)                                 return(_false(catch("History.InsertBar(7)   invalid parameter high = "+ NumberToStr(high, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (low    <= 0)                                 return(_false(catch("History.InsertBar(8)   invalid parameter low = "+ NumberToStr(low, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (close  <= 0)                                 return(_false(catch("History.InsertBar(9)   invalid parameter close = "+ NumberToStr(close, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (volume <= 0)                                 return(_false(catch("History.InsertBar(10)   invalid parameter volume = "+ NumberToStr(volume, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.InsertBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] == 0)                       return(_false(catch("History.InsertBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <  0)                       return(_false(catch("History.InsertBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      hst.hFile.valid = hFile;
+   }
+   if (bar  <  0)                                      return(_false(catch("History.InsertBar(4)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (time <= 0)                                      return(_false(catch("History.InsertBar(5)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    //int digits = History.FileDigits(hFile);
    //debug("History.InsertBar() bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(open, digits) +"  H="+ DoubleToStr(high, digits) +"  L="+ DoubleToStr(low, digits) +"  C="+ DoubleToStr(close, digits) +"  V="+ Round(volume));
@@ -6392,18 +6400,19 @@ bool History.InsertBar(int hFile, int bar, datetime time, double open, double hi
  *                           HST_FILL_GAPS: beim Schreiben entstehende Gaps werden mit dem Schlußkurs der letzten Bar vor dem Gap gefüllt
  *
  * @return bool - Erfolgsstatus
+ *
+ *
+ * NOTE: Zur Performancesteigerung werden die Tickdaten nicht zusätzlich validiert.
  */
 bool History.WriteBar(int hFile, int bar, datetime time, double open, double high, double low, double close, double volume, int flags=NULL) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile))                   return(_false(catch("History.WriteBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] == 0)                                         return(_false(catch("History.WriteBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <  0)                                         return(_false(catch("History.WriteBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (bar   <  0)                                                    return(_false(catch("History.WriteBar(4)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time  <= 0)                                                    return(_false(catch("History.WriteBar(5)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (time != time-time%(hhs.Period(hst.fileHeader, hFile)*MINUTES)) return(_false(catch("History.WriteBar(6)   invalid bar start time = '"+ TimeToStr(time, TIME_FULL) +"' ("+ PeriodToStr(History.FilePeriod(hFile)) +")", ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (open  <= 0)                                                    return(_false(catch("History.WriteBar(7)   invalid parameter open = "+ NumberToStr(open, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (high  <= 0)                                                    return(_false(catch("History.WriteBar(8)   invalid parameter high = "+ NumberToStr(high, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (low   <= 0)                                                    return(_false(catch("History.WriteBar(9)   invalid parameter low = "+ NumberToStr(low, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (close <= 0)                                                    return(_false(catch("History.WriteBar(10)   invalid parameter close = "+ NumberToStr(close, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.WriteBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] == 0)                       return(_false(catch("History.WriteBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <  0)                       return(_false(catch("History.WriteBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      hst.hFile.valid = hFile;
+   }
+   if (bar  <  0)                                      return(_false(catch("History.WriteBar(4)   invalid parameter bar = "+ bar, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (time <= 0)                                      return(_false(catch("History.WriteBar(5)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    //int digits = History.FileDigits(hFile);
    //debug("History.WriteBar()  bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(open, digits) +"  H="+ DoubleToStr(high, digits) +"  L="+ DoubleToStr(low, digits) +"  C="+ DoubleToStr(close, digits) +"  V="+ Round(volume));
@@ -6422,7 +6431,7 @@ bool History.WriteBar(int hFile, int bar, datetime time, double open, double hig
    // (1) Bar schreiben
    int position = HISTORY_HEADER.size + bar*BAR.size;
    if (!FileSeek(hFile, position, SEEK_SET))
-      return(_false(catch("History.WriteBar(11)")));
+      return(_false(catch("History.WriteBar(6)")));
 
    FileWriteInteger(hFile, time  );
    FileWriteDouble (hFile, open  );
@@ -6444,7 +6453,51 @@ bool History.WriteBar(int hFile, int bar, datetime time, double open, double hig
                                      hst.fileBarC   [hFile] = close;
                                      hst.fileBarV   [hFile] = volume;
 
-   return(IsNoError(last_error|catch("History.WriteBar(12)")));
+   return(IsNoError(last_error|catch("History.WriteBar(7)")));
+}
+
+
+/**
+ * Schreibt die gecachten Bardaten in die angegebene Historydatei.
+ *
+ * @param  int hFile - Dateihandle der Historydatei (muß Schreibzugriff erlauben)
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool History.WriteCachedBar(int hFile) {
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.WriteCachedBar(1)   invalid parameter hFile = "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] == 0)                       return(_false(catch("History.WriteCachedBar(2)   invalid parameter hFile = "+ hFile +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <  0)                       return(_false(catch("History.WriteCachedBar(3)   invalid parameter hFile = "+ hFile +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      hst.hFile.valid = hFile;
+   }
+   int bar = hst.fileBar[hFile];
+   if (bar < 0)                                        return(_false(catch("History.WriteCachedBar(4)   invalid cached bar value = "+ bar, ERR_RUNTIME_ERROR)));
+
+   /**
+    * struct RateInfo {
+    *   int    time;       //  4
+    *   double open;       //  8
+    *   double low;        //  8
+    *   double high;       //  8
+    *   double close;      //  8
+    *   double volume;     //  8
+    * };                   // 44 byte
+    */
+
+   // Bar schreiben
+   int position = HISTORY_HEADER.size + bar*BAR.size;
+   if (!FileSeek(hFile, position, SEEK_SET))
+      return(_false(catch("History.WriteCachedBar(5)")));
+
+   FileWriteInteger(hFile, hst.fileBarTime[hFile]);
+   FileWriteDouble (hFile, hst.fileBarO   [hFile]);
+   FileWriteDouble (hFile, hst.fileBarL   [hFile]);
+   FileWriteDouble (hFile, hst.fileBarH   [hFile]);
+   FileWriteDouble (hFile, hst.fileBarC   [hFile]);
+   FileWriteDouble (hFile, hst.fileBarV   [hFile]);
+
+   return(IsNoError(last_error|catch("History.WriteCachedBar(6)")));
 }
 
 
@@ -6560,8 +6613,11 @@ bool History.CloseFile(int hFile) {
    if (hFile >= ArraySize(hst.hFile)) return(_false(catch("History.CloseFile(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
    if (hst.hFile[hFile] == 0)         return(_false(catch("History.CloseFile(3)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
 
-   if (hst.hFile[hFile] < 0)
-      return(true);                                                  // Datei ist bereits geschlossen worden
+   if (hFile == hst.hFile.valid)
+      hst.hFile.valid = -1;
+
+   if (hst.hFile[hFile] < 0)                                         // Datei ist bereits geschlossen worden
+      return(true);
 
    int error = GetLastError();
    if (IsError(error))
@@ -6618,10 +6674,13 @@ int History.ResizeArrays(int size) {
  * @return string - Dateiname oder Leerstring, falls ein Fehler auftrat
  */
 string History.FileName(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_empty(catch("History.FileName(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_empty(catch("History.FileName(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_empty(catch("History.FileName(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_empty(catch("History.FileName(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_empty(catch("History.FileName(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_empty(catch("History.FileName(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hst.fileName[hFile]);
 }
@@ -6635,10 +6694,13 @@ string History.FileName(int hFile) {
  * @return bool - Ergebnis oder FALSE, falls ein Fehler auftrat
  */
 bool History.FileRead(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.FileRead(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_false(catch("History.FileRead(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_false(catch("History.FileRead(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.FileRead(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_false(catch("History.FileRead(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_false(catch("History.FileRead(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hst.fileRead[hFile]);
 }
@@ -6652,10 +6714,13 @@ bool History.FileRead(int hFile) {
  * @return bool - Ergebnis oder FALSE, falls ein Fehler auftrat
  */
 bool History.FileWrite(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.FileWrite(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_false(catch("History.FileWrite(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_false(catch("History.FileWrite(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_false(catch("History.FileWrite(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_false(catch("History.FileWrite(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_false(catch("History.FileWrite(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hst.fileWrite[hFile]);
 }
@@ -6669,10 +6734,13 @@ bool History.FileWrite(int hFile) {
  * @return int - Größe oder -1, falls ein Fehler auftrat
  */
 int History.FileSize(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileSize(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileSize(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_int(-1, catch("History.FileSize(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileSize(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileSize(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_int(-1, catch("History.FileSize(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hst.fileSize[hFile]);
 }
@@ -6686,10 +6754,13 @@ int History.FileSize(int hFile) {
  * @return int - Anzahl oder -1, falls ein Fehler auftrat
  */
 int History.FileBars(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileBars(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileBars(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_int(-1, catch("History.FileBars(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileBars(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileBars(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_int(-1, catch("History.FileBars(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hst.fileBars[hFile]);
 }
@@ -6703,10 +6774,13 @@ int History.FileBars(int hFile) {
  * @return datetime - Zeitpunkt oder -1, falls ein Fehler auftrat
  */
 datetime History.FileFrom(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileFrom(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileFrom(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_int(-1, catch("History.FileFrom(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileFrom(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileFrom(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_int(-1, catch("History.FileFrom(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hst.fileFrom[hFile]);
 }
@@ -6720,10 +6794,13 @@ datetime History.FileFrom(int hFile) {
  * @return datetime - Zeitpunkt oder -1, falls ein Fehler auftrat
  */
 datetime History.FileTo(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileTo(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileTo(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_int(-1, catch("History.FileTo(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileTo(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileTo(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_int(-1, catch("History.FileTo(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hst.fileTo[hFile]);
 }
@@ -6738,12 +6815,15 @@ datetime History.FileTo(int hFile) {
  * @return int - Fehlerstatus
  */
 int History.FileHeader(int hFile, int array[]) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(catch("History.FileHeader(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(catch("History.FileHeader(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR));
-                                                    return(catch("History.FileHeader(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(catch("History.FileHeader(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(catch("History.FileHeader(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR));
+                                                       return(catch("History.FileHeader(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR));
+      }
+      hst.hFile.valid = hFile;
    }
-   if (ArrayDimension(array) > 1)                   return(catch("History.FileHeader(4)   too many dimensions of parameter array = "+ ArrayDimension(array), ERR_INCOMPATIBLE_ARRAYS));
+   if (ArrayDimension(array) > 1)                      return(catch("History.FileHeader(4)   too many dimensions of parameter array = "+ ArrayDimension(array), ERR_INCOMPATIBLE_ARRAYS));
 
    ArrayResize(array, HISTORY_HEADER.intSize);                       // entspricht: array = hst.fileHeader[hFile];
    CopyMemory(GetBufferAddress(array), GetBufferAddress(hst.fileHeader) + hFile*HISTORY_HEADER.size, HISTORY_HEADER.size);
@@ -6759,10 +6839,13 @@ int History.FileHeader(int hFile, int array[]) {
  * @return int - Version oder NULL, falls ein Fehler auftrat
  */
 int History.FileVersion(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_NULL(catch("History.FileVersion(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_NULL(catch("History.FileVersion(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_NULL(catch("History.FileVersion(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_NULL(catch("History.FileVersion(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_NULL(catch("History.FileVersion(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_NULL(catch("History.FileVersion(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hhs.Version(hst.fileHeader, hFile));
 }
@@ -6776,10 +6859,13 @@ int History.FileVersion(int hFile) {
  * @return string - Symbol oder Leerstring, falls ein Fehler auftrat
  */
 string History.FileSymbol(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_empty(catch("History.FileSymbol(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_empty(catch("History.FileSymbol(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_empty(catch("History.FileSymbol(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_empty(catch("History.FileSymbol(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_empty(catch("History.FileSymbol(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_empty(catch("History.FileSymbol(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hhs.Symbol(hst.fileHeader, hFile));
 }
@@ -6793,10 +6879,13 @@ string History.FileSymbol(int hFile) {
  * @return string - Beschreibung oder Leerstring, falls ein Fehler auftrat
  */
 string History.FileDescription(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_empty(catch("History.FileDescription(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_empty(catch("History.FileDescription(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_empty(catch("History.FileDescription(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_empty(catch("History.FileDescription(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_empty(catch("History.FileDescription(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_empty(catch("History.FileDescription(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hhs.Description(hst.fileHeader, hFile));
 }
@@ -6810,10 +6899,13 @@ string History.FileDescription(int hFile) {
  * @return int - Timeframe oder NULL, falls ein Fehler auftrat
  */
 int History.FilePeriod(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_NULL(catch("History.FilePeriod(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_NULL(catch("History.FilePeriod(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_NULL(catch("History.FilePeriod(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_NULL(catch("History.FilePeriod(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_NULL(catch("History.FilePeriod(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_NULL(catch("History.FilePeriod(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hhs.Period(hst.fileHeader, hFile));
 }
@@ -6827,10 +6919,13 @@ int History.FilePeriod(int hFile) {
  * @return int - Digits oder -1, falls ein Fehler auftrat
  */
 int History.FileDigits(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileDigits(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileDigits(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_int(-1, catch("History.FileDigits(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileDigits(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileDigits(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_int(-1, catch("History.FileDigits(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hhs.Digits(hst.fileHeader, hFile));
 }
@@ -6844,10 +6939,13 @@ int History.FileDigits(int hFile) {
  * @return datetime - Versions-Zeitpunkt oder -1, falls ein Fehler auftrat
  */
 int History.FileDbVersion(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileDbVersion(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileDbVersion(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_int(-1, catch("History.FileDbVersion(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FileDbVersion(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FileDbVersion(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_int(-1, catch("History.FileDbVersion(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hhs.DbVersion(hst.fileHeader, hFile));
 }
@@ -6861,10 +6959,13 @@ int History.FileDbVersion(int hFile) {
  * @return datetime - Versions-Zeitpunkt oder -1, falls ein Fehler auftrat
  */
 int History.FilePrevDbVersion(int hFile) {
-   if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FilePrevDbVersion(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (hst.hFile[hFile] <= 0) {
-      if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FilePrevDbVersion(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
-                                                    return(_int(-1, catch("History.FilePrevDbVersion(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+   if (hFile != hst.hFile.valid) {
+      if (hFile <= 0 || hFile >= ArraySize(hst.hFile)) return(_int(-1, catch("History.FilePrevDbVersion(1)   invalid or unknown file handle "+ hFile, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (hst.hFile[hFile] <= 0) {
+         if (hst.hFile[hFile] == 0)                    return(_int(-1, catch("History.FilePrevDbVersion(2)   unknown file handle "+ hFile, ERR_RUNTIME_ERROR)));
+                                                       return(_int(-1, catch("History.FilePrevDbVersion(3)   closed file handle "+ hFile, ERR_RUNTIME_ERROR)));
+      }
+      hst.hFile.valid = hFile;
    }
    return(hhs.PrevDbVersion(hst.fileHeader, hFile));
 }
@@ -6939,5 +7040,6 @@ int afterDeinit() {
    History.OpenFile(NULL, NULL, NULL, NULL, NULL);
    History.ReadBar(NULL, NULL, iNull, dNull, dNull, dNull, dNull, dNull);
    History.WriteBar(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+   History.WriteCachedBar(NULL);
    RecordEquity();
 }
