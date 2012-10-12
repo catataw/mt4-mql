@@ -16,7 +16,7 @@ int onInitUndefined() {
       if (IsLastError())
          return(last_error);
 
-   bool data = (ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0);
+   bool data = ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0;
 
    if (data) return(onInitRecompile());   // ja   -> alter EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
    else      return(onInitChartClose());  // nein -> neuer EA -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
@@ -197,7 +197,7 @@ int onInitChartChange() {
 
 
 /**
- * Initialisierung
+ * Postprocessing-Hook nach Initialisierung
  *
  * @return int - Fehlerstatus
  */
