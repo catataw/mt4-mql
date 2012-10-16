@@ -1169,7 +1169,7 @@ bool EventListener.ChartCommand(string commands[], int flags=NULL) {
    static int    sid;
 
    if (sequenceId != sid) {
-      label = StringConcatenate(__NAME__, ".", Sequence.ID, ".command");      // Label wird nur modifiziert, wenn es sich tatsächlich ändert
+      label = StringConcatenate("SnowRoller.", Sequence.ID, ".command");      // Label wird nur modifiziert, wenn es sich tatsächlich ändert
       sid   = sequenceId;
    }
 
@@ -2632,7 +2632,7 @@ int ShowStatus() {
 
 
    // für Fernbedienung unsichtbaren Status im Chart speichern
-   string label = StringConcatenate(__NAME__, ".status");
+   string label = StringConcatenate("SnowRoller.status");
    if (ObjectFind(label) != 0) {
       if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
          return(catch("ShowStatus(2)"));
