@@ -1240,9 +1240,9 @@ bool IsStartSignal() {
          static double price, lastPrice;                             // price/result: nur wegen kürzerem Code static
          static bool   result, lastPrice_init=true;
          switch (start.price.type) {
-            case SPC_BID:    price = Bid;         break;
-            case SPC_ASK:    price = Ask;         break;
-            case SPC_MEDIAN: price = (Bid+Ask)/2; break;
+            case SCP_BID:    price = Bid;         break;
+            case SCP_ASK:    price = Ask;         break;
+            case SCP_MEDIAN: price = (Bid+Ask)/2; break;
          }
 
          if (lastPrice_init) {
@@ -1258,7 +1258,7 @@ bool IsStartSignal() {
          lastPrice = price;
          if (!result)
             return(false);
-         if (__LOG) log(StringConcatenate("IsStartSignal()   price condition \"", scpPriceDescr[start.price.type], " = ", NumberToStr(start.price.value, PriceFormat), "\" met"));
+         if (__LOG) log(StringConcatenate("IsStartSignal()   price condition \"", scpDescr[start.price.type], " = ", NumberToStr(start.price.value, PriceFormat), "\" met"));
       }
 
       // -- start.time: zum angegebenen Zeitpunkt oder danach erfüllt ---------------------------------------------------
@@ -1419,9 +1419,9 @@ bool IsStopSignal(bool checkWeekendStop=true) {
          static double price, lastPrice;                             // price/result: nur wegen kürzerem Code static
          static bool   result, lastPrice_init=true;
          switch (start.price.type) {
-            case SPC_BID:    price = Bid;         break;
-            case SPC_ASK:    price = Ask;         break;
-            case SPC_MEDIAN: price = (Bid+Ask)/2; break;
+            case SCP_BID:    price = Bid;         break;
+            case SCP_ASK:    price = Ask;         break;
+            case SCP_MEDIAN: price = (Bid+Ask)/2; break;
          }
 
          if (lastPrice_init) {
@@ -1436,7 +1436,7 @@ bool IsStopSignal(bool checkWeekendStop=true) {
 
          lastPrice = price;
          if (result) {
-            if (__LOG) log(StringConcatenate("IsStopSignal()   price condition \"", scpPriceDescr[stop.price.type], " = ", NumberToStr(stop.price.value, PriceFormat), "\" met"));
+            if (__LOG) log(StringConcatenate("IsStopSignal()   price condition \"", scpDescr[stop.price.type], " = ", NumberToStr(stop.price.value, PriceFormat), "\" met"));
             stop.conditions.triggered = true;
             return(true);
          }
@@ -3559,16 +3559,16 @@ bool ValidateConfiguration(bool interactive) {
             if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(23)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             start.price.condition = true;
             start.price.value     = NormalizeDouble(dValue, PipDigits);
-            if      (key == "@bid"  ) start.price.type = SPC_BID;
-            else if (key == "@ask"  ) start.price.type = SPC_ASK;
-            else if (key == "@price") start.price.type = SPC_MEDIAN;
+            if      (key == "@bid"  ) start.price.type = SCP_BID;
+            else if (key == "@ask"  ) start.price.type = SCP_ASK;
+            else if (key == "@price") start.price.type = SCP_MEDIAN;
             else if (key == "@limit") {
                switch (grid.direction) {
-                  case D_LONG : start.price.type = SPC_ASK; break;
-                  case D_SHORT: start.price.type = SPC_BID; break;
+                  case D_LONG : start.price.type = SCP_ASK; break;
+                  case D_SHORT: start.price.type = SCP_BID; break;
                   case D_BIDIR:
-                     if      (start.price.value > grid.base) start.price.type = SPC_ASK;
-                     else if (start.price.value < grid.base) start.price.type = SPC_BID;
+                     if      (start.price.value > grid.base) start.price.type = SCP_ASK;
+                     else if (start.price.value < grid.base) start.price.type = SCP_BID;
                }
             }
             exprs[i] = key +"("+ DoubleToStr(start.price.value, PipDigits) +")";
@@ -3631,16 +3631,16 @@ bool ValidateConfiguration(bool interactive) {
             if (LE(dValue, 0))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(34)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             stop.price.condition = true;
             stop.price.value     = NormalizeDouble(dValue, PipDigits);
-            if      (key == "@bid"  ) stop.price.type = SPC_BID;
-            else if (key == "@ask"  ) stop.price.type = SPC_ASK;
-            else if (key == "@price") stop.price.type = SPC_MEDIAN;
+            if      (key == "@bid"  ) stop.price.type = SCP_BID;
+            else if (key == "@ask"  ) stop.price.type = SCP_ASK;
+            else if (key == "@price") stop.price.type = SCP_MEDIAN;
             else if (key == "@limit") {
                switch (grid.direction) {
-                  case D_LONG : stop.price.type = SPC_BID; break;
-                  case D_SHORT: stop.price.type = SPC_ASK; break;
+                  case D_LONG : stop.price.type = SCP_BID; break;
+                  case D_SHORT: stop.price.type = SCP_ASK; break;
                   case D_BIDIR:
-                     if      (stop.price.value > grid.base) stop.price.type = SPC_BID;
-                     else if (stop.price.value < grid.base) stop.price.type = SPC_ASK;
+                     if      (stop.price.value > grid.base) stop.price.type = SCP_BID;
+                     else if (stop.price.value < grid.base) stop.price.type = SCP_ASK;
                }
             }
             exprs[i] = key +"("+ DoubleToStr(stop.price.value, PipDigits) +")";
@@ -6031,10 +6031,9 @@ string BreakevenEventToStr(int type) {
  */
 string GridDirectionToStr(int direction) {
    switch (direction) {
-      case D_BIDIR     : return("D_BIDIR"     );
-      case D_LONG      : return("D_LONG"      );
-      case D_SHORT     : return("D_SHORT"     );
-      case D_LONG_SHORT: return("D_LONG_SHORT");
+      case D_BIDIR: return("D_BIDIR");
+      case D_LONG : return("D_LONG" );
+      case D_SHORT: return("D_SHORT");
    }
    return(_empty(catch("GridDirectionToStr()   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
@@ -6049,10 +6048,9 @@ string GridDirectionToStr(int direction) {
  */
 string GridDirectionDescription(int direction) {
    switch (direction) {
-      case D_BIDIR     : return("bidirectional");
-      case D_LONG      : return("long"         );
-      case D_SHORT     : return("short"        );
-      case D_LONG_SHORT: return("long + short" );
+      case D_BIDIR: return("bidirectional");
+      case D_LONG : return("long"         );
+      case D_SHORT: return("short"        );
    }
    return(_empty(catch("GridDirectionDescription()   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }

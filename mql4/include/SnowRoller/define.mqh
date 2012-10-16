@@ -4,10 +4,10 @@
 
 
 // Grid-Directions
-#define D_BIDIR                     0
-#define D_LONG                      1
-#define D_SHORT                     2
-#define D_LONG_SHORT                3
+#define D_LONG                      0
+#define D_SHORT                     1
+#define D_BIDIR                     2
+string  directionDescr[] = {"Long", "Short", "Bidirectional"};
 
 
 // Sequenzstatus-Werte
@@ -20,11 +20,20 @@
 #define STATUS_DISABLED             6
 
 
+// Event-Types für SynchronizeStatus()
+#define EV_SEQUENCE_START           1
+#define EV_SEQUENCE_STOP            2
+#define EV_GRIDBASE_CHANGE          3
+#define EV_POSITION_OPEN            4
+#define EV_POSITION_STOPOUT         5
+#define EV_POSITION_CLOSE           6
+
+
 // Start/StopCondition-PriceTypes
-#define SPC_BID                     0
-#define SPC_ASK                     1
-#define SPC_MEDIAN                  2                                   // (Bid+Ask)/2
-string scpPriceDescr[] = {"Bid", "Ask", "Avg"};
+#define SCP_BID                     0
+#define SCP_ASK                     1
+#define SCP_MEDIAN                  2                                   // (Bid+Ask)/2
+string  scpDescr[] = {"Bid", "Ask", "Avg"};
 
 
 // Start/StopDisplay-Modes
