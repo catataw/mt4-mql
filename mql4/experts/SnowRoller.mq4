@@ -2632,7 +2632,7 @@ int ShowStatus() {
 
 
    // für Fernbedienung unsichtbaren Status im Chart speichern
-   string label = StringConcatenate("SnowRoller.status");
+   string label = "SnowRoller.status";
    if (ObjectFind(label) != 0) {
       if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
          return(catch("ShowStatus(2)"));
