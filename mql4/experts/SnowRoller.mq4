@@ -6408,7 +6408,7 @@ bool RecordEquity(bool collectTicks) {
       return(History.AddTick(hFile, time, value));
 
 
-   // (5) Ticks nicht sammeln: ungeschriebene und aktuellen Tick schreiben
+   // (5) ungeschriebene und aktuellen Tick schreiben
    bar = History.FindBar(hFile, barTime, barExists);
 
    if (time-time%period == barTime) {                                      // aktueller Tick gehört zur ungeschriebenen Bar und wird integriert
@@ -6424,7 +6424,7 @@ bool RecordEquity(bool collectTicks) {
    }
    else return(false);
 
-   barTime     = 0;                                                        // für evt. Wechsel von collectTicks (TRUE|FALSE) immer zurücksetzen
+   barTime     = 0;                                                        // für Wechsel von collectTicks (TRUE|FALSE) immer zurücksetzen
    nextBarTime = 0;
    return(true);
 }
