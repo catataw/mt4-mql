@@ -278,7 +278,7 @@ int onTick() {
 
    // (5) Equity-Kurve aufzeichnen (erst nach allen Orderfunktionen, ab dem ersten ausgeführten Trade)
    if (status==STATUS_PROGRESSING) /*&&*/ if (grid.maxLevel.L-grid.maxLevel.S != 0) {
-      RecordEquity();
+      RecordEquity(true);
    }
 
    // (6) Status anzeigen
@@ -624,7 +624,7 @@ bool StopSequence() {
    if (!UpdateStatus(iNull, iNull)) return(false);
    sequenceStop.profit[n] = grid.totalPL;
    if (  !SaveStatus())             return(false);
-   if (!RecordEquity())             return(false);
+   if (!RecordEquity(false))        return(false);
    RedrawStartStop();
 
 
@@ -6317,9 +6317,12 @@ static int time1;
 /**
  * Zeichnet die Equity-Kurve der Sequenz auf.
  *
+ * @param  bool collectTicks - TRUE:  nur komplette Bars werden geschrieben (Ticks einer Bar werden gesammelt und zwischengespeichert)
+ *                             FALSE: jeder einzelne Tick wird geschrieben
+ *
  * @return bool - Erfolgsstatus
  */
-bool RecordEquity() {
+bool RecordEquity(bool collectTicks) {
    /* Speedtest EUR/USD 04.10.2012, M15, long, GridSize 18
    +-------------------------------------+--------------+-----------+--------------+-------------+-------------+--------------+--------------+
    |                                     |     alt      | optimiert | FindBar opt. | Arrays opt. |  Read opt.  |  Write opt.  |  Valid. opt. |
@@ -6337,6 +6340,7 @@ bool RecordEquity() {
       time1 = GetTickCount();
    ticks++;
 
+
    // (1) Filehandle holen
    static int hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
    if (hFile == 0) {
@@ -6351,60 +6355,68 @@ bool RecordEquity() {
    datetime time  = MarketInfo(Symbol(), MODE_TIME);
    double   value = sequenceStartEquity + grid.totalPL;
 
-   bool collectTicks = true;
 
-   // (3) entweder Ticks sofort schreiben...
-   if (!collectTicks)
-      return(History.AddTick(hFile, time, value));
+   // (3) Ticks sammeln: nur komplette Bars schreiben
+   if (collectTicks) {
+      static datetime barTime, nextBarTime, period;
+      bool   barExists[1];
+      int    bar, iNull[1];
+      double data[5];
 
-   // (4) ...oder sammeln und nur komplette Bars schreiben
-   static datetime barTime, nextBarTime, bar, period;
-   bool   barExists[1];
-   int    iNull[1];
-   double data[5];
-
-   if (time >= nextBarTime) {
-      bar = History.FindBar(hFile, time, barExists);                 // immer 1 zu klein, da die ungeschriebene letzte Bar für FindBar() nicht sichtbar ist
-
-      if (nextBarTime == 0) {                                        // erste Initialisierung
-         if (barExists[0]) {
-            if (!History.ReadBar(hFile, bar, iNull, data))           // ggf. vorhandene Bar einlesen (von vorherigem Abbruch)
-               return(false);
-          //data[BAR_O] = ...                                        // unverändert
-            data[BAR_H] = MathMax(data[BAR_H], value);
-            data[BAR_L] = MathMin(data[BAR_L], value);
-            data[BAR_C] = value;
-            data[BAR_V]++;
+      if (time >= nextBarTime) {
+         bar = History.FindBar(hFile, time, barExists);                       // bei bereits gesammelten Ticks (nextBarTime != 0) immer 1 zu klein, da die noch ungeschriebene
+                                                                              // letzte Bar für FindBar() nicht sichtbar ist
+         if (nextBarTime == 0) {
+            if (barExists[0]) {                                               // erste Initialisierung
+               if (!History.ReadBar(hFile, bar, iNull, data))                 // ggf. vorhandene Bar einlesen (von vorherigem Abbruch)
+                  return(false);
+               data[BAR_H] = MathMax(data[BAR_H], value);                     // Open bleibt unverändert
+               data[BAR_L] = MathMin(data[BAR_L], value);
+               data[BAR_C] = value;
+               data[BAR_V]++;
+            }
+            else {
+               data[BAR_O] = value;
+               data[BAR_H] = value;
+               data[BAR_L] = value;
+               data[BAR_C] = value;
+               data[BAR_V] = 1;
+            }
+            period = History.FilePeriod(hFile)*MINUTES;
          }
-         else {
-            data[BAR_O] = value;
+         else {                                                               // letzte Bar komplett, muß an den Offset 'bar' geschrieben werden (nicht bar-1),
+            if (!History.WriteBar(hFile, bar, barTime, data, HST_FILL_GAPS))  // da die ungeschriebene letzte Bar für FindBar() nicht sichtbar ist
+               return(false);
+            data[BAR_O] = value;                                              // Re-Initialisierung
             data[BAR_H] = value;
             data[BAR_L] = value;
             data[BAR_C] = value;
             data[BAR_V] = 1;
          }
-         period = History.FilePeriod(hFile)*MINUTES;
+         barTime     = time - time % period;
+         nextBarTime = barTime + period;
       }
-      else {                                                         // letzte Bar komplett, muß an den Offset 'bar' geschrieben werden (nicht bar-1)
-         if (!History.WriteBar(hFile, bar, barTime, data, HST_FILL_GAPS))
-            return(false);
-         data[BAR_O] = value;                                        // Re-Initialisierung
-         data[BAR_H] = value;
-         data[BAR_L] = value;
+      else {
+         data[BAR_H] = MathMax(data[BAR_H], value);                           // Open bleibt unverändert
+         data[BAR_L] = MathMin(data[BAR_L], value);
          data[BAR_C] = value;
-         data[BAR_V] = 1;
+         data[BAR_V]++;
       }
-      barTime     = time - time % period;
-      nextBarTime = barTime + period;
+      return(true);
    }
-   else {
-    //data[BAR_O] = ...                                              // unverändert
-      data[BAR_H] = MathMax(data[BAR_H], value);
-      data[BAR_L] = MathMin(data[BAR_L], value);
-      data[BAR_C] = value;
-      data[BAR_V]++;
+
+
+   // (4) Ticks nicht sammeln: ungeschriebene Ticks schreiben (können Ticks der aktuellen oder der vorherigen Bar sein)
+   if (barTime != 0) {
+      bar = History.FindBar(hFile, barTime, barExists);
+      if (!History.WriteBar(hFile, bar, barTime, data, HST_FILL_GAPS))
+         return(false);
+      barTime     = 0;                                                        // für evt. Wechsel von collectTicks (TRUE|FALSE) zurücksetzen
+      nextBarTime = 0;
    }
-   return(true);
+
+   // (5) aktuellen Tick schreiben
+   return(History.AddTick(hFile, time, value));
 }
 
 
@@ -6551,25 +6563,14 @@ bool History.ReadBar(int hFile, int bar, datetime &time[], double &data[]) {
    if (ArraySize(time) < 1) ArrayResize(time, 1);
    if (ArraySize(data) < 5) ArrayResize(data, 5);
 
-   /**
-    * struct RateInfo {
-    *   int    time;       //  4
-    *   double open;       //  8
-    *   double low;        //  8
-    *   double high;       //  8
-    *   double close;      //  8
-    *   double volume;     //  8
-    * };                   // 44 byte
-    */
-
-   // Bar lesen
-   int position = HISTORY_HEADER.size + bar*BAR.size;
-   if (!FileSeek(hFile, position, SEEK_SET))
-      return(_false(catch("History.ReadBar(5)")));
-
-   time[0] = FileReadInteger(hFile);
-             FileReadArray  (hFile, data, 0, 5);
-
+   // Bar lesen                                                      // struct RateInfo {
+   int position = HISTORY_HEADER.size + bar*BAR.size;                //    int    time;      //  4
+   if (!FileSeek(hFile, position, SEEK_SET))                         //    double open;      //  8
+      return(_false(catch("History.ReadBar(5)")));                   //    double low;       //  8
+                                                                     //    double high;      //  8
+   time[0] = FileReadInteger(hFile);                                 //    double close;     //  8
+             FileReadArray  (hFile, data, 0, 5);                     //    double volume;    //  8
+                                                                     // };                   // 44 byte
    hst.fileBar    [hFile] = bar;
    hst.fileBarTime[hFile] = time[0];                                 // Cache aktualisieren
    hst.fileBarO   [hFile] = data[BAR_O];
@@ -6580,7 +6581,6 @@ bool History.ReadBar(int hFile, int bar, datetime &time[], double &data[]) {
 
    //int digits = History.FileDigits(hFile);
    //debug("History.ReadBar()   bar="+ bar +"  time="+ TimeToStr(time[0], TIME_FULL) +"   O="+ DoubleToStr(data[BAR_O], digits) +"  H="+ DoubleToStr(data[BAR_H], digits) +"  L="+ DoubleToStr(data[BAR_L], digits) +"  C="+ DoubleToStr(data[BAR_C], digits) +"  V="+ Round(data[BAR_V]));
-
    return(IsNoError(last_error|catch("History.ReadBar(6)")));
 }
 
@@ -6652,7 +6652,7 @@ bool History.InsertBar(int hFile, int bar, datetime time, double data[], int fla
    if (ArraySize(data) != 5)                           return(_false(catch("History.InsertBar(6)   invalid size of parameter data[] = "+ ArraySize(data), ERR_INCOMPATIBLE_ARRAYS)));
 
    //int digits = History.FileDigits(hFile);
-   //debug("History.InsertBar() bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(open, digits) +"  H="+ DoubleToStr(high, digits) +"  L="+ DoubleToStr(low, digits) +"  C="+ DoubleToStr(close, digits) +"  V="+ Round(volume));
+   //debug("History.InsertBar() bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(data[BAR_O], digits) +"  H="+ DoubleToStr(data[BAR_H], digits) +"  L="+ DoubleToStr(data[BAR_L], digits) +"  C="+ DoubleToStr(data[BAR_C], digits) +"  V="+ Round(data[BAR_V]));
 
    // (1) ggf. Lücke für neue Bar schaffen
    if (bar < hst.fileBars[hFile]) {
@@ -6692,28 +6692,18 @@ bool History.WriteBar(int hFile, int bar, datetime time, double data[], int flag
    if (ArraySize(data) != 5)                           return(_false(catch("History.WriteBar(6)   invalid size of parameter data[] = "+ ArraySize(data), ERR_INCOMPATIBLE_ARRAYS)));
 
    //int digits = History.FileDigits(hFile);
-   //debug("History.WriteBar()  bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(open, digits) +"  H="+ DoubleToStr(high, digits) +"  L="+ DoubleToStr(low, digits) +"  C="+ DoubleToStr(close, digits) +"  V="+ Round(volume));
+   //debug("History.WriteBar()  bar="+ bar +"  time="+ TimeToStr(time, TIME_FULL) +"   O="+ DoubleToStr(data[BAR_O], digits) +"  H="+ DoubleToStr(data[BAR_H], digits) +"  L="+ DoubleToStr(data[BAR_L], digits) +"  C="+ DoubleToStr(data[BAR_C], digits) +"  V="+ Round(data[BAR_V]));
 
-   /**
-    * struct RateInfo {
-    *   int    time;       //  4
-    *   double open;       //  8
-    *   double low;        //  8
-    *   double high;       //  8
-    *   double close;      //  8
-    *   double volume;     //  8
-    * };                   // 44 byte
-    */
 
    // (1) Bar schreiben
-   int position = HISTORY_HEADER.size + bar*BAR.size;
-   if (!FileSeek(hFile, position, SEEK_SET))
-      return(_false(catch("History.WriteBar(7)")));
-
-   FileWriteInteger(hFile, time);
-   FileWriteArray  (hFile, data, 0, 5);
-
-
+   int position = HISTORY_HEADER.size + bar*BAR.size;                // struct RateInfo {
+   if (!FileSeek(hFile, position, SEEK_SET))                         //    int    time;      //  4
+      return(_false(catch("History.WriteBar(7)")));                  //    double open;      //  8
+                                                                     //    double low;       //  8
+   FileWriteInteger(hFile, time);                                    //    double high;      //  8
+   FileWriteArray  (hFile, data, 0, 5);                              //    double close;     //  8
+                                                                     //    double volume;    //  8
+                                                                     // };                   // 44 byte
    // (2) interne Daten aktualisieren
    if (bar >= hst.fileBars[hFile]) { hst.fileSize   [hFile] = position + BAR.size;
                                      hst.fileBars   [hFile] = bar + 1; }
@@ -6748,25 +6738,17 @@ bool History.WriteCachedBar(int hFile) {
    int bar = hst.fileBar[hFile];
    if (bar < 0)                                        return(_false(catch("History.WriteCachedBar(4)   invalid cached bar value = "+ bar, ERR_RUNTIME_ERROR)));
 
-   /**
-    * struct RateInfo {
-    *   int    time;       //  4
-    *   double open;       //  8
-    *   double low;        //  8
-    *   double high;       //  8
-    *   double close;      //  8
-    *   double volume;     //  8
-    * };                   // 44 byte
-    */
+   //int digits = History.FileDigits(hFile);
+   //debug("History.WriteCachedBar()  bar="+ bar +"  time="+ TimeToStr(hst.fileBarTime[hFile], TIME_FULL) +"   O="+ DoubleToStr(hst.fileBarO[hFile], digits) +"  H="+ DoubleToStr(hst.fileBarH[hFile], digits) +"  L="+ DoubleToStr(hst.fileBarL[hFile], digits) +"  C="+ DoubleToStr(hst.fileBarC[hFile], digits) +"  V="+ Round(hst.fileBarV[hFile]));
 
-   // Bar schreiben
-   int position = HISTORY_HEADER.size + bar*BAR.size;
-   if (!FileSeek(hFile, position, SEEK_SET))
-      return(_false(catch("History.WriteCachedBar(5)")));
-
-   FileWriteInteger(hFile, hst.fileBarTime[hFile]);
-   FileWriteDouble (hFile, hst.fileBarO   [hFile]);
-   FileWriteDouble (hFile, hst.fileBarL   [hFile]);
+   // Bar schreiben                                                  // struct RateInfo {
+   int position = HISTORY_HEADER.size + bar*BAR.size;                //    int    time;      //  4
+   if (!FileSeek(hFile, position, SEEK_SET))                         //    double open;      //  8
+      return(_false(catch("History.WriteCachedBar(5)")));            //    double low;       //  8
+                                                                     //    double high;      //  8
+   FileWriteInteger(hFile, hst.fileBarTime[hFile]);                  //    double close;     //  8
+   FileWriteDouble (hFile, hst.fileBarO   [hFile]);                  //    double volume;    //  8
+   FileWriteDouble (hFile, hst.fileBarL   [hFile]);                  // };                   // 44 byte
    FileWriteDouble (hFile, hst.fileBarH   [hFile]);
    FileWriteDouble (hFile, hst.fileBarC   [hFile]);
    FileWriteDouble (hFile, hst.fileBarV   [hFile]);
@@ -7315,5 +7297,5 @@ int afterDeinit() {
    History.ReadBar(NULL, NULL, iNulls, dNulls);
    History.WriteBar(NULL, NULL, NULL, dNulls, NULL);
    History.WriteCachedBar(NULL);
-   RecordEquity();
+   RecordEquity(NULL);
 }
