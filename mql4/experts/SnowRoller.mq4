@@ -1047,11 +1047,11 @@ bool UpdateStatus(int limits[], int stops[]) {
 
    // (4) ggf. Status aktualisieren
    if (status == STATUS_STOPPING) {
-      if (!openPositions) {                                                      // Sequenzstop im STATUS_MONITORING oder autom. Close bei Testende
+      if (!openPositions) {                                                      // Sequenzstop im STATUS_MONITORING oder Auto-Close durch Tester bei Testende
          n = ArraySize(sequenceStop.event) - 1;
          sequenceStop.event [n] = CreateEventId();
-         sequenceStop.time  [n] = UpdateStatus.CalculateStopTime();
-         sequenceStop.price [n] = UpdateStatus.CalculateStopPrice();
+         sequenceStop.time  [n] = UpdateStatus.CalculateStopTime();  if (!sequenceStop.time [n]) return(false);
+         sequenceStop.price [n] = UpdateStatus.CalculateStopPrice(); if (!sequenceStop.price[n]) return(false);
          sequenceStop.profit[n] = grid.totalPL;
 
          if (grid.direction != D_BIDIR)
@@ -1207,9 +1207,9 @@ string UpdateStatus.PositionCloseMsg(int i) {
 
 
 /**
- * Ermittelt die StopTime der aktuell gestoppten Sequenz. Wird nur nach externem Sequencestop verwendet.
+ * Ermittelt die StopTime der aktuell gestoppten Sequenz. Aufruf nur nach externem Sequencestop.
  *
- * @return datetime
+ * @return datetime - Zeitpunkt oder NULL, falls ein Fehler auftrat
  */
 datetime UpdateStatus.CalculateStopTime() {
    if (status != STATUS_STOPPING)      return(_NULL(catch("UpdateStatus.CalculateStopTime(1)   cannot calculate stop time for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
@@ -1230,11 +1230,11 @@ datetime UpdateStatus.CalculateStopTime() {
          continue;
 
       if (orders.level[i] > 0) {
-         if (orders.level[i] != n.L) return(_NULL(catch("UpdateStatus.CalculateStopTime(4)   #"+ orders.ticket[i] +" (level="+ orders.level[i] +") doesn't match the expected level "+ n.L, ERR_RUNTIME_ERROR)));
+         if (orders.level[i] != n.L) return(_NULL(catch("UpdateStatus.CalculateStopTime(4)   #"+ orders.ticket[i] +" (level "+ orders.level[i] +") doesn't match the expected level "+ n.L, ERR_RUNTIME_ERROR)));
          n.L--;
       }
       else {
-         if (orders.level[i] != n.S) return(_NULL(catch("UpdateStatus.CalculateStopTime(5)   #"+ orders.ticket[i] +" (level="+ orders.level[i] +") doesn't match the expected level "+ n.S, ERR_RUNTIME_ERROR)));
+         if (orders.level[i] != n.S) return(_NULL(catch("UpdateStatus.CalculateStopTime(5)   #"+ orders.ticket[i] +" (level "+ orders.level[i] +") doesn't match the expected level "+ n.S, ERR_RUNTIME_ERROR)));
          n.S++;
       }
       stopTime = Max(stopTime, orders.closeTime[i]);
@@ -1244,9 +1244,9 @@ datetime UpdateStatus.CalculateStopTime() {
 
 
 /**
- * Ermittelt den durchschnittlichen StopPrice der aktuell gestoppten Sequenz. Wird nur nach externem Sequencestop verwendet.
+ * Ermittelt den durchschnittlichen StopPrice der aktuell gestoppten Sequenz. Aufruf nur nach externem Sequencestop.
  *
- * @return double
+ * @return double - Preis oder NULL, falls ein Fehler auftrat
  */
 double UpdateStatus.CalculateStopPrice() {
    if (status != STATUS_STOPPING)      return(_NULL(catch("UpdateStatus.CalculateStopPrice(1)   cannot calculate stop price for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
@@ -1267,12 +1267,12 @@ double UpdateStatus.CalculateStopPrice() {
          continue;
 
       if (orders.level[i] > 0) {
-         if (orders.level[i] != n.L) return(_NULL(catch("UpdateStatus.CalculateStopPrice(4)   #"+ orders.ticket[i] +" (level="+ orders.level[i] +") doesn't match the expected level "+ n.L, ERR_RUNTIME_ERROR)));
+         if (orders.level[i] != n.L) return(_NULL(catch("UpdateStatus.CalculateStopPrice(4)   #"+ orders.ticket[i] +" (level "+ orders.level[i] +") doesn't match the expected level "+ n.L, ERR_RUNTIME_ERROR)));
          stopPrice.L += orders.closePrice[i];
          n.L--;
       }
       else {
-         if (orders.level[i] != n.S) return(_NULL(catch("UpdateStatus.CalculateStopTime(5)   #"+ orders.ticket[i] +" (level="+ orders.level[i] +") doesn't match the expected level "+ n.S, ERR_RUNTIME_ERROR)));
+         if (orders.level[i] != n.S) return(_NULL(catch("UpdateStatus.CalculateStopPrice(5)   #"+ orders.ticket[i] +" (level "+ orders.level[i] +") doesn't match the expected level "+ n.S, ERR_RUNTIME_ERROR)));
          stopPrice.S += orders.closePrice[i];
          n.S++;
       }
@@ -1340,14 +1340,13 @@ bool IsOrderClosedBySL() {
          closedBySL = true;
       }
       else {
-         // immer StopLoss aus Griddaten verwenden (SL kann client-seitig verwaltet sein)
+         // StopLoss aus Griddaten verwenden (bei client-seitiger Verwaltung nur dort gespeichert)
          int i = SearchIntArray(orders.ticket, OrderTicket());
 
          if (i == -1)                   return(_false(catch("IsOrderClosedBySL(1)   #"+ OrderTicket() +" not found in grid arrays", ERR_RUNTIME_ERROR)));
          if (EQ(orders.stopLoss[i], 0)) return(_false(catch("IsOrderClosedBySL(2)   #"+ OrderTicket() +" no stop-loss found in grid arrays", ERR_RUNTIME_ERROR)));
 
-         if      (orders.clientSL  [i]  ) closedBySL = true;
-         else if (orders.closedBySL[i]  ) closedBySL = true;
+         if      (orders.closedBySL[i]  ) closedBySL = true;
          else if (OrderType() == OP_BUY ) closedBySL = LE(OrderClosePrice(), orders.stopLoss[i]);
          else if (OrderType() == OP_SELL) closedBySL = GE(OrderClosePrice(), orders.stopLoss[i]);
       }
