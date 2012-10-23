@@ -80,7 +80,7 @@ int onStart() {
    if (!IsLastError()) {
       if (sizeOfIds == 0) {
          ForceSound("chord.wav");
-         ForceMessageBox(__NAME__, "No sequence to stop found.", MB_ICONEXCLAMATION|MB_OK);
+         ForceMessageBox(__NAME__, "No running sequence found.", MB_ICONEXCLAMATION|MB_OK);
       }
       catch("onStart(3)");
    }
