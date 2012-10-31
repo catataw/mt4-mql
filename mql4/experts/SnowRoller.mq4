@@ -6,11 +6,11 @@
  *  TODO:
  *  -----
  *  - Laufzeitumgebung auf Server einrichten                                                          *
- *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes                                         *
  *  - Equity-Charts: Schreiben aus Online-Chart                                                       *
- *
  *  - bidirektionales Grid vervollständigen                                                           *
+ *  - zum Testen als endloslaufende Strategy implementieren                                           *
+ *
  *  - Abbruch wegen geändertem Ticketstatus abfangen                                                  *
  *  - Abbruch wegen IsStopped()=TRUE abfangen                                                         *
  *
