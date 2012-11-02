@@ -5,7 +5,7 @@
  *
  *  TODO:
  *  -----
- *  - bidirektionales Grid vervollständigen                                                           *
+ *  - bidirektionales Grid vervollständigen: Anzeige, Start/Stopdaten                                 *
  *  - zum Testen als Endlos-Strategy implementieren                                                   *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes                                         *
  *  - Equity-Charts: Schreiben aus Online-Chart                                                       *
