@@ -1,4 +1,5 @@
 config
 files
 logs
+presets
 templates
