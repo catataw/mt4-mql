@@ -5,11 +5,11 @@
  *
  *  TODO:
  *  -----
- *  - Laufzeitumgebung auf Server einrichten                                                          *
+ *  - bidirektionales Grid vervollständigen                                                           *
+ *  - zum Testen als Endlos-Strategy implementieren                                                   *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes                                         *
  *  - Equity-Charts: Schreiben aus Online-Chart                                                       *
- *  - bidirektionales Grid vervollständigen                                                           *
- *  - zum Testen als endloslaufende Strategy implementieren                                           *
+ *  - Laufzeitumgebung auf Server einrichten                                                          *
  *
  *  - Abbruch wegen geändertem Ticketstatus abfangen                                                  *
  *  - Abbruch wegen IsStopped()=TRUE abfangen                                                         *
@@ -26,8 +26,8 @@
  *  - Logging aller MessageBoxen
  *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *
- *  - Build 419 silently crashed (1 mal)
- *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec. (TCP-Socket Timeout???)
+ *  - Build 419 silently crashes (1 mal)
+ *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec. (Socket-Timeout???)
  *  - Alpari: StopOrder-Slippage EUR/USD bis 4.1 pip, GBP/AUD bis 6 pip, GBP/JPY bis 21.4 pip
  *  - FxPro: zu viele Traderequests in zu kurzer Zeit => ERR_TRADE_TIMEOUT
  *
