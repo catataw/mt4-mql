@@ -4494,7 +4494,7 @@ bool RestoreStatus() {
    }
 
    // notwendige Schlüssel definieren
-   string keys[] = { "Account", "Symbol", "Sequence.ID", "GridDirection", "GridSize", "LotSize", "rt.instanceStartTime", "rt.instanceStartPrice", "rt.sequenceStartEquity", "rt.sequenceStarts", "rt.sequenceStops", "rt.grid.maxProfit", "rt.grid.maxDrawdown", "rt.grid.base.L", "rt.grid.base.S" };
+   string keys[] = { "Account", "Symbol", "Sequence.ID", "GridDirection", "GridSize", "LotSize", "rt.instanceStartTime", "rt.instanceStartPrice", "rt.sequenceStartEquity", "rt.sequenceStarts", "rt.sequenceStops", "rt.grid.maxProfit", "rt.grid.maxDrawdown", "rt.grid.base", "rt.grid.base.L", "rt.grid.base.S" };
    /*                "Account"                 ,                        // Der Compiler kommt mit den Zeilennummern durcheinander,
                      "Symbol"                  ,                        // wenn der Initializer nicht komplett in einer Zeile steht.
                      "Sequence.ID"             ,
@@ -4516,7 +4516,8 @@ bool RestoreStatus() {
                    //"rt.ignoreClosedPositions",                        // optional
                      "rt.grid.maxProfit"       ,
                      "rt.grid.maxDrawdown"     ,
-                     "rt.grid.base.L"          ,
+                     "rt.grid.base"            ,                        // altes Format
+                     "rt.grid.base.L"          ,                        // neues Format
                      "rt.grid.base.S"          ,
    */
 
@@ -4849,51 +4850,66 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       grid.maxDrawdown = StrToDouble(value); SS.Grid.MaxDrawdown();
       ArrayDropString(keys, key);
    }
-   else if (key=="rt.grid.base.L" || key=="rt.grid.base.S") {
-      // rt.grid.base.{L|S}=1|1331710960|1.56743,2|1331711010|1.56714
-      string direction = StringRight(key, 1);
+   else if (key=="rt.grid.base" || key=="rt.grid.base.L" || key=="rt.grid.base.S") {
+      // rt.grid.base[.{L|S}]=1|1331710960|1.56743,2|1331711010|1.56714
+      string direction = "";
+      if (key == "rt.grid.base") {
+         if (grid.direction == D_LONG ) direction = ".L";
+         if (grid.direction == D_SHORT) direction = ".S";
+      }
+      else {
+         direction = StringRight(key, 2);
+      }
       sizeOfValues = Explode(value, ",", values, NULL);
       for (i=0; i < sizeOfValues; i++) {
-         if (Explode(values[i], "|", data, NULL) != 3)                      return(_false(catch("RestoreStatus.Runtime(39)   illegal number of grid.base."+ direction +"["+ i +"] details (\""+ values[i] +"\" = "+ ArraySize(data) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (Explode(values[i], "|", data, NULL) != 3)                      return(_false(catch("RestoreStatus.Runtime(39)   illegal number of grid.base"+ direction +"["+ i +"] details (\""+ values[i] +"\" = "+ ArraySize(data) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
          value = data[0];                          // GridBase-Event
-         if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(40)   illegal grid.base.event."+ direction +"["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(40)   illegal grid.base.event"+ direction +"["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          int gridBaseEvent = StrToInteger(value);
          int starts = ArraySize(sequenceStart.event);
          if (gridBaseEvent == 0) {
             if (sizeOfValues==1 && values[0]=="0|0|0") {
                if (starts > 0) {
-                  if (grid.direction==D_LONG  && direction=="S") break;
-                  if (grid.direction==D_SHORT && direction=="L") break;     return(_false(catch("RestoreStatus.Runtime(41)   sequenceStart/grid.base."+ direction +"["+ i +"] mis-match '"+ TimeToStr(sequenceStart.time[0], TIME_FULL) +"'/\""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+                  if (grid.direction==D_LONG  && direction==".S") break;
+                  if (grid.direction==D_SHORT && direction==".L") break;    return(_false(catch("RestoreStatus.Runtime(41)   sequenceStart/grid.base"+ direction +"["+ i +"] mis-match '"+ TimeToStr(sequenceStart.time[0], TIME_FULL) +"'/\""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
                }
                break;
-            }                                                               return(_false(catch("RestoreStatus.Runtime(42)   illegal grid.base.event."+ direction +"["+ i +"] "+ gridBaseEvent +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+            }                                                               return(_false(catch("RestoreStatus.Runtime(42)   illegal grid.base.event"+ direction +"["+ i +"] "+ gridBaseEvent +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          }
-         else if (starts == 0)                                              return(_false(catch("RestoreStatus.Runtime(43)   sequenceStart/grid.base."+ direction +"["+ i +"] mis-match "+ starts +"/\""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         else if (starts == 0)                                              return(_false(catch("RestoreStatus.Runtime(43)   sequenceStart/grid.base"+ direction +"["+ i +"] mis-match "+ starts +"/\""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
          value = data[1];                          // GridBase-Zeitpunkt
-         if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(44)   illegal grid.base.time."+ direction +"["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(44)   illegal grid.base.time"+ direction +"["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          datetime gridBaseTime = StrToInteger(value);
-         if (gridBaseTime == 0)                                             return(_false(catch("RestoreStatus.Runtime(45)   illegal grid.base.time."+ direction +"["+ i +"] "+ gridBaseTime +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (gridBaseTime == 0)                                             return(_false(catch("RestoreStatus.Runtime(45)   illegal grid.base.time"+ direction +"["+ i +"] "+ gridBaseTime +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
          value = data[2];                          // GridBase-Wert
-         if (!StringIsNumeric(value))                                       return(_false(catch("RestoreStatus.Runtime(46)   illegal grid.base.value."+ direction +"["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsNumeric(value))                                       return(_false(catch("RestoreStatus.Runtime(46)   illegal grid.base.value"+ direction +"["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          double gridBaseValue = StrToDouble(value);
-         if (LE(gridBaseValue, 0))                                          return(_false(catch("RestoreStatus.Runtime(47)   illegal grid.base.value."+ direction +"["+ i +"] "+ NumberToStr(gridBaseValue, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (LE(gridBaseValue, 0))                                          return(_false(catch("RestoreStatus.Runtime(47)   illegal grid.base.value"+ direction +"["+ i +"] "+ NumberToStr(gridBaseValue, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
-         if (direction == "L") {
+         if (grid.direction != D_SHORT) {
             ArrayPushInt   (grid.base.L.event, gridBaseEvent);
             ArrayPushInt   (grid.base.L.time,  gridBaseTime );
             ArrayPushDouble(grid.base.L.value, gridBaseValue);
          }
-         else /*(direction == "S")*/ {
+         if (grid.direction != D_LONG) {
             ArrayPushInt   (grid.base.S.event, gridBaseEvent);
             ArrayPushInt   (grid.base.S.time,  gridBaseTime );
             ArrayPushDouble(grid.base.S.value, gridBaseValue);
          }
          lastEventId = Max(lastEventId, gridBaseEvent);
       }
-      ArrayDropString(keys, key);
+      if (key == "rt.grid.base") {
+         ArrayDropString(keys, key);
+         ArrayDropString(keys, "rt.grid.base.L");
+         ArrayDropString(keys, "rt.grid.base.S");
+      }
+      else {
+         ArrayDropString(keys, "rt.grid.base");
+         ArrayDropString(keys, key);
+      }
    }
    else if (StringStartsWith(key, "rt.order.")) {
       // rt.order.{i}={ticket},{level},{gridBase},{pendingType},{pendingTime},{pendingPrice},{type},{openEvent},{openTime},{openPrice},{openRisk},{closeEvent},{closeTime},{closePrice},{stopLoss},{clientSL},{closedBySL},{swap},{commission},{profit}
@@ -5249,12 +5265,13 @@ bool SynchronizeStatus() {
 
    // (2.3) Wurde die Sequenz außerhalb gestoppt, EV_SEQUENCE_STOP erzeugen
    if (status.L==STATUS_STOPPING || status.S==STATUS_STOPPING) {
+      status = STATUS_STOPPING;
       i = ArraySize(sequenceStop.event) - 1;
       if (sequenceStop.time[i] != 0)
          return(_false(catch("SynchronizeStatus(10)   unexpected sequenceStop.time="+ IntsToStr(sequenceStop.time, NULL), ERR_RUNTIME_ERROR)));
 
-      sequenceStop.event [i] = CreateEventId();
-      sequenceStop.time  [i] = Max(stopTime.L, stopTime.S);
+      sequenceStop.event[i] = CreateEventId();
+      sequenceStop.time [i] = Max(stopTime.L, stopTime.S);
          int level = grid.level.L + grid.level.S;
          if      (level > 0)                 sequenceStop.price[i] =  stopPrice.L;
          else if (level < 0)                 sequenceStop.price[i] =  stopPrice.S;
