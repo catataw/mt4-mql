@@ -4504,6 +4504,7 @@ bool RestoreStatus() {
                      "LotSize"                 ,
                    //"StartConditions"         ,                        // optional
                    //"StopConditions"          ,                        // optional
+                     ---------------------------
                      "rt.instanceStartTime"    ,
                      "rt.instanceStartPrice"   ,
                      "rt.sequenceStartEquity"  ,
@@ -4555,17 +4556,25 @@ bool RestoreStatus() {
          Sequence.StatusLocation = value;
       }
       else if (key == "GridDirection") {
+         // GridDirection für Runtime-Settings sofort validieren: analog zu ValidateConfiguration()
          if (value == "")                                               return(_false(catch("RestoreStatus(8)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
-         GridDirection = value;
+         value = StringToLower(value);
+         switch (StringGetChar(value, 0)) {
+            case 'b': grid.direction = D_BIDIR; break;
+            case 'l': grid.direction = D_LONG;  break;
+            case 's': grid.direction = D_SHORT; break;
+            default:                                                    return(_false(catch("RestoreStatus(9)   illegal GridDirection \""+ parts[1] +"\" in status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         }
+         GridDirection = directionDescr[grid.direction];
          ArrayDropString(keys, key);
       }
       else if (key == "GridSize") {
-         if (!StringIsDigit(value))                                     return(_false(catch("RestoreStatus(9)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsDigit(value))                                     return(_false(catch("RestoreStatus(10)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          GridSize = StrToInteger(value);
          ArrayDropString(keys, key);
       }
       else if (key == "LotSize") {
-         if (!StringIsNumeric(value))                                   return(_false(catch("RestoreStatus(10)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsNumeric(value))                                   return(_false(catch("RestoreStatus(11)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          LotSize = StrToDouble(value);
          ArrayDropString(keys, key);
       }
@@ -4581,7 +4590,7 @@ bool RestoreStatus() {
    // Account: Eine Testsequenz kann in einem anderen Account visualisiert werden, solange die Zeitzonen beider Accounts übereinstimmen.
    if (accountValue != ShortAccountCompany()+":"+GetAccountNumber()) {
       if (IsTesting() || !IsTest() || !StringIStartsWith(accountValue, ShortAccountCompany()+":"))
-                                                                        return(_false(catch("RestoreStatus(11)   account mis-match \""+ ShortAccountCompany() +":"+ GetAccountNumber() +"\"/\""+ accountValue +"\" in status file \""+ fileName +"\" (line \""+ lines[accountLine] +"\")", ERR_RUNTIME_ERROR)));
+                                                                        return(_false(catch("RestoreStatus(12)   account mis-match \""+ ShortAccountCompany() +":"+ GetAccountNumber() +"\"/\""+ accountValue +"\" in status file \""+ fileName +"\" (line \""+ lines[accountLine] +"\")", ERR_RUNTIME_ERROR)));
    }
 
    // (5.1) Runtime-Settings auslesen, validieren und übernehmen
@@ -4605,7 +4614,7 @@ bool RestoreStatus() {
    lastEventId = 0;
 
    for (i=0; i < size; i++) {
-      if (Explode(lines[i], "=", parts, 2) < 2)                         return(_false(catch("RestoreStatus(12)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
+      if (Explode(lines[i], "=", parts, 2) < 2)                         return(_false(catch("RestoreStatus(13)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
       key   = StringTrim(parts[0]);
       value = StringTrim(parts[1]);
 
@@ -4613,18 +4622,18 @@ bool RestoreStatus() {
          if (!RestoreStatus.Runtime(fileName, lines[i], key, value, keys))
             return(false);
    }
-   if (ArraySize(keys) > 0)                                             return(_false(catch("RestoreStatus(13)   "+ ifString(ArraySize(keys)==1, "entry", "entries") +" \""+ JoinStrings(keys, "\", \"") +"\" missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
+   if (ArraySize(keys) > 0)                                             return(_false(catch("RestoreStatus(14)   "+ ifString(ArraySize(keys)==1, "entry", "entries") +" \""+ JoinStrings(keys, "\", \"") +"\" missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
 
    // (5.2) Abhängigkeiten validieren
-   if (ArraySize(sequenceStart.event) != ArraySize(sequenceStop.event)) return(_false(catch("RestoreStatus(14)   sequenceStarts("+ ArraySize(sequenceStart.event) +") / sequenceStops("+ ArraySize(sequenceStop.event) +") mis-match in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
-   if (IntInArray(orders.ticket, 0))                                    return(_false(catch("RestoreStatus(15)   one or more order entries missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
+   if (ArraySize(sequenceStart.event) != ArraySize(sequenceStop.event)) return(_false(catch("RestoreStatus(15)   sequenceStarts("+ ArraySize(sequenceStart.event) +") / sequenceStops("+ ArraySize(sequenceStop.event) +") mis-match in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
+   if (IntInArray(orders.ticket, 0))                                    return(_false(catch("RestoreStatus(16)   one or more order entries missing in file \""+ fileName +"\"", ERR_RUNTIME_ERROR)));
 
 
    ArrayResize(lines, 0);
    ArrayResize(keys,  0);
    ArrayResize(parts, 0);
 
-   return(IsNoError(last_error|catch("RestoreStatus(16)")));
+   return(IsNoError(last_error|catch("RestoreStatus(17)")));
 }
 
 
@@ -4841,39 +4850,43 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
       ArrayDropString(keys, key);
    }
    else if (key=="rt.grid.base.L" || key=="rt.grid.base.S") {
-      // rt.grid.base.{LS}=1|1331710960|1.56743,2|1331711010|1.56714
+      // rt.grid.base.{L|S}=1|1331710960|1.56743,2|1331711010|1.56714
+      string direction = StringRight(key, 1);
       sizeOfValues = Explode(value, ",", values, NULL);
       for (i=0; i < sizeOfValues; i++) {
-         if (Explode(values[i], "|", data, NULL) != 3)                      return(_false(catch("RestoreStatus.Runtime(39)   illegal number of grid.base["+ i +"] details (\""+ values[i] +"\" = "+ ArraySize(data) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (Explode(values[i], "|", data, NULL) != 3)                      return(_false(catch("RestoreStatus.Runtime(39)   illegal number of grid.base."+ direction +"["+ i +"] details (\""+ values[i] +"\" = "+ ArraySize(data) +") in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
          value = data[0];                          // GridBase-Event
-         if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(40)   illegal grid.base.event["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(40)   illegal grid.base.event."+ direction +"["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          int gridBaseEvent = StrToInteger(value);
          int starts = ArraySize(sequenceStart.event);
          if (gridBaseEvent == 0) {
             if (sizeOfValues==1 && values[0]=="0|0|0") {
-               if (starts > 0)                                              return(_false(catch("RestoreStatus.Runtime(41)   sequenceStart/grid.base["+ i +"] mis-match '"+ TimeToStr(sequenceStart.time[0], TIME_FULL) +"'/\""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+               if (starts > 0) {
+                  if (grid.direction==D_LONG  && direction=="S") break;
+                  if (grid.direction==D_SHORT && direction=="L") break;     return(_false(catch("RestoreStatus.Runtime(41)   sequenceStart/grid.base."+ direction +"["+ i +"] mis-match '"+ TimeToStr(sequenceStart.time[0], TIME_FULL) +"'/\""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+               }
                break;
-            }                                                               return(_false(catch("RestoreStatus.Runtime(42)   illegal grid.base.event["+ i +"] "+ gridBaseEvent +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+            }                                                               return(_false(catch("RestoreStatus.Runtime(42)   illegal grid.base.event."+ direction +"["+ i +"] "+ gridBaseEvent +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          }
-         else if (starts == 0)                                              return(_false(catch("RestoreStatus.Runtime(43)   sequenceStart/grid.base["+ i +"] mis-match "+ starts +"/\""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         else if (starts == 0)                                              return(_false(catch("RestoreStatus.Runtime(43)   sequenceStart/grid.base."+ direction +"["+ i +"] mis-match "+ starts +"/\""+ values[i] +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
          value = data[1];                          // GridBase-Zeitpunkt
-         if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(44)   illegal grid.base.time["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsDigit(value))                                         return(_false(catch("RestoreStatus.Runtime(44)   illegal grid.base.time."+ direction +"["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          datetime gridBaseTime = StrToInteger(value);
-         if (gridBaseTime == 0)                                             return(_false(catch("RestoreStatus.Runtime(45)   illegal grid.base.time["+ i +"] "+ gridBaseTime +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (gridBaseTime == 0)                                             return(_false(catch("RestoreStatus.Runtime(45)   illegal grid.base.time."+ direction +"["+ i +"] "+ gridBaseTime +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
          value = data[2];                          // GridBase-Wert
-         if (!StringIsNumeric(value))                                       return(_false(catch("RestoreStatus.Runtime(46)   illegal grid.base.value["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (!StringIsNumeric(value))                                       return(_false(catch("RestoreStatus.Runtime(46)   illegal grid.base.value."+ direction +"["+ i +"] \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
          double gridBaseValue = StrToDouble(value);
-         if (LE(gridBaseValue, 0))                                          return(_false(catch("RestoreStatus.Runtime(47)   illegal grid.base.value["+ i +"] "+ NumberToStr(gridBaseValue, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
+         if (LE(gridBaseValue, 0))                                          return(_false(catch("RestoreStatus.Runtime(47)   illegal grid.base.value."+ direction +"["+ i +"] "+ NumberToStr(gridBaseValue, PriceFormat) +" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
 
-         if (key == "rt.grid.base.L") {
+         if (direction == "L") {
             ArrayPushInt   (grid.base.L.event, gridBaseEvent);
             ArrayPushInt   (grid.base.L.time,  gridBaseTime );
             ArrayPushDouble(grid.base.L.value, gridBaseValue);
          }
-         else {
+         else /*(direction == "S")*/ {
             ArrayPushInt   (grid.base.S.event, gridBaseEvent);
             ArrayPushInt   (grid.base.S.time,  gridBaseTime );
             ArrayPushDouble(grid.base.S.value, gridBaseValue);
@@ -5186,8 +5199,8 @@ bool SynchronizeStatus() {
    }
 
    if (ArraySize(sequenceStart.event) > 0) {
-      if (ArraySize(grid.base.L.event) == 0) return(_false(catch("SynchronizeStatus(8)   illegal number of grid.base.L events = "+ 0, ERR_RUNTIME_ERROR)));
-      if (ArraySize(grid.base.S.event) == 0) return(_false(catch("SynchronizeStatus(9)   illegal number of grid.base.S events = "+ 0, ERR_RUNTIME_ERROR)));
+      if (grid.direction!=D_SHORT && !ArraySize(grid.base.L.event)) return(_false(catch("SynchronizeStatus(8)   illegal number of grid.base.L events = "+ 0, ERR_RUNTIME_ERROR)));
+      if (grid.direction!=D_LONG  && !ArraySize(grid.base.S.event)) return(_false(catch("SynchronizeStatus(9)   illegal number of grid.base.S events = "+ 0, ERR_RUNTIME_ERROR)));
    }
 
 
