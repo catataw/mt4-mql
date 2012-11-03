@@ -216,8 +216,8 @@ string   str.LotSize             = "";                              // Zwischens
 string   str.startConditions     = "";
 string   str.stopConditions      = "";
 string   str.grid.direction      = "";
-string   str.grid.level.L        = "",        str.grid.level.S        = "", str.grid.level.B    = "";
-string   str.grid.maxLevel.L     = "",        str.grid.maxLevel.S     = "", str.grid.maxLevel.B = "";
+string   str.grid.level.L        = "",        str.grid.level.S        = "", str.grid.level.LS    = "";
+string   str.grid.maxLevel.L     = "",        str.grid.maxLevel.S     = "", str.grid.maxLevel.LS = "";
 string   str.grid.base.L         = "",        str.grid.base.S         = "";
 string   str.grid.stops.L        = "0 stops", str.grid.stops.S        = "0 stops";
 string   str.grid.stopsPL.L      = "",        str.grid.stopsPL.S      = "";
@@ -466,7 +466,7 @@ bool StopSequence() {
 
    if (status != STATUS_STOPPED) {
       status = STATUS_STOPPING;
-      if (__LOG) log(StringConcatenate("StopSequence()   stopping sequence at level ", str.grid.level.B));
+      if (__LOG) log(StringConcatenate("StopSequence()   stopping sequence at level ", str.grid.level.LS));
    }
 
 
@@ -611,7 +611,7 @@ bool StopSequence() {
 
    if (status != STATUS_STOPPED) {
       status = STATUS_STOPPED;
-      if (__LOG) log(StringConcatenate("StopSequence()   sequence stopped at ", NumberToStr(sequenceStop.price[n], PriceFormat), ", level ", str.grid.level.B));
+      if (__LOG) log(StringConcatenate("StopSequence()   sequence stopped at ", NumberToStr(sequenceStop.price[n], PriceFormat), ", level ", str.grid.level.LS));
    }
 
 
@@ -709,7 +709,7 @@ bool ResumeSequence() {
 
 
    status = STATUS_STARTING;
-   if (__LOG) log(StringConcatenate("ResumeSequence()   resuming sequence at level ", str.grid.level.B));
+   if (__LOG) log(StringConcatenate("ResumeSequence()   resuming sequence at level ", str.grid.level.LS));
 
    datetime startTime,  startTime.L,  startTime.S;
    double   startPrice, startPrice.L, startPrice.S, lastStopPrice, gridBase.L, gridBase.S;
@@ -832,7 +832,7 @@ bool ResumeSequence() {
                           +"  openRisk="   + DoubleToStr(grid.openRisk,    2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
    */
-   if (__LOG) log(StringConcatenate("ResumeSequence()   sequence resumed at ", NumberToStr(startPrice, PriceFormat), ", level ", str.grid.level.B));
+   if (__LOG) log(StringConcatenate("ResumeSequence()   sequence resumed at ", NumberToStr(startPrice, PriceFormat), ", level ", str.grid.level.LS));
    return(IsNoError(last_error|catch("ResumeSequence(4)")));
 }
 
@@ -1217,7 +1217,7 @@ string UpdateStatus.PositionCloseMsg(int i) {
  */
 datetime UpdateStatus.CalculateStopTime() {
    if (status != STATUS_STOPPING)      return(_NULL(catch("UpdateStatus.CalculateStopTime(1)   cannot calculate stop time for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
-   if (grid.level.L-grid.level.S == 0) return(_NULL(catch("UpdateStatus.CalculateStopTime(2)   cannot calculate stop time for sequence at level "+ str.grid.level.B, ERR_RUNTIME_ERROR)));
+   if (grid.level.L-grid.level.S == 0) return(_NULL(catch("UpdateStatus.CalculateStopTime(2)   cannot calculate stop time for sequence at level "+ str.grid.level.LS, ERR_RUNTIME_ERROR)));
 
    datetime stopTime;
    int n.L=grid.level.L, n.S=grid.level.S, sizeofTickets=ArraySize(orders.ticket);
@@ -1254,7 +1254,7 @@ datetime UpdateStatus.CalculateStopTime() {
  */
 double UpdateStatus.CalculateStopPrice() {
    if (status != STATUS_STOPPING)      return(_NULL(catch("UpdateStatus.CalculateStopPrice(1)   cannot calculate stop price for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
-   if (grid.level.L-grid.level.S == 0) return(_NULL(catch("UpdateStatus.CalculateStopPrice(2)   cannot calculate stop price for sequence at level "+ str.grid.level.B, ERR_RUNTIME_ERROR)));
+   if (grid.level.L-grid.level.S == 0) return(_NULL(catch("UpdateStatus.CalculateStopPrice(2)   cannot calculate stop price for sequence at level "+ str.grid.level.LS, ERR_RUNTIME_ERROR)));
 
    double stopPrice.L, stopPrice.S, stopPrice;
    int n.L=grid.level.L, n.S=grid.level.S, sizeofTickets=ArraySize(orders.ticket);
@@ -2773,13 +2773,13 @@ int ShowStatus() {
    }
 
    switch (status) {
-      case STATUS_UNINITIALIZED: msg = " not initialized";                                                                                          break;
-      case STATUS_WAITING:       msg = StringConcatenate("  ", Sequence.ID, " waiting"                                                           ); break;
-      case STATUS_STARTING:      msg = StringConcatenate("  ", Sequence.ID, " starting at level ",    str.grid.level.B, "  ", str.grid.maxLevel.B); break;
-      case STATUS_PROGRESSING:   msg = StringConcatenate("  ", Sequence.ID, " progressing at level ", str.grid.level.B, "  ", str.grid.maxLevel.B); break;
-      case STATUS_STOPPING:      msg = StringConcatenate("  ", Sequence.ID, " stopping at level ",    str.grid.level.B, "  ", str.grid.maxLevel.B); break;
-      case STATUS_STOPPED:       msg = StringConcatenate("  ", Sequence.ID, " stopped at level ",     str.grid.level.B, "  ", str.grid.maxLevel.B); break;
-      case STATUS_DISABLED:      msg = StringConcatenate("  ", Sequence.ID, " disabled"                                                          ); break;
+      case STATUS_UNINITIALIZED: msg = " not initialized";                                                                                           break;
+      case STATUS_WAITING:       msg = StringConcatenate("  ", Sequence.ID, " waiting"                                                            ); break;
+      case STATUS_STARTING:      msg = StringConcatenate("  ", Sequence.ID, " starting at level ",    str.grid.level.LS, " ", str.grid.maxLevel.LS); break;
+      case STATUS_PROGRESSING:   msg = StringConcatenate("  ", Sequence.ID, " progressing at level ", str.grid.level.LS, " ", str.grid.maxLevel.LS); break;
+      case STATUS_STOPPING:      msg = StringConcatenate("  ", Sequence.ID, " stopping at level ",    str.grid.level.LS, " ", str.grid.maxLevel.LS); break;
+      case STATUS_STOPPED:       msg = StringConcatenate("  ", Sequence.ID, " stopped at level ",     str.grid.level.LS, " ", str.grid.maxLevel.LS); break;
+      case STATUS_DISABLED:      msg = StringConcatenate("  ", Sequence.ID, " disabled"                                                           ); break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
@@ -2905,33 +2905,26 @@ void SS.Grid.Level() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   string strLong, strMaxLong;
-
-   if (grid.direction != D_SHORT) {
-      strLong    = StringConcatenate(ifString(grid.level.L,    "+", ""), grid.level.L   );
-      strMaxLong = StringConcatenate(ifString(grid.maxLevel.L, "+", ""), grid.maxLevel.L);
-   }
-
    if (grid.direction == D_LONG) {
-      str.grid.level.L    = strLong;
-      str.grid.level.B    = strLong;
-      str.grid.maxLevel.L = StringConcatenate("(", strMaxLong, ")");
-      str.grid.maxLevel.B = StringConcatenate("(", strMaxLong, ")");
+      str.grid.level.L     = grid.level.L;
+      str.grid.level.LS    = str.grid.level.L;
+      str.grid.maxLevel.L  = StringConcatenate("(", grid.maxLevel.L, ")");
+      str.grid.maxLevel.LS = str.grid.maxLevel.L;
    }
    else if (grid.direction == D_SHORT) {
-      str.grid.level.S    = grid.level.S;
-      str.grid.level.B    = grid.level.S;
-      str.grid.maxLevel.S = StringConcatenate("(", grid.maxLevel.S, ")");
-      str.grid.maxLevel.B = StringConcatenate("(", grid.maxLevel.S, ")");
+      str.grid.level.S     = grid.level.S;
+      str.grid.level.LS    = str.grid.level.S;
+      str.grid.maxLevel.S  = StringConcatenate("(", grid.maxLevel.S, ")");
+      str.grid.maxLevel.LS = str.grid.maxLevel.S;
    }
-   else {
-      str.grid.level.L    = strLong;                                                         // "+2"
-      str.grid.level.S    = grid.level.S;                                                    // "-1"
-      str.grid.level.B    = StringConcatenate(strLong, "/", grid.level.S);                   // "+2/-1"
+   else /*(grid.direction == D_BIDIR)*/ {
+      str.grid.level.L     = grid.level.L;                                                                                                               // "2"
+      str.grid.level.S     = grid.level.S;                                                                                                               // "-1"
+      str.grid.level.LS    = StringConcatenate(ifString(grid.level.L && grid.level.S, "+", ""), str.grid.level.L, "/", str.grid.level.S);                // "2/0"|"+2/-1"
 
-      str.grid.maxLevel.L = StringConcatenate("(", strMaxLong, ")");                         // "(+3)"
-      str.grid.maxLevel.S = StringConcatenate("(", grid.maxLevel.S, ")");                    // "(-2)"
-      str.grid.maxLevel.B = StringConcatenate("(", strMaxLong, "/", grid.maxLevel.S, ")");   // "(+3/-2)"
+      str.grid.maxLevel.L  = StringConcatenate("(", grid.maxLevel.L, ")");                                                                               // "(2)"
+      str.grid.maxLevel.S  = StringConcatenate("(", grid.maxLevel.S, ")");                                                                               // "(-1)"
+      str.grid.maxLevel.LS = StringConcatenate("(", ifString(grid.maxLevel.L && grid.maxLevel.S, "+", ""), grid.maxLevel.L, "/", grid.maxLevel.S, ")");  // "(2/0)"|"(+2/-1)"
    }
 }
 
