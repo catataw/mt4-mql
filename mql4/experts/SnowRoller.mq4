@@ -218,7 +218,7 @@ string   str.stopConditions      = "";
 string   str.grid.direction      = "";
 string   str.grid.level.L        = "",        str.grid.level.S        = "", str.grid.level.LS    = "";
 string   str.grid.maxLevel.L     = "",        str.grid.maxLevel.S     = "", str.grid.maxLevel.LS = "";
-string   str.grid.base.L         = "",        str.grid.base.S         = "";
+string   str.grid.base.L         = "",        str.grid.base.S         = "", str.grid.base.LS     = "";
 string   str.grid.stops.L        = "0 stops", str.grid.stops.S        = "0 stops";
 string   str.grid.stopsPL.L      = "",        str.grid.stopsPL.S      = "";
 string   str.grid.totalPL.L      = "-",       str.grid.totalPL.S      = "-";
@@ -2773,22 +2773,22 @@ int ShowStatus() {
    }
 
    switch (status) {
-      case STATUS_UNINITIALIZED: msg = " not initialized";                                                                                           break;
-      case STATUS_WAITING:       msg = StringConcatenate("  ", Sequence.ID, " waiting"                                                            ); break;
-      case STATUS_STARTING:      msg = StringConcatenate("  ", Sequence.ID, " starting at level ",    str.grid.level.LS, " ", str.grid.maxLevel.LS); break;
-      case STATUS_PROGRESSING:   msg = StringConcatenate("  ", Sequence.ID, " progressing at level ", str.grid.level.LS, " ", str.grid.maxLevel.LS); break;
-      case STATUS_STOPPING:      msg = StringConcatenate("  ", Sequence.ID, " stopping at level ",    str.grid.level.LS, " ", str.grid.maxLevel.LS); break;
-      case STATUS_STOPPED:       msg = StringConcatenate("  ", Sequence.ID, " stopped at level ",     str.grid.level.LS, " ", str.grid.maxLevel.LS); break;
-      case STATUS_DISABLED:      msg = StringConcatenate("  ", Sequence.ID, " disabled"                                                           ); break;
+      case STATUS_UNINITIALIZED: msg = " not initialized";                                                                                            break;
+      case STATUS_WAITING:       msg = StringConcatenate("  ", Sequence.ID, " waiting"                                                             ); break;
+      case STATUS_STARTING:      msg = StringConcatenate("  ", Sequence.ID, " starting at level ",    str.grid.level.LS, "  ", str.grid.maxLevel.LS); break;
+      case STATUS_PROGRESSING:   msg = StringConcatenate("  ", Sequence.ID, " progressing at level ", str.grid.level.LS, "  ", str.grid.maxLevel.LS); break;
+      case STATUS_STOPPING:      msg = StringConcatenate("  ", Sequence.ID, " stopping at level ",    str.grid.level.LS, "  ", str.grid.maxLevel.LS); break;
+      case STATUS_STOPPED:       msg = StringConcatenate("  ", Sequence.ID, " stopped at level ",     str.grid.level.LS, "  ", str.grid.maxLevel.LS); break;
+      case STATUS_DISABLED:      msg = StringConcatenate("  ", Sequence.ID, " disabled"                                                            ); break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
    msg = StringConcatenate(__NAME__, msg, str.error,                                                                                                         NL,
                                                                                                                                                              NL,
-                           "Grid:            ", GridSize, " pip", str.grid.base.L, "/", str.grid.base.S, str.grid.direction,                                 NL,
+                           "Grid:            ", GridSize, " pip", str.grid.base.LS, str.grid.direction,                                                      NL,
                            "LotSize:         ", str.LotSize,                                                                                                 NL,
-                           "Stops:           ", str.grid.stops.L, "/", str.grid.stops.S, " ", str.grid.stopsPL.L, "/", str.grid.stopsPL.S,                   NL,
+                           "Stops:           ", str.grid.stops.L, " ", str.grid.stopsPL.L, " / ", str.grid.stops.S, " ", str.grid.stopsPL.S,                 NL,
                            "Profit/Loss:    ",  str.grid.totalPL.L, "  ", str.grid.plStatistics.L, " / ", str.grid.totalPL.S, "  ", str.grid.plStatistics.S, NL,
                            str.startConditions,                                                                                                   // enthält NL, wenn gesetzt
                            str.stopConditions);                                                                                                   // enthält NL, wenn gesetzt
@@ -2857,8 +2857,23 @@ void SS.Grid.Base() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   if (ArraySize(grid.base.L.event) > 0) str.grid.base.L = StringConcatenate(" @ ", NumberToStr(grid.base.L, PriceFormat));
-   if (ArraySize(grid.base.S.event) > 0) str.grid.base.S = StringConcatenate(" @ ", NumberToStr(grid.base.S, PriceFormat));
+   int sizeOfEvents.L = ArraySize(grid.base.L.event);
+   int sizeOfEvents.S = ArraySize(grid.base.S.event);
+
+   if (sizeOfEvents.L > 0) str.grid.base.L = NumberToStr(grid.base.L, PriceFormat);
+   if (sizeOfEvents.S > 0) str.grid.base.S = NumberToStr(grid.base.S, PriceFormat);
+
+   if (grid.direction == D_LONG) {
+      if (sizeOfEvents.L > 0) str.grid.base.L = StringConcatenate(" @ ", str.grid.base.L);
+      str.grid.base.LS = str.grid.base.L;
+   }
+   else if (grid.direction == D_SHORT) {
+      if (sizeOfEvents.S > 0) str.grid.base.S = StringConcatenate(" @ ", str.grid.base.S);
+      str.grid.base.LS = str.grid.base.S;
+   }
+   else if (sizeOfEvents.L > 0 || sizeOfEvents.S > 0) {              // (grid.direction == D_BIDIR)
+      str.grid.base.LS = StringConcatenate(" @ ", str.grid.base.L, "/", str.grid.base.S);
+   }
 }
 
 
