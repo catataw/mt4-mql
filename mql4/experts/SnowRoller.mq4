@@ -6,7 +6,7 @@
  *  TODO:
  *  -----
  *  - bidirektionales Grid vervollständigen: Anzeige, Start/Stopdaten                                 *
- *  - zum Testen als Endlos-Strategy implementieren                                                   *
+ *  - zum Testen Endlos-Strategy implementieren                                                       *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes                                         *
  *  - Equity-Charts: Schreiben aus Online-Chart                                                       *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
@@ -219,7 +219,7 @@ string   str.grid.direction      = "";
 string   str.grid.level.L        = "",        str.grid.level.S        = "", str.grid.level.LS    = "";
 string   str.grid.maxLevel.L     = "",        str.grid.maxLevel.S     = "", str.grid.maxLevel.LS = "";
 string   str.grid.base.L         = "",        str.grid.base.S         = "", str.grid.base.LS     = "";
-string   str.grid.stops.L        = "0 stops", str.grid.stops.S        = "0 stops";
+string   str.grid.stops.L        = "",        str.grid.stops.S        = "", str.grid.stops.Sep   = "";
 string   str.grid.stopsPL.L      = "",        str.grid.stopsPL.S      = "";
 string   str.grid.totalPL.L      = "-",       str.grid.totalPL.S      = "-";
 string   str.grid.maxProfit.L    = "0.00",    str.grid.maxProfit.S    = "0.00";
@@ -2788,7 +2788,7 @@ int ShowStatus() {
                                                                                                                                                              NL,
                            "Grid:            ", GridSize, " pip", str.grid.base.LS, str.grid.direction,                                                      NL,
                            "LotSize:         ", str.LotSize,                                                                                                 NL,
-                           "Stops:           ", str.grid.stops.L, " ", str.grid.stopsPL.L, " / ", str.grid.stops.S, " ", str.grid.stopsPL.S,                 NL,
+                           "Stops:           ", str.grid.stops.L, str.grid.stopsPL.L, str.grid.stops.Sep, str.grid.stops.S, str.grid.stopsPL.S,              NL,
                            "Profit/Loss:    ",  str.grid.totalPL.L, "  ", str.grid.plStatistics.L, " / ", str.grid.totalPL.S, "  ", str.grid.plStatistics.S, NL,
                            str.startConditions,                                                                                                   // enthält NL, wenn gesetzt
                            str.stopConditions);                                                                                                   // enthält NL, wenn gesetzt
@@ -2872,7 +2872,7 @@ void SS.Grid.Base() {
       str.grid.base.LS = str.grid.base.S;
    }
    else if (sizeOfEvents.L > 0 || sizeOfEvents.S > 0) {              // (grid.direction == D_BIDIR)
-      str.grid.base.LS = StringConcatenate(" @ ", str.grid.base.L, "/", str.grid.base.S);
+      str.grid.base.LS = StringConcatenate(" @ ", str.grid.base.L, " / ", str.grid.base.S);
    }
 }
 
@@ -2951,12 +2951,21 @@ void SS.Grid.Stops() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.grid.stops.L = StringConcatenate(grid.stops.L, " stop", ifString(grid.stops.L==1, "", "s"));
-   str.grid.stops.S = StringConcatenate(grid.stops.S, " stop", ifString(grid.stops.S==1, "", "s"));
+   if (grid.direction == D_LONG) {
+      str.grid.stops.L = StringConcatenate(grid.stops.L, " stop", ifString(grid.stops.L==1, "", "s"));
+   }
+   else if (grid.direction == D_SHORT) {
+      str.grid.stops.S = StringConcatenate(grid.stops.S, " stop", ifString(grid.stops.S==1, "", "s"));
+   }
+   else /*(grid.direction == D_BIDIR)*/ {
+      str.grid.stops.L   = StringConcatenate(grid.stops.L, " stop", ifString(grid.stops.L==1, "", "s"));
+      str.grid.stops.S   = StringConcatenate(grid.stops.S, " stop", ifString(grid.stops.S==1, "", "s"));
+      str.grid.stops.Sep = " / ";
+   }
 
    // Anzeige wird nicht vor der ersten ausgestoppten Position gesetzt
-   if (grid.stops.L > 0) str.grid.stopsPL.L = StringConcatenate("= ", DoubleToStr(grid.stopsPL.L, 2));
-   if (grid.stops.S > 0) str.grid.stopsPL.S = StringConcatenate("= ", DoubleToStr(grid.stopsPL.S, 2));
+   if (grid.stops.L > 0) str.grid.stopsPL.L = StringConcatenate(" = ", DoubleToStr(grid.stopsPL.L, 2));
+   if (grid.stops.S > 0) str.grid.stopsPL.S = StringConcatenate(" = ", DoubleToStr(grid.stopsPL.S, 2));
 }
 
 
