@@ -5,6 +5,7 @@
  *
  *  TODO:
  *  -----
+ *  - Bug im Tester: Levelaktualisierung bei Stopout                                                  *
  *  - bidirektionales Grid vervollständigen: Anzeige, Start/Stopdaten                                 *
  *  - zum Testen Endlos-Strategy implementieren                                                       *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes                                         *
