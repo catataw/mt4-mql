@@ -7,6 +7,8 @@
  *  -----
  *  - Bug im Tester: Levelaktualisierung bei Stopout                                                  *
  *  - bidirektionales Grid vervollständigen: Anzeige, Start/Stopdaten                                 *
+ *  - Dateien in SnowRoller-Format nach SnowRoller2-Format knvertieren                                *
+ *  - SnowRoller2 entfernen                                                                           *
  *  - zum Testen Endlos-Strategy implementieren                                                       *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes                                         *
  *  - Equity-Charts: Schreiben aus Online-Chart                                                       *
