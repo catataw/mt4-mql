@@ -6,7 +6,8 @@
  *  TODO:
  *  -----
  *  - bidirektionales Grid vervollständigen: Anzeige, Start/Stopdaten                                 *
- *  - Dateien in SnowRoller-Format nach SnowRoller2-Format knvertieren                                *
+ *  - Dateien in SnowRoller-Format nach SnowRoller2-Format konvertieren                               *
+ *  - Bug: Statusdatei enthält statt grid.maxProfit.{LS} nur den Gesamtwert                           *
  *  - SnowRoller2 entfernen                                                                           *
  *  - zum Testen Endlos-Strategy implementieren                                                       *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes                                         *
@@ -218,16 +219,16 @@ string   str.LotSize             = "";                              // Zwischens
 string   str.startConditions     = "";
 string   str.stopConditions      = "";
 string   str.grid.direction      = "";
-string   str.grid.level.L        = "",        str.grid.level.S        = "", str.grid.level.LS    = "";
-string   str.grid.maxLevel.L     = "",        str.grid.maxLevel.S     = "", str.grid.maxLevel.LS = "";
-string   str.grid.base.L         = "",        str.grid.base.S         = "", str.grid.base.LS     = "";
-string   str.grid.stops.L        = "",        str.grid.stops.S        = "", str.grid.stops.Sep   = "";
-string   str.grid.stopsPL.L      = "",        str.grid.stopsPL.S      = "";
-string   str.grid.totalPL.L      = "-",       str.grid.totalPL.S      = "-";
-string   str.grid.maxProfit.L    = "0.00",    str.grid.maxProfit.S    = "0.00";
-string   str.grid.maxDrawdown.L  = "0.00",    str.grid.maxDrawdown.S  = "0.00";
-string   str.grid.valueAtRisk.L  = "0.00",    str.grid.valueAtRisk.S  = "0.00";
-string   str.grid.plStatistics.L = "",        str.grid.plStatistics.S = "";
+string   str.grid.level.L        = "", str.grid.level.S        = "", str.grid.level.LS    = "";
+string   str.grid.maxLevel.L     = "", str.grid.maxLevel.S     = "", str.grid.maxLevel.LS = "";
+string   str.grid.base.L         = "", str.grid.base.S         = "", str.grid.base.LS     = "";
+string   str.grid.stops.L        = "", str.grid.stops.S        = "", str.grid.stops.Sep   = "";
+string   str.grid.stopsPL.L      = "", str.grid.stopsPL.S      = "";
+string   str.grid.totalPL.L      = "", str.grid.totalPL.S      = "";
+string   str.grid.maxProfit.L    = "", str.grid.maxProfit.S    = "";
+string   str.grid.maxDrawdown.L  = "", str.grid.maxDrawdown.S  = "";
+string   str.grid.valueAtRisk.L  = "", str.grid.valueAtRisk.S  = "";
+string   str.grid.plStat.L       = "", str.grid.plStat.S       = "", str.grid.plStat.Sep = "";
 
 bool     firstTick          = true;
 bool     firstTickConfirmed = false;
@@ -1041,14 +1042,17 @@ bool UpdateStatus(int limits[], int stops[]) {
    grid.totalPL.S = NormalizeDouble(grid.stopsPL.S + grid.closedPL.S + grid.floatingPL.S, 2);
    grid.totalPL   = NormalizeDouble(grid.totalPL.L + grid.totalPL.S, 2); SS.Grid.TotalPL();
 
-   bool newMax;
+   bool newMax, newMin;
    if      (grid.totalPL.L > grid.maxProfit.L  ) { grid.maxProfit.L   = grid.totalPL.L; newMax = true; }
-   else if (grid.totalPL.L < grid.maxDrawdown.L) { grid.maxDrawdown.L = grid.totalPL.L; newMax = true; }
+   else if (grid.totalPL.L < grid.maxDrawdown.L) { grid.maxDrawdown.L = grid.totalPL.L; newMin = true; }
+
    if      (grid.totalPL.S > grid.maxProfit.S  ) { grid.maxProfit.S   = grid.totalPL.S; newMax = true; }
-   else if (grid.totalPL.S < grid.maxDrawdown.S) { grid.maxDrawdown.S = grid.totalPL.S; newMax = true; }
+   else if (grid.totalPL.S < grid.maxDrawdown.S) { grid.maxDrawdown.S = grid.totalPL.S; newMin = true; }
+
    if      (grid.totalPL   > grid.maxProfit    ) { grid.maxProfit     = grid.totalPL;   newMax = true; }
-   else if (grid.totalPL   < grid.maxDrawdown  ) { grid.maxDrawdown   = grid.totalPL;   newMax = true; }
+   else if (grid.totalPL   < grid.maxDrawdown  ) { grid.maxDrawdown   = grid.totalPL;   newMin = true; }
    if (newMax) SS.Grid.MaxProfit();
+   if (newMin) SS.Grid.MaxDrawdown();
 
 
    // (4) ggf. Status aktualisieren
@@ -1092,11 +1096,11 @@ bool UpdateStatus(int limits[], int stops[]) {
       }
 
 
-      // (6) ggf. Breakeven neu berechnen oder (ab dem ersten ausgeführten Trade) Anzeige aktualisieren
+      // (6) ggf. Breakeven neu berechnen und Anzeige aktualisieren
       if (recalcBreakeven.L || recalcBreakeven.S) {
          Grid.CalculateBreakeven();
       }
-      else if (grid.maxLevel.L-grid.maxLevel.S != 0) {
+      else if (grid.maxLevel.L-grid.maxLevel.S != 0) {                           // nur ab dem ersten ausgeführten Trade
          if      (  !IsTesting()) HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);  // jede Minute    TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
          else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                   // nur onBarOpen        (langlaufendes UpdateStatus() überspringt evt. Event)
       }
@@ -2786,14 +2790,14 @@ int ShowStatus() {
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
-   msg = StringConcatenate(__NAME__, msg, str.error,                                                                                                         NL,
-                                                                                                                                                             NL,
-                           "Grid:            ", GridSize, " pip", str.grid.base.LS, str.grid.direction,                                                      NL,
-                           "LotSize:         ", str.LotSize,                                                                                                 NL,
-                           "Stops:           ", str.grid.stops.L, str.grid.stopsPL.L, str.grid.stops.Sep, str.grid.stops.S, str.grid.stopsPL.S,              NL,
-                           "Profit/Loss:    ",  str.grid.totalPL.L, "  ", str.grid.plStatistics.L, " / ", str.grid.totalPL.S, "  ", str.grid.plStatistics.S, NL,
-                           str.startConditions,                                                                                                   // enthält NL, wenn gesetzt
-                           str.stopConditions);                                                                                                   // enthält NL, wenn gesetzt
+   msg = StringConcatenate(__NAME__, msg, str.error,                                                                                               NL,
+                                                                                                                                                   NL,
+                           "Grid:            ", GridSize, " pip", str.grid.base.LS, str.grid.direction,                                            NL,
+                           "LotSize:         ", str.LotSize,                                                                                       NL,
+                           "Stops:           ", str.grid.stops.L, str.grid.stopsPL.L, str.grid.stops.Sep, str.grid.stops.S, str.grid.stopsPL.S,    NL,
+                           "Profit/Loss:    ",  str.grid.totalPL.L, str.grid.plStat.L, str.grid.plStat.Sep, str.grid.totalPL.S, str.grid.plStat.S, NL,
+                           str.startConditions,                                                                                 // enthält bereits NL, wenn gesetzt
+                           str.stopConditions);                                                                                 // enthält bereits NL, wenn gesetzt
 
    // 2 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
@@ -2978,9 +2982,15 @@ void SS.Grid.TotalPL() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   // Anzeige wird nicht vor der ersten offenen Position gesetzt
-   if (grid.maxLevel.L != 0) str.grid.totalPL.L = NumberToStr(grid.totalPL.L, "+.2");
-   if (grid.maxLevel.S != 0) str.grid.totalPL.S = NumberToStr(grid.totalPL.S, "+.2");
+   if (grid.direction != D_SHORT) {                                  // Anzeige wird nicht vor der ersten offenen Position gesetzt
+      if (grid.maxLevel.L == 0) str.grid.totalPL.L = "-";
+      else                      str.grid.totalPL.L = NumberToStr(grid.totalPL.L, "+.2");
+   }
+
+   if (grid.direction != D_LONG) {                                   // Anzeige wird nicht vor der ersten offenen Position gesetzt
+      if (grid.maxLevel.S == 0) str.grid.totalPL.S = "-";
+      else                      str.grid.totalPL.S = NumberToStr(grid.totalPL.S, "+.2");
+   }
 }
 
 
@@ -2991,8 +3001,8 @@ void SS.Grid.MaxProfit() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.grid.maxProfit.L = NumberToStr(grid.maxProfit.L, "+.2");
-   str.grid.maxProfit.S = NumberToStr(grid.maxProfit.S, "+.2");
+   if (grid.direction != D_SHORT) str.grid.maxProfit.L = NumberToStr(grid.maxProfit.L, "+.2");
+   if (grid.direction != D_LONG ) str.grid.maxProfit.S = NumberToStr(grid.maxProfit.S, "+.2");
    SS.Grid.ProfitLossStatistics();
 }
 
@@ -3004,8 +3014,8 @@ void SS.Grid.MaxDrawdown() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.grid.maxDrawdown.L = NumberToStr(grid.maxDrawdown.L, "+.2");
-   str.grid.maxDrawdown.S = NumberToStr(grid.maxDrawdown.S, "+.2");
+   if (grid.direction != D_SHORT) str.grid.maxDrawdown.L = NumberToStr(grid.maxDrawdown.L, "+.2");
+   if (grid.direction != D_LONG ) str.grid.maxDrawdown.S = NumberToStr(grid.maxDrawdown.S, "+.2");
    SS.Grid.ProfitLossStatistics();
 }
 
@@ -3017,8 +3027,8 @@ void SS.Grid.ValueAtRisk() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return;
 
-   str.grid.valueAtRisk.L = NumberToStr(grid.valueAtRisk.L, "+.2");
-   str.grid.valueAtRisk.S = NumberToStr(grid.valueAtRisk.S, "+.2");
+   if (grid.direction != D_SHORT) str.grid.valueAtRisk.L = NumberToStr(grid.valueAtRisk.L, "+.2");
+   if (grid.direction != D_LONG ) str.grid.valueAtRisk.S = NumberToStr(grid.valueAtRisk.S, "+.2");
    SS.Grid.ProfitLossStatistics();
 }
 
@@ -3031,8 +3041,13 @@ void SS.Grid.ProfitLossStatistics() {
       return;
 
    // Anzeige wird nicht vor der ersten offenen Position gesetzt
-   if (grid.maxLevel.L != 0) str.grid.plStatistics.L = StringConcatenate("(", str.grid.maxProfit.L, "/", str.grid.maxDrawdown.L, "/", str.grid.valueAtRisk.L, ")");
-   if (grid.maxLevel.S != 0) str.grid.plStatistics.S = StringConcatenate("(", str.grid.maxProfit.S, "/", str.grid.maxDrawdown.S, "/", str.grid.valueAtRisk.S, ")");
+   if (grid.direction != D_SHORT)
+      if (grid.maxLevel.L != 0)   str.grid.plStat.L = StringConcatenate(" (", str.grid.maxProfit.L, "/", str.grid.maxDrawdown.L, "/", str.grid.valueAtRisk.L, ")");
+
+   if (grid.direction != D_LONG)
+      if (grid.maxLevel.S != 0)   str.grid.plStat.S = StringConcatenate(" (", str.grid.maxProfit.S, "/", str.grid.maxDrawdown.S, "/", str.grid.valueAtRisk.S, ")");
+
+   if (grid.direction == D_BIDIR) str.grid.plStat.Sep = "  /  ";
 }
 
 
