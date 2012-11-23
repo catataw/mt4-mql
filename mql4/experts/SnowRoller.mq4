@@ -5,7 +5,6 @@
  *
  *  TODO:
  *  -----
- *  - Bug im Tester: Levelaktualisierung bei Stopout                                                  *
  *  - bidirektionales Grid vervollständigen: Anzeige, Start/Stopdaten                                 *
  *  - Dateien in SnowRoller-Format nach SnowRoller2-Format knvertieren                                *
  *  - SnowRoller2 entfernen                                                                           *
@@ -887,16 +886,16 @@ bool UpdateStatus(int limits[], int stops[]) {
             if (__LOG) log(UpdateStatus.SLExecuteMsg(i));
 
             if (orders.level[i] > 0) {
-               grid.level.L--;
-               grid.stops.L++;
+               grid.level.L--; SS.Grid.Level();
+               grid.stops.L++; SS.Grid.Stops();
              //grid.stopsPL.L     = ...                                          // unverändert, da P/L des Pseudo-Tickets immer 0.00
                grid.openRisk.L    = NormalizeDouble(grid.openRisk.L - orders.openRisk[i], 2);
                grid.valueAtRisk.L = NormalizeDouble(grid.openRisk.L + grid.stopsPL.L, 2); SS.Grid.ValueAtRisk();
                recalcBreakeven.L  = true;
             }
             else {
-               grid.level.S++;
-               grid.stops.S++;
+               grid.level.S++; SS.Grid.Level();
+               grid.stops.S++; SS.Grid.Stops();
              //grid.stopsPL.S     = ...                                          // unverändert, da P/L des Pseudo-Tickets immer 0.00
                grid.openRisk.S    = NormalizeDouble(grid.openRisk.S - orders.openRisk[i], 2);
                grid.valueAtRisk.S = NormalizeDouble(grid.openRisk.S + grid.stopsPL.S, 2); SS.Grid.ValueAtRisk();
@@ -925,19 +924,19 @@ bool UpdateStatus(int limits[], int stops[]) {
 
                if (orders.level[i] > 0) {
                   grid.level.L++;
-                  updateStatusLocation = updateStatusLocation || (grid.maxLevel.L-grid.maxLevel.S==0);
                   grid.maxLevel.L      = Max(grid.level.L, grid.maxLevel.L); SS.Grid.Level();
                   grid.openRisk.L      = NormalizeDouble(grid.openRisk.L    + orders.openRisk[i], 2);
                   grid.valueAtRisk.L   = NormalizeDouble(grid.valueAtRisk.L + orders.openRisk[i], 2); SS.Grid.ValueAtRisk();  // valueAtRisk = stopsPL + openRisk
                   recalcBreakeven.L    = true;
+                  updateStatusLocation = updateStatusLocation || (grid.maxLevel.L-grid.maxLevel.S==0);
                }
                else {
                   grid.level.S--;
-                  updateStatusLocation = updateStatusLocation || (grid.maxLevel.L-grid.maxLevel.S==0);
                   grid.maxLevel.S      = Min(grid.level.S, grid.maxLevel.S); SS.Grid.Level();
                   grid.openRisk.S      = NormalizeDouble(grid.openRisk.S    + orders.openRisk[i], 2);
                   grid.valueAtRisk.S   = NormalizeDouble(grid.valueAtRisk.S + orders.openRisk[i], 2); SS.Grid.ValueAtRisk();  // valueAtRisk = stopsPL + openRisk
                   recalcBreakeven.S    = true;
+                  updateStatusLocation = updateStatusLocation || (grid.maxLevel.L-grid.maxLevel.S==0);
                }
             }
          }
@@ -991,7 +990,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                orders.closeEvent[i] = CreateEventId();                           // Event-ID kann sofort vergeben werden.
                if (__LOG) log(UpdateStatus.SLExecuteMsg(i));
                if (orders.level[i] > 0) {
-                  grid.level.L--;
+                  grid.level.L--; SS.Grid.Level();
                   grid.stops.L++;
                   grid.stopsPL.L     = NormalizeDouble(grid.stopsPL.L + orders.swap[i] + orders.commission[i] + orders.profit[i], 2); SS.Grid.Stops();
                   grid.openRisk.L    = NormalizeDouble(grid.openRisk.L - orders.openRisk[i], 2);
@@ -999,7 +998,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                   recalcBreakeven.L  = true;
                }
                else {
-                  grid.level.S++;
+                  grid.level.S++; SS.Grid.Level();
                   grid.stops.S++;
                   grid.stopsPL.S     = NormalizeDouble(grid.stopsPL.S + orders.swap[i] + orders.commission[i] + orders.profit[i], 2); SS.Grid.Stops();
                   grid.openRisk.S    = NormalizeDouble(grid.openRisk.S - orders.openRisk[i], 2);
@@ -6476,7 +6475,7 @@ bool RecordEquity(bool collectTicks) {
 int onDeinit() {
    if (time1 != 0) {
       double secs = (GetTickCount()-time1)/1000.0;
-      debug("onDeinit()   writing of "+ ticks +" ticks took "+ DoubleToStr(secs, 3) +" secs ("+ Round(ticks/secs) +" ticks/sec)");
+      //debug("onDeinit()   writing of "+ ticks +" ticks took "+ DoubleToStr(secs, 3) +" secs ("+ Round(ticks/secs) +" ticks/sec)");
    }
    return(NO_ERROR);
 }
