@@ -5,9 +5,8 @@
  *
  *  TODO:
  *  -----
- *  - als langlaufende Strategy implementieren                                                        *
- *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes                                         *
- *  - Equity-Charts: Schreiben aus Online-Chart                                                       *
+ *  - als Strategy implementieren: Entry, Management, Exit                                            *
+ *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
  *
  *  - Abbruch wegen geändertem Ticketstatus abfangen                                                  *
