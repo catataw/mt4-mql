@@ -5,8 +5,6 @@
  *
  *  TODO:
  *  -----
- *  - SnowRoller2 entfernen                                                                           *
- *  - hartkodierte Referenzen auf "SnowRoller" entfernen                                              *
  *  - als langlaufende Strategy implementieren                                                        *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes                                         *
  *  - Equity-Charts: Schreiben aus Online-Chart                                                       *
