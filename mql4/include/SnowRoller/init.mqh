@@ -173,7 +173,7 @@ int onInitParameterChange() {
 
 
 /**
- * Symbol- oder Timeframe-Wehsel: altes Chartfenster, alter EA, kein Input-Dialog
+ * Symbol- oder Timeframe-Wechsel: altes Chartfenster, alter EA, kein Input-Dialog
  *
  * @return int - Fehlerstatus
  */

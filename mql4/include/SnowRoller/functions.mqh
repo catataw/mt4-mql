@@ -45,7 +45,6 @@ bool FindChartSequences(string ids[], int status[]) {
          //debug("FindChartSequences()   "+ label +" = "+ strSequenceId +"|"+ sequenceStatus);
       }
    }
-
    return(ArraySize(ids));                                           // (bool) int
 }
 
