@@ -3429,11 +3429,14 @@ bool ValidateConfiguration(bool interactive) {
             dValue = StrToDouble(value);
             if (dValue <= 0)                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(22)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             start.price.condition = true;
-            start.price.value     = NormalizeDouble(dValue, PipDigits);
+            start.price.value     = NormalizeDouble(dValue, Digits);
             if      (key == "@bid"  ) start.price.type = SCP_BID;
             else if (key == "@ask"  ) start.price.type = SCP_ASK;
             else if (key == "@price") start.price.type = SCP_MEDIAN;
-            exprs[i] = key +"("+ DoubleToStr(start.price.value, PipDigits) +")";
+            exprs[i] = NumberToStr(start.price.value, PriceFormat);
+            if (StringEndsWith(exprs[i], "'0"))    // leere Subpips abschneiden: "'0"
+               exprs[i] = StringLeft(exprs[i], -2);
+            exprs[i] = key +"("+ exprs[i] +")";
          }
          else if (key == "@time") {
             if (start.time.condition)              return(_false(ValidateConfig.HandleError("ValidateConfiguration(23)", "Invalid StartConditions = \""+ StartConditions +"\" (multiple time conditions)", interactive)));
@@ -3488,11 +3491,14 @@ bool ValidateConfiguration(bool interactive) {
             dValue = StrToDouble(value);
             if (dValue <= 0)                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(33)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             stop.price.condition = true;
-            stop.price.value     = NormalizeDouble(dValue, PipDigits);
+            stop.price.value     = NormalizeDouble(dValue, Digits);
             if      (key == "@bid"  ) stop.price.type = SCP_BID;
             else if (key == "@ask"  ) stop.price.type = SCP_ASK;
             else if (key == "@price") stop.price.type = SCP_MEDIAN;
-            exprs[i] = key +"("+ DoubleToStr(stop.price.value, PipDigits) +")";
+            exprs[i] = NumberToStr(stop.price.value, PriceFormat);
+            if (StringEndsWith(exprs[i], "'0"))    // leere Subpips abschneiden: "'0"
+               exprs[i] = StringLeft(exprs[i], -2);
+            exprs[i] = key +"("+ exprs[i] +")";
          }
          else if (key == "@time") {
             if (stop.time.condition)               return(_false(ValidateConfig.HandleError("ValidateConfiguration(34)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple time conditions)", interactive)));
@@ -3831,6 +3837,8 @@ bool ResolveStatusLocation.FindFile(string directory, string &lpFile) {
    int size = FindFileNames(filePattern, files, FF_FILESONLY);                   // Dateien suchen, die den Sequenznamen enthalten und mit "set" enden
    if (size == -1)
       return(_false(SetLastError(stdlib_PeekLastError())));
+
+   //debug("ResolveStatusLocation.FindFile()   "+ size +" results for \""+ filePattern +"\"");
 
    for (int i=0; i < size; i++) {
       if (!StringIStartsWith(files[i], sequenceNames[0])) /*&&*/ if (!StringIStartsWith(files[i], sequenceNames[1])) /*&&*/ if (!StringIStartsWith(files[i], sequenceNames[2])) /*&&*/ if (!StringIStartsWith(files[i], sequenceNames[3]))
