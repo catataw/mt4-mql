@@ -3804,7 +3804,7 @@ bool ResolveStatusLocation() {
 
 
 /**
- * Durchsucht das angegebene Verzeichnis nach einer passenden Statusdatei und schreibt das Ergebnis in die angegebene Variable.
+ * Durchsucht das angegebene Verzeichnis nach einer passenden Statusdatei und schreibt das Ergebnis in die übergebene Variable.
  *
  * @param  string directory - vollständiger Name des zu durchsuchenden Verzeichnisses
  * @param  string lpFile    - Zeiger auf Variable zur Aufnahme des gefundenen Dateinamens
@@ -3818,17 +3818,23 @@ bool ResolveStatusLocation.FindFile(string directory, string &lpFile) {
    if (!StringEndsWith(directory, "\\"))
       directory = StringConcatenate(directory, "\\");
 
-   string sequenceName = StringConcatenate("SR.", sequenceId, ".");
-   string pattern      = StringConcatenate(directory, "*", sequenceName, "*set");
+   string sequencePattern = StringConcatenate("SR*", sequenceId);                // * steht für [._-] (? für ein einzelnes Zeichen funktioniert nicht)
+   string sequenceNames[4];
+          sequenceNames[0]= StringConcatenate("SR.", sequenceId, ".");
+          sequenceNames[1]= StringConcatenate("SR.", sequenceId, "_");
+          sequenceNames[2]= StringConcatenate("SR-", sequenceId, ".");
+          sequenceNames[3]= StringConcatenate("SR-", sequenceId, "_");
+
+   string filePattern = StringConcatenate(directory, "*", sequencePattern, "*set");
    string files[];
 
-   int size = FindFileNames(pattern, files, FF_FILESONLY);                       // Dateien suchen, die den Sequenznamen enthalten und mit "set" enden
+   int size = FindFileNames(filePattern, files, FF_FILESONLY);                   // Dateien suchen, die den Sequenznamen enthalten und mit "set" enden
    if (size == -1)
       return(_false(SetLastError(stdlib_PeekLastError())));
 
    for (int i=0; i < size; i++) {
-      if (!StringIStartsWith(files[i], sequenceName))
-         if (!StringIContains(files[i], StringConcatenate(".", sequenceName)))
+      if (!StringIStartsWith(files[i], sequenceNames[0])) /*&&*/ if (!StringIStartsWith(files[i], sequenceNames[1])) /*&&*/ if (!StringIStartsWith(files[i], sequenceNames[2])) /*&&*/ if (!StringIStartsWith(files[i], sequenceNames[3]))
+         if (!StringIContains(files[i], "."+ sequenceNames[0])) /*&&*/ if (!StringIContains(files[i], "."+ sequenceNames[1])) /*&&*/ if (!StringIContains(files[i], "."+ sequenceNames[2])) /*&&*/ if (!StringIContains(files[i], "."+ sequenceNames[3]))
             continue;
       if (StringIEndsWith(files[i], ".set")) {
          lpFile = files[i];                                                      // Abbruch nach Fund der ersten .set-Datei
