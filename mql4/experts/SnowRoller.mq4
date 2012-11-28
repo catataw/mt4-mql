@@ -3425,6 +3425,7 @@ bool ValidateConfiguration(bool interactive) {
 
          if (key=="@bid" || key=="@ask" || key=="@price") {
             if (start.price.condition)             return(_false(ValidateConfig.HandleError("ValidateConfiguration(20)", "Invalid StartConditions = \""+ StartConditions +"\" (multiple price conditions)", interactive)));
+            value = StringReplace(value, "'", "");
             if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(21)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             dValue = StrToDouble(value);
             if (dValue <= 0)                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(22)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
@@ -3434,7 +3435,7 @@ bool ValidateConfiguration(bool interactive) {
             else if (key == "@ask"  ) start.price.type = SCP_ASK;
             else if (key == "@price") start.price.type = SCP_MEDIAN;
             exprs[i] = NumberToStr(start.price.value, PriceFormat);
-            if (StringEndsWith(exprs[i], "'0"))    // leere Subpips abschneiden: "'0"
+            if (StringEndsWith(exprs[i], "'0"))    // 0-Subpips "'0" für bessere Lesbarkeit entfernen
                exprs[i] = StringLeft(exprs[i], -2);
             exprs[i] = key +"("+ exprs[i] +")";
          }
@@ -3487,6 +3488,7 @@ bool ValidateConfiguration(bool interactive) {
 
          if (key=="@bid" || key=="@ask" || key=="@price") {
             if (stop.price.condition)              return(_false(ValidateConfig.HandleError("ValidateConfiguration(31)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple price conditions)", interactive)));
+            value = StringReplace(value, "'", "");
             if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(32)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             dValue = StrToDouble(value);
             if (dValue <= 0)                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(33)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
@@ -3496,7 +3498,7 @@ bool ValidateConfiguration(bool interactive) {
             else if (key == "@ask"  ) stop.price.type = SCP_ASK;
             else if (key == "@price") stop.price.type = SCP_MEDIAN;
             exprs[i] = NumberToStr(stop.price.value, PriceFormat);
-            if (StringEndsWith(exprs[i], "'0"))    // leere Subpips abschneiden: "'0"
+            if (StringEndsWith(exprs[i], "'0"))    // 0-Subpips "'0" für bessere Lesbarkeit entfernen
                exprs[i] = StringLeft(exprs[i], -2);
             exprs[i] = key +"("+ exprs[i] +")";
          }
