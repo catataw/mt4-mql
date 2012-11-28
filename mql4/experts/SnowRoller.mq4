@@ -87,11 +87,9 @@ extern            string GridDirection           = "Long | Short";
 extern            int    GridSize                = 20;
 extern            double LotSize                 = 0.1;
 extern            string StartConditions         = "";               // @[bid|ask|price](double) && @time(datetime)
-extern            string StopConditions          = "";               // @[bid|ask|price](double) || @time(datetime) || @profit(double[%])
+extern            string StopConditions          = "";               // @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
 extern /*sticky*/ color  Breakeven.Color         = Blue;
 extern /*sticky*/ string Sequence.StatusLocation = "";               // Unterverzeichnis
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
        /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;        // Sticky-Variablen werden im Chart zwischengespeichert, sie überleben
        /*sticky*/ int    orderDisplayMode        = ODM_NONE;         // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
@@ -143,6 +141,8 @@ bool     stop.conditions.triggered;
 bool     stop.price.condition;
 int      stop.price.type;                                            // SCP_BID | SCP_ASK | SCP_MEDIAN
 double   stop.price.value;
+bool     stop.level.condition;
+int      stop.level.value;
 bool     stop.time.condition;
 datetime stop.time.value;
 bool     stop.profitAbs.condition;
@@ -1397,7 +1397,7 @@ bool IsStopSignal(bool checkWeekendStop=true) {
          return(true);                                               // werden konnte, könnten die Bedingungen beim nächsten Tick schon nicht mehr erfüllt sein.
       }
 
-      // -- stop.price: erfüllt, wenn der entsprechende Preis den Wert berührt oder kreuzt ------------------------------
+      // -- stop.price: erfüllt, wenn der aktuelle Preis den Wert berührt oder kreuzt ------------------------------
       if (stop.price.condition) {
          static double price, lastPrice;                             // price/result: nur wegen kürzerem Code static
          static bool   result, lastPrice_init=true;
@@ -1420,6 +1420,15 @@ bool IsStopSignal(bool checkWeekendStop=true) {
          lastPrice = price;
          if (result) {
             if (__LOG) log(StringConcatenate("IsStopSignal()   price condition \"", scpDescr[stop.price.type], " = ", NumberToStr(stop.price.value, PriceFormat), "\" met"));
+            stop.conditions.triggered = true;
+            return(true);
+         }
+      }
+
+      // -- stop.level: erfüllt, wenn der angegebene Level erreicht ist -------------------------------------------------
+      if (stop.level.condition) {
+         if (stop.level.value == grid.level) {
+            if (__LOG) log(StringConcatenate("IsStopSignal()   level condition \"level ", stop.level.value, "\" met"));
             stop.conditions.triggered = true;
             return(true);
          }
@@ -3405,7 +3414,7 @@ bool ValidateConfiguration(bool interactive) {
       // (5.1) StartConditions in einzelne Ausdrücke zerlegen
       string exprs[], expr, elems[], key, value;
       double dValue;
-      int    time, sizeOfElems, sizeOfExprs=Explode(StartConditions, "&&", exprs, NULL);
+      int    iValue, time, sizeOfElems, sizeOfExprs=Explode(StartConditions, "&&", exprs, NULL);
 
       // (5.2) jeden Ausdruck parsen und validieren
       for (int i=0; i < sizeOfExprs; i++) {
@@ -3456,13 +3465,14 @@ bool ValidateConfiguration(bool interactive) {
    }
 
 
-   // (6) StopConditions, OR-verknüpft: "@[bid|ask|price](1.33) || @time(12:00) || @profit(1234[%])"
-   // ----------------------------------------------------------------------------------------------
+   // (6) StopConditions, OR-verknüpft: "@[bid|ask|price](1.33) || @level(5) || @time(12:00) || @profit(1234[%])"
+   // -----------------------------------------------------------------------------------------------------------
    if (!parameterChange || StopConditions!=last.StopConditions) {
       // Bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StopConditions nur bei Änderung (re-)aktiviert werden.
       stop.conditions              = false;
       stop.conditions.triggered    = false;
       stop.price.condition         = false;
+      stop.level.condition         = false;
       stop.time.condition          = false;
       stop.profitAbs.condition     = false;
       stop.profitPercent.condition = false;
@@ -3502,10 +3512,23 @@ bool ValidateConfiguration(bool interactive) {
                exprs[i] = StringLeft(exprs[i], -2);
             exprs[i] = key +"("+ exprs[i] +")";
          }
+         else if (key == "@level") {
+            if (stop.level.condition)              return(_false(ValidateConfig.HandleError("ValidateConfiguration(34)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple level conditions)", interactive)));
+            if (!StringIsInteger(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(35)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            iValue = StrToInteger(value);
+            if (grid.direction == D_LONG) {
+               if (iValue < 0)                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(36)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            }
+            else if (iValue > 0)
+               iValue = -iValue;
+            stop.level.condition = true;
+            stop.level.value     = iValue;
+            exprs[i] = key +"("+ iValue +")";
+         }
          else if (key == "@time") {
-            if (stop.time.condition)               return(_false(ValidateConfig.HandleError("ValidateConfiguration(34)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple time conditions)", interactive)));
+            if (stop.time.condition)               return(_false(ValidateConfig.HandleError("ValidateConfiguration(37)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple time conditions)", interactive)));
             time = StrToTime(value);
-            if (IsError(GetLastError()))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(35)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (IsError(GetLastError()))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(38)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             // TODO: Validierung von @time unzureichend
             stop.time.condition = true;
             stop.time.value     = time;
@@ -3513,12 +3536,12 @@ bool ValidateConfiguration(bool interactive) {
          }
          else if (key == "@profit") {
             if (stop.profitAbs.condition || stop.profitPercent.condition)
-                                                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(36)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple profit conditions)", interactive)));
+                                                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(39)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple profit conditions)", interactive)));
             sizeOfElems = Explode(value, "%", elems, NULL);
-            if (sizeOfElems > 2)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(37)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (sizeOfElems > 2)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(40)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             value = StringTrim(elems[0]);
-            if (StringLen(value) == 0)             return(_false(ValidateConfig.HandleError("ValidateConfiguration(38)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
-            if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(39)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (StringLen(value) == 0)             return(_false(ValidateConfig.HandleError("ValidateConfiguration(41)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (!StringIsNumeric(value))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(42)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             dValue = StrToDouble(value);
             if (sizeOfElems == 1) {
                stop.profitAbs.condition = true;
@@ -3526,13 +3549,13 @@ bool ValidateConfiguration(bool interactive) {
                exprs[i] = key +"("+ NumberToStr(dValue, ".2") +")";
             }
             else {
-               if (dValue <= 0)                    return(_false(ValidateConfig.HandleError("ValidateConfiguration(40)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+               if (dValue <= 0)                    return(_false(ValidateConfig.HandleError("ValidateConfiguration(43)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
                stop.profitPercent.condition = true;
                stop.profitPercent.value     = dValue;
                exprs[i] = key +"("+ NumberToStr(dValue, ".+") +"%)";
             }
          }
-         else                                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(41)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+         else                                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(44)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
          stop.conditions = true;
       }
       if (stop.conditions) StopConditions = JoinStrings(exprs, " || ");
@@ -3544,13 +3567,13 @@ bool ValidateConfiguration(bool interactive) {
    if (Breakeven.Color == 0xFF000000)                                   // kann vom Terminal falsch gesetzt worden sein
       Breakeven.Color = CLR_NONE;
    if (Breakeven.Color < CLR_NONE || Breakeven.Color > C'255,255,255')  // kann nur nicht-interaktiv falsch reinkommen
-                                                return(_false(ValidateConfig.HandleError("ValidateConfiguration(42)", "Invalid Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), interactive)));
+                                                return(_false(ValidateConfig.HandleError("ValidateConfiguration(45)", "Invalid Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), interactive)));
 
    // (8) __STATUS__INVALID_INPUT zurücksetzen
    if (interactive)
       __STATUS__INVALID_INPUT = false;
 
-   return(IsNoError(last_error|catch("ValidateConfiguration(43)")));
+   return(IsNoError(last_error|catch("ValidateConfiguration(46)")));
 }
 
 
