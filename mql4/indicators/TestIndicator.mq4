@@ -17,12 +17,11 @@ bool done;
 
 
 /**
- * Main-Funktion
+ * Initialisierung
  *
  * @return int - Fehlerstatus
  */
 int onInit() {
-   DebugMarketInfo("onInit()");
    return(catch("onInit()"));
 }
 
