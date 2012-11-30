@@ -25,36 +25,38 @@ int onTick() {
       done = true;
    }
 
-   string symbol    = Symbol();
-   int    timeframe = Period();
-   string indicator = "Moving Average";
-   //-----------------------------------------
+   //---------------------------------
    int    MA.Periods        = 200;
-   string MA.Timeframe      = "";
+   string MA.Timeframe      = "M5";
+   string MA.Method         = "SMA";
+   string MA.Method.Help    = "";
    string AppliedPrice      = "Close";
    string AppliedPrice.Help = "";
    int    Max.Values        = 2000;
-   color  Color.UpTrend     = DodgerBlue;
-   color  Color.DownTrend   = Orange;
-   color  Color.Reversal    = Yellow;
-   //-----------------------------------------
-   int buffer = 0;
-   int bar    = 0;
+   //---------------------------------
+   int bar = 0;
 
-   debug("onTick()");
+   double value1 = iCustom(NULL, PERIOD_M5, "Moving Average",
+                           MA.Periods,
+                           MA.Timeframe,
+                           MA.Method,
+                           MA.Method.Help,
+                           AppliedPrice,
+                           AppliedPrice.Help,
+                           Max.Values,
+                           BUFFER_0, bar);
 
-   double value = iCustom(symbol, timeframe, indicator,
-                          MA.Periods,
-                          MA.Timeframe,
-                          AppliedPrice,
-                          AppliedPrice.Help,
-                          Max.Values,
-                          Color.UpTrend,
-                          Color.DownTrend,
-                          Color.Reversal,
-                          buffer, bar);
+   double value2 = iCustom(NULL, PERIOD_M5, "Moving Average",
+                           MA.Periods,
+                           MA.Timeframe,
+                           MA.Method,
+                           MA.Method.Help,
+                           AppliedPrice,
+                           AppliedPrice.Help,
+                           Max.Values,
+                           BUFFER_1, bar);
+   debug("onTick()   value1="+ NumberToStr(value1, ".+") +"   value2="+ NumberToStr(value2, ".+"));
 
-   //debug("onTick()   value(iCustom)="+ NumberToStr(value, ".+"));
    return(catch("onTick()"));
 }
 
