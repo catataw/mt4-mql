@@ -85,8 +85,8 @@ extern /*sticky*/ string Sequence.ID             = "";
 extern            string GridDirection           = "Long | Short";
 extern            int    GridSize                = 20;
 extern            double LotSize                 = 0.1;
-extern            string StartConditions         = "";               // @[bid|ask|price](double) && @time(datetime)
-extern            string StopConditions          = "";               // @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
+extern            string StartConditions         = "";               // @signal(alma:7xD1) || @[bid|ask|price](double) && @time(datetime)
+extern            string StopConditions          = "";               // @signal(alma:7xD1) || @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
 extern /*sticky*/ color  Breakeven.Color         = Blue;
 extern /*sticky*/ string Sequence.StatusLocation = "";               // Unterverzeichnis
 
