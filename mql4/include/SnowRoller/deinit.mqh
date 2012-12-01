@@ -1,23 +1,47 @@
 
 /**
- * Kein UninitializeReason gesetzt: im Tester nach regulärem Ende (Testperiode zu Ende)
+ * Parameteränderung
  *
  * @return int - Fehlerstatus
  */
-int onDeinitUndefined() {
-   if (IsTesting()) {
-      if (__STATUS__CANCELLED)
-         return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
+int onDeinitParameterChange() {
+   // alte Parameter für Vergleich mit neuen Parametern zwischenspeichern
+   last.Sequence.ID             = StringConcatenate(Sequence.ID,             "");   // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
+   last.Sequence.StatusLocation = StringConcatenate(Sequence.StatusLocation, "");
+   last.GridDirection           = StringConcatenate(GridDirection,           "");
+   last.GridSize                = GridSize;
+   last.LotSize                 = LotSize;
+   last.StartConditions         = StringConcatenate(StartConditions,         "");
+   last.StopConditions          = StringConcatenate(StopConditions,          "");
+   last.Breakeven.Color         = Breakeven.Color;
+   return(-1);
+}
 
-      if (status==STATUS_WAITING || status==STATUS_PROGRESSING) {
-         int iNull[];
-         if (UpdateStatus(iNull, iNull))
-            StopSequence();                                          // ruft intern SaveStatus() auf
-         ShowStatus();
-      }
-      return(last_error);
+
+/**
+ * EA von Hand entfernt (Chart ->Expert ->Remove) oder neuer EA drübergeladen
+ *
+ * @return int - Fehlerstatus
+ */
+int onDeinitRemove() {
+   // Der Status kann sich seit dem letzten Tick geändert haben.
+   if (!IsTest()) /*&&*/ if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
+      int iNull[];
+      UpdateStatus(iNull, iNull);
+      SaveStatus();
    }
-   return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wann hier jemand reinlatscht
+   return(last_error);
+}
+
+
+/**
+ * Symbol- oder Timeframewechsel
+ *
+ * @return int - Fehlerstatus
+ */
+int onDeinitChartChange() {
+   // nicht-statische Input-Parameter werden für's nächste init() zwischengespeichert
+   return(onDeinitParameterChange());                                // entspricht onDeinitParameterChange()
 }
 
 
@@ -65,18 +89,24 @@ int onDeinitChartClose() {
 
 
 /**
- * EA von Hand entfernt (Chart ->Expert ->Remove) oder neuer EA drübergeladen
+ * Kein UninitializeReason gesetzt: im Tester nach regulärem Ende (Testperiode zu Ende)
  *
  * @return int - Fehlerstatus
  */
-int onDeinitRemove() {
-   // Der Status kann sich seit dem letzten Tick geändert haben.
-   if (!IsTest()) /*&&*/ if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
-      int iNull[];
-      UpdateStatus(iNull, iNull);
-      SaveStatus();
+int onDeinitUndefined() {
+   if (IsTesting()) {
+      if (__STATUS__CANCELLED)
+         return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
+
+      if (status==STATUS_WAITING || status==STATUS_PROGRESSING) {
+         int iNull[];
+         if (UpdateStatus(iNull, iNull))
+            StopSequence();                                          // ruft intern SaveStatus() auf
+         ShowStatus();
+      }
+      return(last_error);
    }
-   return(last_error);
+   return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wann hier jemand reinlatscht
 }
 
 
@@ -88,34 +118,4 @@ int onDeinitRemove() {
 int onDeinitRecompile() {
    StoreStickyStatus();
    return(-1);
-}
-
-
-/**
- * Parameteränderung
- *
- * @return int - Fehlerstatus
- */
-int onDeinitParameterChange() {
-   // alte Parameter für Vergleich mit neuen Parametern zwischenspeichern
-   last.Sequence.ID             = StringConcatenate(Sequence.ID,             "");   // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
-   last.Sequence.StatusLocation = StringConcatenate(Sequence.StatusLocation, "");
-   last.GridDirection           = StringConcatenate(GridDirection,           "");
-   last.GridSize                = GridSize;
-   last.LotSize                 = LotSize;
-   last.StartConditions         = StringConcatenate(StartConditions,         "");
-   last.StopConditions          = StringConcatenate(StopConditions,          "");
-   last.Breakeven.Color         = Breakeven.Color;
-   return(-1);
-}
-
-
-/**
- * Symbol- oder Timeframewechsel
- *
- * @return int - Fehlerstatus
- */
-int onDeinitChartChange() {
-   // nicht-statische Input-Parameter werden für's nächste init() zwischengespeichert
-   return(onDeinitParameterChange());                                // entspricht onDeinitParameterChange()
 }

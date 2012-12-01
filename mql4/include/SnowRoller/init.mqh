@@ -1,25 +1,80 @@
+
 /**
- * Kein UninitializeReason gesetzt
- *
- * - nach Terminal-Neustart, neues Chartfenster, wenn alter EA, dann kein Input-Dialog
- * - File ->New ->Chart, neues Chartfenster, neuer EA, Input-Dialog
+ * altes Chartfenster, alter EA, Input-Dialog
  *
  * @return int - Fehlerstatus
  */
-int onInitUndefined() {
+int onInitParameterChange() {
    if (__STATUS__CANCELLED)
       return(NO_ERROR);
-   last_error = NO_ERROR;
 
-   // Prüfen, ob im Chart Statusdaten existieren
-   if (!RestoreStickyStatus())
-      if (IsLastError())
-         return(last_error);
+   StoreConfiguration();
 
-   bool data = ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0;
+   if (!ValidateConfiguration(true)) {
+      RestoreConfiguration();
+      return(last_error);
+   }
 
-   if (data) return(onInitRecompile());   // ja   -> alter EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
-   else      return(onInitChartClose());  // nein -> neuer EA -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
+   if (status == STATUS_UNINITIALIZED) {
+      // neue Sequenz anlegen
+      instanceStartTime  = TimeCurrent();
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+      test               = IsTesting();
+      sequenceId         = InstanceId(CreateSequenceId());
+      Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
+      status             = STATUS_WAITING;
+      InitStatusLocation();
+
+      if (start.conditions)                                                            // Ohne aktivierte StartConditions erfolgt sofortiger Sequenzstart, der Status wird dabei
+         SaveStatus();                                                                 // automatisch gespeichert.
+      RedrawStartStop();
+   }
+   else {
+      // Parameteränderung einer laufenden Sequenz
+      if (SaveStatus()) {
+         if (Breakeven.Color != last.Breakeven.Color) {
+            RedrawStartStop();
+            RecolorBreakeven();
+         }
+      }
+   }
+   return(last_error);
+}
+
+
+/**
+ * altes Chartfenster, neuer EA, Input-Dialog
+ *
+ * @return int - Fehlerstatus
+ */
+int onInitRemove() {
+   if (__STATUS__CANCELLED)
+      return(NO_ERROR);
+   return(onInitChartClose());                                                         // Funktionalität entspricht onInitChartClose()
+}
+
+
+/**
+ * Symbol- oder Timeframe-Wechsel: altes Chartfenster, alter EA, kein Input-Dialog
+ *
+ * @return int - Fehlerstatus
+ */
+int onInitChartChange() {
+   if (__STATUS__CANCELLED)
+      return(NO_ERROR);
+
+   // nur die nicht-statischen Input-Parameter restaurieren
+   Sequence.ID             = last.Sequence.ID;
+   Sequence.StatusLocation = last.Sequence.StatusLocation;
+   GridDirection           = last.GridDirection;
+   GridSize                = last.GridSize;
+   LotSize                 = last.LotSize;
+   StartConditions         = last.StartConditions;
+   StopConditions          = last.StopConditions;
+   Breakeven.Color         = last.Breakeven.Color;
+
+   // TODO: Symbolwechsel behandeln
+   return(NO_ERROR);
 }
 
 
@@ -98,14 +153,27 @@ int onInitChartClose() {
 
 
 /**
- * altes Chartfenster, neuer EA, Input-Dialog
+ * Kein UninitializeReason gesetzt
+ *
+ * - nach Terminal-Neustart, neues Chartfenster, wenn alter EA, dann kein Input-Dialog
+ * - File ->New ->Chart, neues Chartfenster, neuer EA, Input-Dialog
  *
  * @return int - Fehlerstatus
  */
-int onInitRemove() {
+int onInitUndefined() {
    if (__STATUS__CANCELLED)
       return(NO_ERROR);
-   return(onInitChartClose());                                                         // Funktionalität entspricht onInitChartClose()
+   last_error = NO_ERROR;
+
+   // Prüfen, ob im Chart Statusdaten existieren
+   if (!RestoreStickyStatus())
+      if (IsLastError())
+         return(last_error);
+
+   bool data = ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0;
+
+   if (data) return(onInitRecompile());   // ja   -> alter EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
+   else      return(onInitChartClose());  // nein -> neuer EA -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
 }
 
 
@@ -126,73 +194,6 @@ int onInitRecompile() {
    }
    ClearStickyStatus();
    return(last_error);
-}
-
-
-/**
- * altes Chartfenster, alter EA, Input-Dialog
- *
- * @return int - Fehlerstatus
- */
-int onInitParameterChange() {
-   if (__STATUS__CANCELLED)
-      return(NO_ERROR);
-
-   StoreConfiguration();
-
-   if (!ValidateConfiguration(true)) {
-      RestoreConfiguration();
-      return(last_error);
-   }
-
-   if (status == STATUS_UNINITIALIZED) {
-      // neue Sequenz anlegen
-      instanceStartTime  = TimeCurrent();
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
-      test               = IsTesting();
-      sequenceId         = InstanceId(CreateSequenceId());
-      Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
-      status             = STATUS_WAITING;
-      InitStatusLocation();
-
-      if (start.conditions)                                                            // Ohne aktivierte StartConditions erfolgt sofortiger Sequenzstart, der Status wird dabei
-         SaveStatus();                                                                 // automatisch gespeichert.
-      RedrawStartStop();
-   }
-   else {
-      // Parameteränderung einer laufenden Sequenz
-      if (SaveStatus()) {
-         if (Breakeven.Color != last.Breakeven.Color) {
-            RedrawStartStop();
-            RecolorBreakeven();
-         }
-      }
-   }
-   return(last_error);
-}
-
-
-/**
- * Symbol- oder Timeframe-Wechsel: altes Chartfenster, alter EA, kein Input-Dialog
- *
- * @return int - Fehlerstatus
- */
-int onInitChartChange() {
-   if (__STATUS__CANCELLED)
-      return(NO_ERROR);
-
-   // nur die nicht-statischen Input-Parameter restaurieren
-   Sequence.ID             = last.Sequence.ID;
-   Sequence.StatusLocation = last.Sequence.StatusLocation;
-   GridDirection           = last.GridDirection;
-   GridSize                = last.GridSize;
-   LotSize                 = last.LotSize;
-   StartConditions         = last.StartConditions;
-   StopConditions          = last.StopConditions;
-   Breakeven.Color         = last.Breakeven.Color;
-
-   // TODO: Symbolwechsel behandeln
-   return(NO_ERROR);
 }
 
 
