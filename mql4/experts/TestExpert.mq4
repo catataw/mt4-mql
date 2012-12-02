@@ -42,9 +42,9 @@ int onTick() {
                           AppliedPrice,
                           "",                                        // AppliedPrice.Help,
                           Max.Values,
-                          BUFFER_0, bar); // throws ERR_HISTORY_UPDATE
+                          BUFFER_0, bar); // throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
 
-   debug("onTick()");
+   debug("onTick()   Bars="+ Bars);
 
    int error = GetLastError();
    if (error == ERR_HISTORY_UPDATE) debug("onTick()   ERR_HISTORY_UPDATE");
