@@ -946,14 +946,14 @@ bool UpdateStatus(int limits[], int stops[]) {
       }
 
 
-      // (6) ggf. Breakeven neu berechnen und Anzeige aktualisieren
-      if (recalcBreakeven) {
-         Grid.CalculateBreakeven();
-      }
-      else if (grid.maxLevel != 0) {                                             // nur ab dem ersten ausgeführten Trade
-         if      (  !IsTesting()) HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);  // jede Minute    TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
-         else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                   // nur onBarOpen        (langlaufendes UpdateStatus() überspringt evt. Event)
-      }
+      // (6) ggf. Breakeven neu berechnen und Anzeige aktualisieren (deaktiviert)
+      //if (recalcBreakeven) {
+      //   Grid.CalculateBreakeven();
+      //}
+      //else if (grid.maxLevel != 0) {                                             // nur ab dem ersten ausgeführten Trade
+      //   if      (  !IsTesting()) HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);  // jede Minute    TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
+      //   else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                   // nur onBarOpen        (langlaufendes UpdateStatus() überspringt evt. Event)
+      //}
    }
 
 
