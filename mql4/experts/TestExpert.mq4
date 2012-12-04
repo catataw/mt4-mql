@@ -25,15 +25,41 @@ extern string Parameter = "dummy";
  * @return int - Fehlerstatus
  */
 int onTick() {
+   HandleEvent(EVENT_BAR_OPEN);
+   return(last_error);
+}
+
+
+/**
+ * Handler für BarOpen-Events.
+ *
+ * @param int timeframes[] - IDs der Timeframes, in denen das BarOpen-Event aufgetreten ist
+ *
+ * @return int - Fehlerstatus
+ */
+int onBarOpen(int timeframes[]) {
+   Signal();
+   return(last_error);
+}
+
+
+/**
+ *
+ * @return int - Fehlerstatus
+ */
+int Signal() {
+
+   // - BarOpen-Handler reparieren (im Tester beim ersten Tick)
+
    /*ICUSTOM*/int ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
    int bar    = 0;
    int buffer = 0;
 
-   double value = iCustom(NULL, PERIOD_H1, "Moving Average",   // throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
-                          100,            // MA.Periods
-                          "H1",           // MA.Timeframe
+   double value = iCustom(NULL, PERIOD_M5, "Moving Average",   // throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+                          400,            // MA.Periods
+                          "",             // MA.Timeframe
                           "SMA",          // MA.Method
                           "",             // MA.Method.Help
                           "Close",        // AppliedPrice
@@ -45,14 +71,27 @@ int onTick() {
                           ic[IC_PTR],     // __iCustom__
                           buffer, bar);
 
-   int error = GetLastError();
+   // iCustom()-Call auswerten (Wechselwirkung zwischen ERR_HISTORY_UPDATE/ERR_HISTORY_INSUFFICIENT)
+   int error=GetLastError(), icError=ic[IC_LAST_ERROR];
    if (IsError(error)) {
-      if (error == ERR_HISTORY_UPDATE) debug("onTick()->iCustom()   ERR_HISTORY_UPDATE");
-      else                             catch("onTick()", error);
+      if (error != ERR_HISTORY_UPDATE)         return(catch("Signal(1)", error));
    }
-   if (!IsLastError())
-      last_error = ic[IC_LAST_ERROR];
-   return(last_error);
+   if (IsError(icError)) {
+      if (icError != ERR_HISTORY_INSUFFICIENT) return(SetLastError(icError));                   // wurde bereits im Indikator gemeldet
+      if (IsNoError(error))                    return(catch("Signal(2)->iCustom()", icError));
+   }
+
+
+   if (error == ERR_HISTORY_UPDATE) {
+      // Signal verwerfen
+      debug("Signal()->iCustom()   ERR_HISTORY_UPDATE");
+   }
+   else {
+      // Signal gültig
+      debug("Signal()   signal valid");
+   }
+
+   return(catch("Signal(3)"));
 }
 
 
