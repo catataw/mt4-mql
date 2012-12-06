@@ -25,6 +25,9 @@ extern string Parameter = "dummy";
  * @return int - Fehlerstatus
  */
 int onTick() {
+
+   debug("onTick()   lastTick="+ TimeToStr(Tick.prevTime, TIME_FULL) +"   currentTick="+ TimeToStr(Tick.Time, TIME_FULL));
+
    HandleEvent(EVENT_BAR_OPEN);
    return(last_error);
 }
