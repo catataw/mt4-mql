@@ -15,8 +15,6 @@
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Möglichkeit, WeekendStop zu (de-)aktivieren                                                     *
  *  - Breakeven: Berechnung reparieren, Anzeige laufender Sequenz bis zum aktuellen Moment            *
- *  - onBarOpen(PERIOD_M1) für Breakeven-Indikator implementieren                                     *
- *  - EventListener.BarOpen() muß Event auch erkennen, wenn er nicht bei jedem Tick aufgerufen wird   *
  *
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
@@ -950,9 +948,9 @@ bool UpdateStatus(int limits[], int stops[]) {
       //if (recalcBreakeven) {
       //   Grid.CalculateBreakeven();
       //}
-      //else if (grid.maxLevel != 0) {                                             // nur ab dem ersten ausgeführten Trade
-      //   if      (  !IsTesting()) HandleEvent(EVENT_BAR_OPEN/*, F_PERIOD_M1*/);  // jede Minute    TODO: EventListener muß Event auch ohne permanenten Aufruf erkennen
-      //   else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                   // nur onBarOpen        (langlaufendes UpdateStatus() überspringt evt. Event)
+      //else if (grid.maxLevel != 0) {                                           // nur ab dem ersten ausgeführten Trade
+      //   if      (  !IsTesting()) HandleEvent(EVENT_BAR_OPEN, F_PERIOD_M1);    // jede Minute
+      //   else if (IsVisualMode()) HandleEvent(EVENT_BAR_OPEN);                 // nur onBarOpen
       //}
    }
 
