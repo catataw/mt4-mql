@@ -25,7 +25,6 @@ extern string Parameter = "dummy";
  * @return int - Fehlerstatus
  */
 int onTick() {
-   HandleEvent(EVENT_BAR_OPEN, F_PERIOD_M1|F_PERIOD_M5);
    return(last_error);
 }
 
@@ -49,8 +48,6 @@ int onBarOpen(int timeframes[]) {
  */
 int Signal() {
    return(NO_ERROR);
-
-   // - BarOpen-Handler reparieren (im Tester beim ersten Tick)
 
    /*ICUSTOM*/int ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
