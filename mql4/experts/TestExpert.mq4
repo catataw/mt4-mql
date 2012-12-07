@@ -48,27 +48,30 @@ int onBarOpen(int timeframes[]) {
  * @return int - Fehlerstatus
  */
 int Signal() {
-   //return(NO_ERROR);
 
    /*ICUSTOM*/int ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
-   int bar    = 0;
-   int buffer = 0;
+   static int trend[5], sizeOfTrend;
+   if (sizeOfTrend == 0)
+      sizeOfTrend = ArraySize(trend);
 
-   double value = iCustom(NULL, PERIOD_M5, "Moving Average",   // throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
-                          400,            // MA.Periods
-                          "",             // MA.Timeframe
-                          "SMA",          // MA.Method
-                          "",             // MA.Method.Help
-                          "Close",        // AppliedPrice
-                          "",             // AppliedPrice.Help
-                          2000,           // Max.Values
-                          ForestGreen,    // Color.UpTrend
-                          Red,            // Color.DownTrend
-                          "",             // _________________
-                          ic[IC_PTR],     // __iCustom__
-                          buffer, bar);
+   for (int bar=0; bar < sizeOfTrend; bar++) {
+      trend[bar] = Round(iCustom(NULL, PERIOD_M1, "Moving Average",  // throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+                                 60,                                 // MA.Periods
+                                 "",                                 // MA.Timeframe
+                                 "SMA",                              // MA.Method
+                                 "",                                 // MA.Method.Help
+                                 "Close",                            // AppliedPrice
+                                 "",                                 // AppliedPrice.Help
+                                 sizeOfTrend,                        // Max.Values
+                                 ForestGreen,                        // Color.UpTrend
+                                 Red,                                // Color.DownTrend
+                                 "",                                 // _________________
+                                 ic[IC_PTR],                         // __iCustom__
+                                 BUFFER_1, bar));
+   }
+
 
    // iCustom()-Call auswerten (Wechselwirkung zwischen ERR_HISTORY_UPDATE/ERR_HISTORY_INSUFFICIENT)
    int error=GetLastError(), icError=ic[IC_LAST_ERROR];
@@ -80,15 +83,18 @@ int Signal() {
       if (IsNoError(error))                    return(catch("Signal(2)->iCustom()", icError));
    }
 
+   ReverseIntArray(trend);
 
    if (error == ERR_HISTORY_UPDATE) {
       // Signal je nach Kontext verwerfen
-      debug("Signal()->iCustom()   ERR_HISTORY_UPDATE");
+      debug("Signal()   trend="+ IntsToStr(trend, NULL) +"   ERR_HISTORY_UPDATE");
    }
    else {
       // Signal gültig
-      debug("Signal()   signal valid");
+      debug("Signal()   trend="+ IntsToStr(trend, NULL));
    }
+
+   ReverseIntArray(trend);
 
    return(catch("Signal(3)"));
 }
