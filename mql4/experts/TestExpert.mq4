@@ -26,9 +26,9 @@ extern string Parameter = "dummy";
  */
 int onTick() {
 
-   debug("onTick()   lastTick="+ TimeToStr(Tick.prevTime, TIME_FULL) +"   currentTick="+ TimeToStr(Tick.Time, TIME_FULL));
+   //debug("onTick()   lastTick="+ TimeToStr(Tick.prevTime, TIME_FULL) +"   currentTick="+ TimeToStr(Tick.Time, TIME_FULL));
 
-   HandleEvent(EVENT_BAR_OPEN);
+   HandleEvent(EVENT_BAR_OPEN, F_PERIOD_M1|F_PERIOD_M5);
    return(last_error);
 }
 
@@ -51,6 +51,7 @@ int onBarOpen(int timeframes[]) {
  * @return int - Fehlerstatus
  */
 int Signal() {
+   return(NO_ERROR);
 
    // - BarOpen-Handler reparieren (im Tester beim ersten Tick)
 
