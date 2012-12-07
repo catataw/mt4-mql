@@ -25,6 +25,7 @@ extern string Parameter = "dummy";
  * @return int - Fehlerstatus
  */
 int onTick() {
+   HandleEvent(EVENT_BAR_OPEN, F_PERIOD_M1);
    return(last_error);
 }
 
@@ -47,7 +48,7 @@ int onBarOpen(int timeframes[]) {
  * @return int - Fehlerstatus
  */
 int Signal() {
-   return(NO_ERROR);
+   //return(NO_ERROR);
 
    /*ICUSTOM*/int ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
@@ -81,7 +82,7 @@ int Signal() {
 
 
    if (error == ERR_HISTORY_UPDATE) {
-      // Signal verwerfen
+      // Signal je nach Kontext verwerfen
       debug("Signal()->iCustom()   ERR_HISTORY_UPDATE");
    }
    else {
