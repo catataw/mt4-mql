@@ -48,34 +48,38 @@ int onBarOpen(int timeframes[]) {
  * @return int - Fehlerstatus
  */
 int Signal() {
-   return(NO_ERROR);
+   //return(NO_ERROR);
 
-   /*ICUSTOM*/int ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
+   // (1) Trend des MA der letzten Bars berechnen
+   static int signal, trend, bars=4, icError, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
-   static int trend[5], sizeOfTrend;
-   if (sizeOfTrend == 0)
-      sizeOfTrend = ArraySize(trend);
+   string strTrend;
 
-   for (int bar=0; bar < sizeOfTrend; bar++) {
-      trend[bar] = Round(iCustom(NULL, PERIOD_M1, "Moving Average",  // throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
-                                 60,                                 // MA.Periods
-                                 "",                                 // MA.Timeframe
-                                 "SMA",                              // MA.Method
-                                 "",                                 // MA.Method.Help
-                                 "Close",                            // AppliedPrice
-                                 "",                                 // AppliedPrice.Help
-                                 sizeOfTrend,                        // Max.Values
-                                 ForestGreen,                        // Color.UpTrend
-                                 Red,                                // Color.DownTrend
-                                 "",                                 // _________________
-                                 ic[IC_PTR],                         // __iCustom__
-                                 BUFFER_1, bar));
+   for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 wird nicht benötigt
+      trend = Round(iCustom(NULL, Period(), "Moving Average",
+                            35,                                      // MA.Periods
+                            "",                                      // MA.Timeframe
+                            "SMA",                                   // MA.Method
+                            "",                                      // MA.Method.Help
+                            "Close",                                 // AppliedPrice
+                            "",                                      // AppliedPrice.Help
+                            bars + 1,                                // Max.Values
+                            ForestGreen,                             // Color.UpTrend
+                            Red,                                     // Color.DownTrend
+                            "",                                      // _________________
+                            ic[IC_PTR],                              // __iCustom__
+                            BUFFER_1, bar)) /*throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE*/;
+      if (IsError(ic[IC_LAST_ERROR])) {
+         icError = ic[IC_LAST_ERROR];
+         break;
+      }
+      strTrend = StringConcatenate(strTrend, ifString(trend>0, "+", "-"));
    }
 
 
-   // iCustom()-Call auswerten (Wechselwirkung zwischen ERR_HISTORY_UPDATE/ERR_HISTORY_INSUFFICIENT)
-   int error=GetLastError(), icError=ic[IC_LAST_ERROR];
+   // (2) Fehlerbehandlung des iCustom()-Calls (Wechselwirkung zwischen ERR_HISTORY_UPDATE/ERR_HISTORY_INSUFFICIENT)
+   int error = GetLastError();
    if (IsError(error)) {
       if (error != ERR_HISTORY_UPDATE)         return(catch("Signal(1)", error));
    }
@@ -83,19 +87,22 @@ int Signal() {
       if (icError != ERR_HISTORY_INSUFFICIENT) return(SetLastError(icError));                   // wurde bereits im Indikator gemeldet
       if (IsNoError(error))                    return(catch("Signal(2)->iCustom()", icError));
    }
+   //debug("Signal()   strTrend="+ strTrend + ifString(error==ERR_HISTORY_UPDATE, "   ERR_HISTORY_UPDATE", ""));
 
-   ReverseIntArray(trend);
 
-   if (error == ERR_HISTORY_UPDATE) {
-      // Signal je nach Kontext verwerfen
-      debug("Signal()   trend="+ IntsToStr(trend, NULL) +"   ERR_HISTORY_UPDATE");
+   // (3) Trendwechsel detektieren (2 aufeinanderfolgende dem aktuellen Trend entgegengesetzte Bars)
+   if (StringEndsWith(strTrend, "-++")) {
+      if (signal != 1) {
+         signal = 1;
+         debug("Signal()   trend up");
+      }
    }
-   else {
-      // Signal gültig
-      debug("Signal()   trend="+ IntsToStr(trend, NULL));
+   else if (StringEndsWith(strTrend, "+--")) {
+      if (signal != -1) {
+         signal = -1;
+         debug("Signal()   trend down");
+      }
    }
-
-   ReverseIntArray(trend);
 
    return(catch("Signal(3)"));
 }
