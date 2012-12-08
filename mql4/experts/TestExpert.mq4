@@ -48,6 +48,7 @@ int onBarOpen(int timeframes[]) {
  * @return int - Fehlerstatus
  */
 int Signal() {
+   return(NO_ERROR);
 
    /*ICUSTOM*/int ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
