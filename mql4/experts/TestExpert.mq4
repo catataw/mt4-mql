@@ -82,25 +82,25 @@ int Signal() {
    int error = GetLastError();
    if (IsError(error)) {
       if (error != ERR_HISTORY_UPDATE)         return(catch("Signal(1)", error));
+      debug("Signal()   ERR_HISTORY_UPDATE");
    }
    if (IsError(icError)) {
       if (icError != ERR_HISTORY_INSUFFICIENT) return(SetLastError(icError));                   // wurde bereits im Indikator gemeldet
       if (IsNoError(error))                    return(catch("Signal(2)->iCustom()", icError));
    }
-   //debug("Signal()   strTrend="+ strTrend + ifString(error==ERR_HISTORY_UPDATE, "   ERR_HISTORY_UPDATE", ""));
 
 
-   // (3) Trendwechsel detektieren (2 aufeinanderfolgende dem aktuellen Trend entgegengesetzte Bars)
+   // (3) Trendwechsel detektieren (2 dem alten Trend entgegengesetzte Bars)
    if (StringEndsWith(strTrend, "-++")) {
       if (signal != 1) {
          signal = 1;
-         debug("Signal()   trend up");
+         debug("Signal()   trend change up");
       }
    }
    else if (StringEndsWith(strTrend, "+--")) {
       if (signal != -1) {
          signal = -1;
-         debug("Signal()   trend down");
+         debug("Signal()   trend change down");
       }
    }
 

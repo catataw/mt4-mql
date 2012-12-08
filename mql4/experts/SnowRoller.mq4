@@ -96,8 +96,8 @@ extern /*sticky*/ string Sequence.StatusLocation = "";               // Unterver
 
 
 string   last.Sequence.ID             = "";                          // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
-string   last.Sequence.StatusLocation = "";                          // mit den Default-Werten überschrieben. Um dies zu verhindern und um geänderte Parameter mit
-string   last.GridDirection           = "";                          // alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
+string   last.Sequence.StatusLocation = "";                          // mit den (Default-)Input-Parametern überschrieben. Um dies zu verhindern und um geänderte Parameter
+string   last.GridDirection           = "";                          // mit alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
 int      last.GridSize;                                              // in init() daraus restauriert.
 double   last.LotSize;
 string   last.StartConditions         = "";
