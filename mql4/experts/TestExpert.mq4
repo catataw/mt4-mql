@@ -58,8 +58,8 @@ int Signal() {
 
    for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 wird nicht benötigt
       trend = Round(iCustom(NULL, PERIOD_H1, "ALMA",
-                            84,                                      // MA.Periods
-                            "H1",                                    // MA.Timeframe
+                            "3.5",                                   // MA.Periods
+                            "D1",                                    // MA.Timeframe
                             "Close",                                 // AppliedPrice
                             "",                                      // AppliedPrice.Help
                             0.85,                                    // GaussianOffset

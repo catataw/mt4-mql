@@ -83,8 +83,8 @@ extern /*sticky*/ string Sequence.ID             = "";
 extern            string GridDirection           = "Long | Short";
 extern            int    GridSize                = 20;
 extern            double LotSize                 = 0.1;
-extern            string StartConditions         = "";               // @trendchange(alma:7xD1) || @[bid|ask|price](double) && @time(datetime)
-extern            string StopConditions          = "";               // @trendchange(alma:7xD1) || @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
+extern            string StartConditions         = "";               // @trend(alma:7xD1+2) || @[bid|ask|price](double) && @time(datetime)
+extern            string StopConditions          = "";               // @trend(alma:7xD1+2) || @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
 extern /*sticky*/ color  Breakeven.Color         = Blue;
 extern /*sticky*/ string Sequence.StatusLocation = "";               // Unterverzeichnis
 
