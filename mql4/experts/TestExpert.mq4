@@ -51,25 +51,25 @@ int Signal() {
    //return(NO_ERROR);
 
    // (1) Trend des MA der letzten Bars berechnen
-   static int signal, trend, bars=4, icError, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
+   static int signal, bars=4, icError, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
    string strTrend;
 
    for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 wird nicht benötigt
-      trend = Round(iCustom(NULL, PERIOD_H1, "ALMA",
-                            "3.5",                                   // MA.Periods
-                            "D1",                                    // MA.Timeframe
-                            "Close",                                 // AppliedPrice
-                            "",                                      // AppliedPrice.Help
-                            0.85,                                    // GaussianOffset
-                            6.0,                                     // Sigma
-                            bars + 1,                                // Max.Values
-                            ForestGreen,                             // Color.UpTrend
-                            Red,                                     // Color.DownTrend
-                            "",                                      // _________________
-                            ic[IC_PTR],                              // __iCustom__
-                            BUFFER_1, bar)); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+      double trend = iCustom(NULL, PERIOD_H1, "ALMA",
+                             "3.5",                                  // MA.Periods
+                             "D1",                                   // MA.Timeframe
+                             "Close",                                // AppliedPrice
+                             "",                                     // AppliedPrice.Help
+                             0.85,                                   // GaussianOffset
+                             6.0,                                    // Sigma
+                             bars + 1,                               // Max.Values
+                             ForestGreen,                            // Color.UpTrend
+                             Red,                                    // Color.DownTrend
+                             "",                                     // _________________
+                             ic[IC_PTR],                             // __iCustom__
+                             BUFFER_1, bar); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
 
       if (IsError(ic[IC_LAST_ERROR])) {
          icError = ic[IC_LAST_ERROR];
