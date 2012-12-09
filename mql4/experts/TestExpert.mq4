@@ -57,6 +57,7 @@ int Signal() {
    string strTrend;
 
    for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 wird nicht benötigt
+      /*
       trend = Round(iCustom(NULL, Period(), "Moving Average",
                             35,                                      // MA.Periods
                             "",                                      // MA.Timeframe
@@ -69,7 +70,22 @@ int Signal() {
                             Red,                                     // Color.DownTrend
                             "",                                      // _________________
                             ic[IC_PTR],                              // __iCustom__
-                            BUFFER_1, bar)) /*throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE*/;
+                            BUFFER_1, bar)); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+      */
+      trend = Round(iCustom(NULL, PERIOD_H1, "ALMA",
+                            84,                                      // MA.Periods
+                            "H1",                                    // MA.Timeframe
+                            "Close",                                 // AppliedPrice
+                            "",                                      // AppliedPrice.Help
+                            0.85,                                    // GaussianOffset
+                            6.0,                                     // Sigma
+                            bars + 1,                                // Max.Values
+                            ForestGreen,                             // Color.UpTrend
+                            Red,                                     // Color.DownTrend
+                            "",                                      // _________________
+                            ic[IC_PTR],                              // __iCustom__
+                            BUFFER_1, bar)); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+
       if (IsError(ic[IC_LAST_ERROR])) {
          icError = ic[IC_LAST_ERROR];
          break;
