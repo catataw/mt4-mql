@@ -2,7 +2,6 @@
  * TestExpert
  */
 #include <core/define.mqh>
-#define __TYPE__        T_EXPERT
 int   __INIT_FLAGS__[];
 int __DEINIT_FLAGS__[];
 #include <stddefine.mqh>
@@ -50,7 +49,7 @@ int onBarOpen(int timeframes[]) {
 int Signal() {
    //return(NO_ERROR);
 
-   // (1) Trend des MA der letzten Bars berechnen
+   // (1) (1) Trend der letzten Bars berechnen
    static int signal, bars=4, icError, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
@@ -69,7 +68,7 @@ int Signal() {
                              Red,                                    // Color.DownTrend
                              "",                                     // _________________
                              ic[IC_PTR],                             // __iCustom__
-                             BUFFER_1, bar); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+                             BUFFER_2, bar); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
 
       if (IsError(ic[IC_LAST_ERROR])) {
          icError = ic[IC_LAST_ERROR];
@@ -79,16 +78,15 @@ int Signal() {
    }
 
 
-   // (2) Fehlerbehandlung des iCustom()-Calls (Wechselwirkung zwischen ERR_HISTORY_UPDATE/ERR_HISTORY_INSUFFICIENT)
+   // (2) Fehlerbehandlung
    int error = GetLastError();
    if (IsError(error)) {
-      if (error != ERR_HISTORY_UPDATE)         return(catch("Signal(1)", error));
-      debug("Signal()   ERR_HISTORY_UPDATE");
+      if (error != ERR_HISTORY_UPDATE)
+         return(catch("Signal(1)", error));
+      debug("Signal()   ERR_HISTORY_UPDATE");                        // TODO: die im Indikator zur Berechnung verwendeten Bars prüfen
    }
-   if (IsError(icError)) {
-      if (icError != ERR_HISTORY_INSUFFICIENT) return(SetLastError(icError));                   // wurde bereits im Indikator gemeldet
-      if (IsNoError(error))                    return(catch("Signal(2)->iCustom()", icError));
-   }
+   if (IsError(icError))
+      return(SetLastError(icError));
 
 
    // (3) Trendwechsel detektieren (2 dem alten Trend entgegengesetzte Bars)
@@ -105,7 +103,7 @@ int Signal() {
       }
    }
 
-   return(catch("Signal(3)"));
+   return(catch("Signal(2)"));
 }
 
 
