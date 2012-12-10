@@ -81,16 +81,16 @@ int __DEINIT_FLAGS__[];
 ///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////
 
 extern /*sticky*/ string Sequence.ID             = "";
-extern            string GridDirection           = "Long | Short";   // "Long | Short | Alternative"
+extern            string GridDirection           = "Long | Short | Alternative";
 extern            int    GridSize                = 20;
 extern            double LotSize                 = 0.1;
-extern            string StartConditions         = "";               // @trend(alma:7xD1[+2]) || @[bid|ask|price](double) && @time(datetime)
-extern            string StopConditions          = "";               // @trend(alma:7xD1[+2]) || @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
+extern            string StartConditions         = "@trend(ALMA:7xD1)"; // @trend(ALMA:7xD1[+2]) || @[bid|ask|price](double) && @time(datetime)
+extern            string StopConditions          = "";                  // @trend(ALMA:7xD1[+2]) || @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
 extern /*sticky*/ color  Breakeven.Color         = Blue;
-extern /*sticky*/ string Sequence.StatusLocation = "";               // Unterverzeichnis
+extern /*sticky*/ string Sequence.StatusLocation = "";                  // Unterverzeichnis
 
-       /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;        // Sticky-Variablen werden im Chart zwischengespeichert, sie überleben
-       /*sticky*/ int    orderDisplayMode        = ODM_NONE;         // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
+       /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;           // Sticky-Variablen werden im Chart zwischengespeichert, sie überleben
+       /*sticky*/ int    orderDisplayMode        = ODM_NONE;            // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
        /*sticky*/ int    breakeven.Width         = 0;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -128,16 +128,16 @@ double   sequenceStop.profit[];
 
 bool     start.conditions;                                           // ob die StartConditions aktiv sind und getriggert wurden
 bool     start.conditions.triggered;
+bool     start.trend.condition;
+double   start.trend.periods;
+int      start.trend.timeframe, start.trend.timeframeFlag;
+int      start.trend.method;
+int      start.trend.shift;
 bool     start.price.condition;
 int      start.price.type;                                           // SCP_BID | SCP_ASK | SCP_MEDIAN
 double   start.price.value;
 bool     start.time.condition;
 datetime start.time.value;
-bool     start.trend.condition;
-double   start.trend.periods;
-int      start.trend.timeframe;
-int      start.trend.method;
-int      start.trend.shift;
 
 bool     stop.conditions;                                            // ob die StopConditions aktiv sind und getriggert wurden
 bool     stop.conditions.triggered;
@@ -162,6 +162,7 @@ datetime weekend.resume.time;
 bool     weekend.resume.triggered;
 
 int      grid.direction;
+bool     grid.direction.alternative;
 double   grid.commission;                                            // Commission-Betrag je Level (falls zutreffend)
 
 int      grid.level;                                                 // aktueller Grid-Level
@@ -1209,7 +1210,7 @@ bool IsOrderClosedBySL() {
 /**
  * Signalgeber für StartSequence(). Die einzelnen Bedingungen sind AND-verknüpft.
  *
- * @return bool - ob alle konfigurierten Startbedingungen erfüllt sind
+ * @return bool - ob die konfigurierten Startbedingungen erfüllt sind
  */
 bool IsStartSignal() {
    if (__STATUS__CANCELLED)                                       return(false);
@@ -1219,6 +1220,19 @@ bool IsStartSignal() {
       if (start.conditions.triggered) {
          warn("IsStartSignal(1)   repeated triggered state call");   // Einmal getriggert, immer getriggert. Falls der Start beim aktuellen Tick nicht ausgeführt
          return(true);                                               // werden konnte, könnten die Bedingungen beim nächsten Tick schon nicht mehr erfüllt sein.
+      }
+
+      // -- start.trend: bei Trendwechsel in die angegebene Richtung erfüllt --------------------------------------------
+      if (start.trend.condition) {
+         int iNull[];
+         if (EventListener.BarOpen(iNull, start.trend.timeframeFlag)) {
+            if (IsStartSignal.Trend()) {
+               start.conditions.triggered = true;
+               if (__LOG) log(StringConcatenate("IsStartSignal()   start condition \"", StartConditions, "\" met"));
+               return(true);
+            }
+         }
+         return(false);
       }
 
       // -- start.price: erfüllt, wenn der entsprechende Preis den Wert berührt oder kreuzt -----------------------------
@@ -1263,6 +1277,79 @@ bool IsStartSignal() {
 
    start.conditions.triggered = true;
    return(true);
+}
+
+
+/**
+ * Eventhandler zur Erkennung von Trendwechseln. Wird nur onBarOpen aufgerufen.
+ *
+ * @return bool - ob ein Trendwechsel entsprechend der Startkonfiguration aufgetreten ist
+ */
+bool IsStartSignal.Trend() {
+   static int signal;
+
+   // (1) MA-Trend der letzten Bars berechnen
+   int icError, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
+   ic[IC_LAST_ERROR] = NO_ERROR;
+
+   int    bars         = start.trend.shift+2;
+   int    timeframe    = start.trend.timeframe;
+   string MA.Periods   = NumberToStr(start.trend.periods, ".+");
+   string MA.Timeframe = PeriodDescription(start.trend.timeframe);
+   string strTrend;
+
+   for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 wird nicht benötigt
+      double trend = iCustom(NULL, timeframe, "ALMA",
+                             MA.Periods,                             // MA.Periods
+                             MA.Timeframe,                           // MA.Timeframe
+                             "Close",                                // AppliedPrice
+                             "",                                     // AppliedPrice.Help
+                             0.85,                                   // GaussianOffset
+                             6.0,                                    // Sigma
+                             bars + 1,                               // Max.Values
+                             ForestGreen,                            // Color.UpTrend
+                             Red,                                    // Color.DownTrend
+                             "",                                     // _________________
+                             ic[IC_PTR],                             // __iCustom__
+                             BUFFER_1, bar); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+
+      if (IsError(ic[IC_LAST_ERROR])) {
+         icError = ic[IC_LAST_ERROR];
+         break;
+      }
+      strTrend = StringConcatenate(strTrend, ifString(trend>0, "+", "-"));
+   }
+
+
+   // (2) Fehlerbehandlung (Wechselwirkung zwischen ERR_HISTORY_UPDATE/ERR_HISTORY_INSUFFICIENT)
+   int error = GetLastError();
+   if (IsError(error)) {
+      if (error != ERR_HISTORY_UPDATE)         return(catch("IsStartSignal.Trend(1)", error));
+      debug("IsStartSignal.Trend()   ERR_HISTORY_UPDATE");
+   }
+   if (IsError(icError)) {
+      if (icError != ERR_HISTORY_INSUFFICIENT) return(SetLastError(icError));                   // wurde bereits im Indikator gemeldet
+      if (IsNoError(error))                    return(catch("IsStartSignal.Trend(2)->iCustom()", icError));
+   }
+
+
+   // (3) Trendwechsel detektieren
+   string up   = "-"+ StringRepeat("+", start.trend.shift);          // "-++"
+   string down = "+"+ StringRepeat("-", start.trend.shift);          // "+--"
+
+   if (StringEndsWith(strTrend, up)) {
+      if (signal != 1) {
+         signal = 1;
+         debug("IsStartSignal.Trend()   trend change up");
+      }
+   }
+   else if (StringEndsWith(strTrend, down)) {
+      if (signal != -1) {
+         signal = -1;
+         debug("IsStartSignal.Trend()   trend change down");
+      }
+   }
+   return(_false(catch("IsStartSignal.Trend(3)")));
 }
 
 
@@ -1387,7 +1474,7 @@ void UpdateWeekendResume() {
  *
  * @param bool checkWeekendStop - ob auch auf das Wochenend-Stopsignal geprüft werden soll (default: ja)
  *
- * @return bool - ob mindestens eine Stopbedingung erfüllt ist
+ * @return bool - ob die konfigurierten Stopbedingungen erfüllt sind
  */
 bool IsStopSignal(bool checkWeekendStop=true) {
    if (__STATUS__CANCELLED || status!=STATUS_PROGRESSING)
@@ -3341,23 +3428,23 @@ bool ValidateConfiguration(bool interactive) {
    // (1) Sequence.ID
    if (parameterChange) {
       if (status == STATUS_UNINITIALIZED) {
-         if (Sequence.ID != last.Sequence.ID) { return(_false(ValidateConfig.HandleError("ValidateConfiguration(1)", "Loading of another sequence not yet implemented!", interactive)));
+         if (Sequence.ID != last.Sequence.ID) {  return(_false(ValidateConfig.HandleError("ValidateConfiguration(1)", "Loading of another sequence not yet implemented!", interactive)));
             if (ValidateConfiguration.ID(interactive)) {
                // TODO: neue Sequenz laden
             }
          }
       }
       else {
-         if (Sequence.ID == "")                 return(_false(ValidateConfig.HandleError("ValidateConfiguration(2)", "Sequence.ID missing!", interactive)));
-         if (Sequence.ID != last.Sequence.ID) { return(_false(ValidateConfig.HandleError("ValidateConfiguration(3)", "Loading of another sequence not yet implemented!", interactive)));
+         if (Sequence.ID == "")                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(2)", "Sequence.ID missing!", interactive)));
+         if (Sequence.ID != last.Sequence.ID) {  return(_false(ValidateConfig.HandleError("ValidateConfiguration(3)", "Loading of another sequence not yet implemented!", interactive)));
             if (ValidateConfiguration.ID(interactive)) {
                // TODO: neue Sequenz laden
             }
          }
       }
    }
-   else if (StringLen(Sequence.ID) == 0) {      // wir müssen im STATUS_UNINITIALIZED sein (sequenceId = 0)
-      if (sequenceId != 0)                      return(_false(catch("ValidateConfiguration(4)   illegal Sequence.ID = \""+ Sequence.ID +"\" (sequenceId="+ sequenceId +")", ERR_RUNTIME_ERROR)));
+   else if (StringLen(Sequence.ID) == 0) {       // wir müssen im STATUS_UNINITIALIZED sein (sequenceId = 0)
+      if (sequenceId != 0)                       return(_false(catch("ValidateConfiguration(4)   illegal Sequence.ID = \""+ Sequence.ID +"\" (sequenceId="+ sequenceId +")", ERR_RUNTIME_ERROR)));
    }
    else {}     // wenn gesetzt, ist die ID schon validiert und die Sequenz geladen (sonst landen wir hier nicht)
 
@@ -3365,43 +3452,45 @@ bool ValidateConfiguration(bool interactive) {
    // (2) GridDirection
    if (parameterChange) {
       if (GridDirection != last.GridDirection)
-         if (status != STATUS_UNINITIALIZED)    return(_false(ValidateConfig.HandleError("ValidateConfiguration(5)", "Cannot change GridDirection of "+ StatusDescription(status) +" sequence", interactive)));
+         if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(5)", "Cannot change GridDirection of "+ StatusDescription(status) +" sequence", interactive)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    }
    string strValue = StringToLower(StringTrim(GridDirection));
-   if (strValue == "long | short")              return(_false(ValidateConfig.HandleError("ValidateConfiguration(6)", "Invalid GridDirection = \""+ GridDirection +"\"", interactive)));
+   if (strValue == "long | short | alternative") return(_false(ValidateConfig.HandleError("ValidateConfiguration(6)", "Invalid GridDirection = \""+ GridDirection +"\"", interactive)));
    switch (StringGetChar(strValue, 0)) {
       case 'l': grid.direction = D_LONG;  break;
       case 's': grid.direction = D_SHORT; break;
-      default:                                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(7)", "Invalid GridDirection = \""+ GridDirection +"\"", interactive)));
+      case 'a': grid.direction = D_ALT;   break;
+      default:                                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(7)", "Invalid GridDirection = \""+ GridDirection +"\"", interactive)));
    }
-   GridDirection = directionDescr[grid.direction]; SS.Grid.Direction();
+   grid.direction.alternative = (grid.direction == D_ALT);
+   GridDirection              = directionDescr[grid.direction]; SS.Grid.Direction();
 
 
    // (3) GridSize
    if (parameterChange) {
       if (GridSize != last.GridSize)
-         if (status != STATUS_UNINITIALIZED)    return(_false(ValidateConfig.HandleError("ValidateConfiguration(8)", "Cannot change GridSize of "+ StatusDescription(status) +" sequence", interactive)));
+         if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(8)", "Cannot change GridSize of "+ StatusDescription(status) +" sequence", interactive)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    }
-   if (GridSize < 1)                            return(_false(ValidateConfig.HandleError("ValidateConfiguration(9)", "Invalid GridSize = "+ GridSize, interactive)));
+   if (GridSize < 1)                             return(_false(ValidateConfig.HandleError("ValidateConfiguration(9)", "Invalid GridSize = "+ GridSize, interactive)));
 
 
    // (4) LotSize
    if (parameterChange) {
       if (NE(LotSize, last.LotSize))
-         if (status != STATUS_UNINITIALIZED)    return(_false(ValidateConfig.HandleError("ValidateConfiguration(10)", "Cannot change LotSize of "+ StatusDescription(status) +" sequence", interactive)));
+         if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(10)", "Cannot change LotSize of "+ StatusDescription(status) +" sequence", interactive)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
    }
-   if (LE(LotSize, 0))                          return(_false(ValidateConfig.HandleError("ValidateConfiguration(11)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+"), interactive)));
+   if (LE(LotSize, 0))                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(11)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+"), interactive)));
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT );
    double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT );
    double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
    int error = GetLastError();
-   if (IsError(error))                          return(_false(catch("ValidateConfiguration(12)   symbol=\""+ Symbol() +"\"", error)));
-   if (LT(LotSize, minLot))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(13)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", interactive)));
-   if (GT(LotSize, maxLot))                     return(_false(ValidateConfig.HandleError("ValidateConfiguration(14)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", interactive)));
-   if (NE(MathModFix(LotSize, lotStep), 0))     return(_false(ValidateConfig.HandleError("ValidateConfiguration(15)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", interactive)));
+   if (IsError(error))                           return(_false(catch("ValidateConfiguration(12)   symbol=\""+ Symbol() +"\"", error)));
+   if (LT(LotSize, minLot))                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(13)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", interactive)));
+   if (GT(LotSize, maxLot))                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(14)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", interactive)));
+   if (NE(MathModFix(LotSize, lotStep), 0))      return(_false(ValidateConfig.HandleError("ValidateConfiguration(15)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", interactive)));
    SS.LotSize();
 
 
@@ -3411,6 +3500,7 @@ bool ValidateConfiguration(bool interactive) {
       // Bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StartConditions nur bei Änderung (re-)aktiviert werden.
       start.conditions           = false;
       start.conditions.triggered = false;
+      start.trend.condition      = false;
       start.price.condition      = false;
       start.time.condition       = false;
 
@@ -3467,6 +3557,8 @@ bool ValidateConfiguration(bool interactive) {
             if (LE(start.trend.periods, 0))            return(_false(ValidateConfig.HandleError("ValidateConfiguration(30)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             start.trend.timeframe = PeriodToId(StringTrim(elems[1]));
             if (start.trend.timeframe == -1)           return(_false(ValidateConfig.HandleError("ValidateConfiguration(31)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+            start.trend.timeframeFlag = PeriodFlag(start.trend.timeframe);
+            start.trend.condition = true;
             exprs[i] = "@trend("+ key +":"+ NumberToStr(start.trend.periods, ".+") +"x"+ PeriodDescription(start.trend.timeframe) + ifString(start.trend.shift==1, "", "+"+ start.trend.shift) +")";
          }
 
