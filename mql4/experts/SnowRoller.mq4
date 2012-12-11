@@ -130,7 +130,7 @@ bool     start.conditions.triggered;
 bool     start.trend.condition;
 double   start.trend.periods;
 int      start.trend.timeframe, start.trend.timeframeFlag;           // max. PERIOD_H1
-int      start.trend.method;
+string   start.trend.method;
 int      start.trend.shift;
 bool     start.price.condition;
 int      start.price.type;                                           // SCP_BID | SCP_ASK | SCP_MEDIAN
@@ -1291,51 +1291,45 @@ bool IsStartSignal.Trend(bool changeUp) {
    bool changeDown = !changeUp;
 
    // (1) Trend der letzten Bars berechnen
-   int icError, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
+   int error, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
-   int    bars         = start.trend.shift+2;
+   int    bars         = start.trend.shift + 2 + 4;                  // +2 (Bar 0 u. Vorgänger) + einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
    int    timeframe    = start.trend.timeframe;
    string MA.Periods   = NumberToStr(start.trend.periods, ".+");
    string MA.Timeframe = PeriodDescription(start.trend.timeframe);
+   string MA.Method    = start.trend.method;
    string strTrend;
 
-   for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 wird nicht benötigt
-      double trend = iCustom(NULL, timeframe, "ALMA",
+   for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 ist immer unvollständig und wird nicht berücksichtigt
+      double trend = iCustom(NULL, timeframe, "Moving Average",
                              MA.Periods,                             // MA.Periods
                              MA.Timeframe,                           // MA.Timeframe
+                             MA.Method,                              // MA.Method
+                             "",                                     // MA.Method.Help
                              "Close",                                // AppliedPrice
                              "",                                     // AppliedPrice.Help
-                             0.85,                                   // GaussianOffset
-                             6.0,                                    // Sigma
-                             bars + 1,                               // Max.Values
+                             bars + 1,                               // Max.Values: +1 wegen ungültiger Trendberechnung der ersten Bar (hat keinen Vorgänger)
                              ForestGreen,                            // Color.UpTrend
                              Red,                                    // Color.DownTrend
                              "",                                     // _________________
                              ic[IC_PTR],                             // __iCustom__
                              BUFFER_2, bar); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
 
-      if (IsError(ic[IC_LAST_ERROR])) {
-         icError = ic[IC_LAST_ERROR];
-         break;
-      }
+      error = GetLastError();
+      if (IsError(error)) /*&&*/ if (error!=ERR_HISTORY_UPDATE)
+         return(catch("IsStartSignal.Trend(1)", error));
+      if (IsError(ic[IC_LAST_ERROR]))
+         return(SetLastError(ic[IC_LAST_ERROR]));
+
       strTrend = StringConcatenate(strTrend, ifString(trend>0, "+", "-"));
    }
-
-
-   // (2) Fehlerbehandlung
-   int error = GetLastError();
-   if (IsError(error)) {
-      if (error != ERR_HISTORY_UPDATE)
-         return(catch("IsStartSignal.Trend(1)", error));
+   if (error == ERR_HISTORY_UPDATE)
       debug("IsStartSignal.Trend()   ERR_HISTORY_UPDATE");           // TODO: bei ERR_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
-   }
-   if (IsError(icError))
-      return(SetLastError(icError));
 
 
-   // (3) Trendwechsel detektieren
-   static int signal;                                                // TODO: signal muß vor Verwendung mit dem aktuellen Trend initialisiert werden
+   // (2) Trendwechsel detektieren
+   static int signal;                                                // TODO: vor Verwendung mit aktuellem Trend initialisieren
    string strChangeUp   = "-"+ StringRepeat("+", start.trend.shift); // "-++"
    string strChangeDown = "+"+ StringRepeat("-", start.trend.shift); // "+--"
 
@@ -3542,11 +3536,11 @@ bool ValidateConfiguration(bool interactive) {
             key   = StringToUpper(StringTrim(elems[0]));
             value = StringToUpper(elems[1]);
             // key="ALMA"
-            if      (key == "SMA" ) start.trend.method = MODE_SMA;
-            else if (key == "EMA" ) start.trend.method = MODE_EMA;
-            else if (key == "SMMA") start.trend.method = MODE_SMMA;
-            else if (key == "LWMA") start.trend.method = MODE_LWMA;
-            else if (key == "ALMA") start.trend.method = MODE_ALMA;
+            if      (key == "SMA" ) start.trend.method = key;
+            else if (key == "EMA" ) start.trend.method = key;
+            else if (key == "SMMA") start.trend.method = key;
+            else if (key == "LWMA") start.trend.method = key;
+            else if (key == "ALMA") start.trend.method = key;
             else                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(25)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             // value="7XD1[+2]"
             if (Explode(value, "+", elems, NULL) == 1) {
@@ -3579,7 +3573,7 @@ bool ValidateConfiguration(bool interactive) {
             start.trend.periods       = NormalizeDouble(dValue, 1);
             start.trend.timeframeFlag = PeriodFlag(start.trend.timeframe);
             start.trend.condition     = true;
-            exprs[i] = "@trend("+ key +":"+ elems[0] +"x"+ elems[1] + ifString(start.trend.shift==1, "", "+"+ start.trend.shift) +")";
+            exprs[i] = "@trend("+ start.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(start.trend.shift==1, "", "+"+ start.trend.shift) +")";
          }
 
          else if (key=="@bid" || key=="@ask" || key=="@price") {

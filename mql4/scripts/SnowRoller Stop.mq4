@@ -33,7 +33,7 @@ int onStart() {
             case STATUS_WAITING    :                                             // STATUS_UNINITIALIZED:   // entfernen
             case STATUS_STARTING   :                                             // STATUS_WAITING      :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
             case STATUS_PROGRESSING:                                             // STATUS_STARTING     :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
-               if (StringGetChar(ids[i], 0)!='T' || ScriptIsTesting())           // STATUS_PROGRESSING  :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
+               if (StringGetChar(ids[i], 0)!='T' || Script.IsTesting())          // STATUS_PROGRESSING  :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
                   continue;                                                      // STATUS_STOPPING     :   // entfernen
             default:                                                             // STATUS_STOPPED      :   // entfernen
                ArraySpliceStrings(ids, i, 1);                                    // STATUS_DISABLED     :   // entfernen
@@ -46,7 +46,7 @@ int onStart() {
       // (3) Best‰tigung einholen
       for (i=0; i < sizeOfIds; i++) {
          ForceSound("notify.wav");
-         int button = ForceMessageBox(__NAME__, ifString(!IsDemo() && !ScriptIsTesting(), "- Live Account -\n\n", "") +"Do you really want to stop sequence "+ ids[i] +"?", MB_ICONQUESTION|ifInt(sizeOfIds==1, MB_OKCANCEL, MB_YESNOCANCEL));
+         int button = ForceMessageBox(__NAME__, ifString(!IsDemo() && !Script.IsTesting(), "- Live Account -\n\n", "") +"Do you really want to stop sequence "+ ids[i] +"?", MB_ICONQUESTION|ifInt(sizeOfIds==1, MB_OKCANCEL, MB_YESNOCANCEL));
          if (button == IDCANCEL)
             break;
          if (button == IDNO)

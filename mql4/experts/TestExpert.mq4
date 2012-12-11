@@ -18,13 +18,17 @@ extern string Parameter = "dummy";
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+int timeframe = PERIOD_M5;
+int shift     = 2;
+
+
 /**
  * Main-Funktion
  *
  * @return int - Fehlerstatus
  */
 int onTick() {
-   HandleEvent(EVENT_BAR_OPEN, F_PERIOD_M1);
+   HandleEvent(EVENT_BAR_OPEN, PeriodFlag(timeframe));
    return(last_error);
 }
 
@@ -50,46 +54,49 @@ int Signal() {
    //return(NO_ERROR);
 
    // (1) (1) Trend der letzten Bars berechnen
-   static int signal, bars=4, icError, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
+   int error, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
+   int    bars         = shift + 2 + 4;                              // +2 (Bar 0 u. Vorgänger) + einige Bars mehr, um aktuellen Trend sicher zu bestimmen
+ //int    timeframe    = ...
+   string MA.Periods   = "60";
+   string MA.Timeframe = PeriodDescription(timeframe);
+   string MA.Method    = "LWMA";
    string strTrend;
 
-   for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 wird nicht benötigt
-      double trend = iCustom(NULL, PERIOD_H1, "ALMA",
-                             "3.5",                                  // MA.Periods
-                             "D1",                                   // MA.Timeframe
+   for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 ist immer unvollständig und wird nicht berücksichtigt
+      double trend = iCustom(NULL, timeframe, "Moving Average",
+                             MA.Periods,                             // MA.Periods
+                             MA.Timeframe,                           // MA.Timeframe
+                             MA.Method,                              // MA.Method
+                             "",                                     // MA.Method.Help
                              "Close",                                // AppliedPrice
                              "",                                     // AppliedPrice.Help
-                             0.85,                                   // GaussianOffset
-                             6.0,                                    // Sigma
-                             bars + 1,                               // Max.Values
+                             bars + 1,                               // Max.Values: +1 wegen ungültiger Trendberechnung der ersten Bar (hat keinen Vorgänger)
                              ForestGreen,                            // Color.UpTrend
                              Red,                                    // Color.DownTrend
                              "",                                     // _________________
                              ic[IC_PTR],                             // __iCustom__
                              BUFFER_2, bar); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
 
-      if (IsError(ic[IC_LAST_ERROR])) {
-         icError = ic[IC_LAST_ERROR];
-         break;
-      }
+      debug("Signal()   bar="+ bar +"   trend="+ NumberToStr(trend, ".+"));
+
+      error = GetLastError();
+      if (IsError(error)) /*&&*/ if (error!=ERR_HISTORY_UPDATE)
+         return(catch("Signal(1)", error));
+      if (IsError(ic[IC_LAST_ERROR]))
+         return(SetLastError(ic[IC_LAST_ERROR]));
+
       strTrend = StringConcatenate(strTrend, ifString(trend>0, "+", "-"));
    }
+   if (error == ERR_HISTORY_UPDATE)
+      debug("Signal()   ERR_HISTORY_UPDATE");                        // TODO: bei ERR_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
 
 
-   // (2) Fehlerbehandlung
-   int error = GetLastError();
-   if (IsError(error)) {
-      if (error != ERR_HISTORY_UPDATE)
-         return(catch("Signal(1)", error));
-      debug("Signal()   ERR_HISTORY_UPDATE");                        // TODO: die im Indikator zur Berechnung verwendeten Bars prüfen
-   }
-   if (IsError(icError))
-      return(SetLastError(icError));
+   static int signal;
 
 
-   // (3) Trendwechsel detektieren (2 dem alten Trend entgegengesetzte Bars)
+   // (2) Trendwechsel detektieren (2 dem alten Trend entgegengesetzte Bars)
    if (StringEndsWith(strTrend, "-++")) {
       if (signal != 1) {
          signal = 1;
