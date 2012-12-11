@@ -1282,75 +1282,81 @@ bool IsStartSignal() {
 /**
  * Eventhandler zur Erkennung von Trendwechseln. Wird nur onBarOpen aufgerufen.
  *
- * @param  bool changeUp - TRUE,  wenn ein Wechsel zum Up-Trend signalisiert werden soll;
- *                         FALSE, wenn ein Wechsel zum Down-Trend signalisiert werden soll
+ * @param  bool detectChangeUp - TRUE,  wenn ein Wechsel zum Up-Trend signalisiert werden soll;
+ *                               FALSE, wenn ein Wechsel zum Down-Trend signalisiert werden soll
  *
  * @return bool - ob ein Trendwechsel entsprechend der Startkonfiguration aufgetreten ist
  */
-bool IsStartSignal.Trend(bool changeUp) {
-   bool changeDown = !changeUp;
+bool IsStartSignal.Trend(bool detectChangeUp) {
+   bool detectChangeDown = !detectChangeUp;
 
-   // (1) Trend der letzten Bars berechnen
+   // (1) Trend der letzten Bars ermitteln
    int error, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
-   int    bars         = start.trend.shift + 2 + 4;                  // +2 (Bar 0 u. Vorgänger) + einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
+   int    trend, barTrend, prevBarTrend;
+   string strTrend;
+
+   string indicator    = "Moving Average";
+   int    bars         = start.trend.shift + 2 + 4;                     // +2 (Bar 0 + Vorgänger) + einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
    int    timeframe    = start.trend.timeframe;
    string MA.Periods   = NumberToStr(start.trend.periods, ".+");
    string MA.Timeframe = PeriodDescription(start.trend.timeframe);
    string MA.Method    = start.trend.method;
-   string strTrend;
 
-   for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 ist immer unvollständig und wird nicht berücksichtigt
-      double trend = iCustom(NULL, timeframe, "Moving Average",
-                             MA.Periods,                             // MA.Periods
-                             MA.Timeframe,                           // MA.Timeframe
-                             MA.Method,                              // MA.Method
-                             "",                                     // MA.Method.Help
-                             "Close",                                // AppliedPrice
-                             "",                                     // AppliedPrice.Help
-                             bars + 1,                               // Max.Values: +1 wegen ungültiger Trendberechnung der ersten Bar (hat keinen Vorgänger)
-                             ForestGreen,                            // Color.UpTrend
-                             Red,                                    // Color.DownTrend
-                             "",                                     // _________________
-                             ic[IC_PTR],                             // __iCustom__
-                             BUFFER_2, bar); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+   for (int bar=bars-1; bar>0; bar--) {                                 // Bar 0 ist immer unvollständig und wird nicht berücksichtigt
+      // (1.1) Trend der einzelnen Bar bestimmen
+      barTrend = Round(iCustom(NULL, timeframe, indicator,
+                               MA.Periods,                              // MA.Periods
+                               MA.Timeframe,                            // MA.Timeframe
+                               MA.Method,                               // MA.Method
+                               "",                                      // MA.Method.Help
+                               "Close",                                 // AppliedPrice
+                               "",                                      // AppliedPrice.Help
+                               bars+1,                                  // Max.Values: +1 wegen ungültigem Trend der ersten Bar (hat keinen Vorgänger)
+                               ForestGreen,                             // Color.UpTrend
+                               Red,                                     // Color.DownTrend
+                               "",                                      // _________________
+                               ic[IC_PTR],                              // __iCustom__
+                               BUFFER_2, bar)); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
 
       error = GetLastError();
       if (IsError(error)) /*&&*/ if (error!=ERR_HISTORY_UPDATE)
-         return(catch("IsStartSignal.Trend(1)", error));
+         return(_false(catch("IsStartSignal.Trend(1)", error)));
       if (IsError(ic[IC_LAST_ERROR]))
-         return(SetLastError(ic[IC_LAST_ERROR]));
+         return(_false(SetLastError(ic[IC_LAST_ERROR])));
+      if (!barTrend)
+         return(_false(catch("IsStartSignal.Trend(2)->iCustom("+ indicator +")   invalid trend for bar="+ bar +": "+ barTrend, ERR_CUSTOM_INDICATOR_ERROR)));
 
-      strTrend = StringConcatenate(strTrend, ifString(trend>0, "+", "-"));
+      // (1.2) vorherrschenden Trend bestimmen (mindestens 2 Bars in einer Richtung)
+      if (barTrend > 0) {
+         if (bar > 1 && prevBarTrend > 0)                               // nur Bars > 1 (1 triggert Trendwechsel, 0 ist irrelevant)
+            trend = 1;
+      }
+      else /*(barTrend < 0)*/ {
+         if (bar > 1 && prevBarTrend < 0)                               // ...
+            trend = -1;
+      }
+      prevBarTrend = barTrend;
+      strTrend     = StringConcatenate(strTrend, ifString(barTrend>0, "+", "-"));
    }
    if (error == ERR_HISTORY_UPDATE)
-      debug("IsStartSignal.Trend()   ERR_HISTORY_UPDATE");           // TODO: bei ERR_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
+      debug("IsStartSignal.Trend()   ERR_HISTORY_UPDATE");              // TODO: bei ERR_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
 
 
    // (2) Trendwechsel detektieren
-   static int signal;                                                // TODO: vor Verwendung mit aktuellem Trend initialisieren
-   string strChangeUp   = "-"+ StringRepeat("+", start.trend.shift); // "-++"
-   string strChangeDown = "+"+ StringRepeat("-", start.trend.shift); // "+--"
-
-   if (StringEndsWith(strTrend, strChangeUp)) {
-      if (signal != 1) {                                             // nicht initialisiert oder Down-Trend
-         signal = 1;
-         debug("IsStartSignal.Trend()   trend change up");
-         if (changeUp) {
-            debug("IsStartSignal.Trend()   trend change up signal");
-            return(true);
-         }
+   if (trend < 0 && detectChangeUp) {
+      string strChangeUp = "-"+ StringRepeat("+", start.trend.shift);   // "-++"
+      if (StringEndsWith(strTrend, strChangeUp)) {                      // Trendwechsel im Down-Trend
+         debug("IsStartSignal.Trend()   trend change up signal");
+         return(true);
       }
    }
-   else if (StringEndsWith(strTrend, strChangeDown)) {
-      if (signal != -1) {                                            // nicht initialisiert oder Up-Trend
-         signal = -1;
-         debug("IsStartSignal.Trend()   trend change down");
-         if (changeDown) {
-            debug("IsStartSignal.Trend()   trend change down signal");
-            return(true);
-         }
+   if (trend > 0 && detectChangeDown) {
+      string strChangeDown = "+"+ StringRepeat("-", start.trend.shift); // "+--"
+      if (StringEndsWith(strTrend, strChangeDown)) {                    // Trendwechsel im Up-Trend
+         debug("IsStartSignal.Trend()   trend change down signal");
+         return(true);
       }
    }
    return(false);
