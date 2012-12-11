@@ -28,7 +28,7 @@ int shift     = 2;
  * @return int - Fehlerstatus
  */
 int onTick() {
-   HandleEvent(EVENT_BAR_OPEN, PeriodFlag(timeframe));
+   //HandleEvent(EVENT_BAR_OPEN, PeriodFlag(timeframe));
    return(last_error);
 }
 
@@ -123,6 +123,16 @@ int Signal() {
  * @return int - Fehlerstatus
  */
 int onInit() {
+
+   if (IsTesting()) {
+      ForceSound("notify.wav");
+      int button = ForceMessageBox(__NAME__ +" - StartSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to do something now?", MB_ICONQUESTION|MB_OKCANCEL);
+      if (button != IDOK) {
+         __STATUS__CANCELLED = true;
+         return(_false(catch("onInit()")));
+      }
+   }
+
    return(NO_ERROR);
 }
 
