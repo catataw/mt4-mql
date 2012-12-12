@@ -5,8 +5,8 @@
  *
  *  TODO:
  *  -----
- *  - als Strategy implementieren: Entry, Management, Exit                                            *
- *  - Spread im Tester modifizierbar machen                                                           *
+ *  - Strategy vervollständigen: Exit                                                                 *
+ *  - als alternierende Strategy implementieren                                                       *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
  *
