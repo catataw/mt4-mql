@@ -5,8 +5,8 @@
  *
  *  TODO:
  *  -----
- *  - Strategy vervollständigen: Exit                                                                 *
- *  - als alternierende Strategy implementieren                                                       *
+ *  - Strategy vervollständigen: Exit @trend()                                                        *
+ *  - Multiple-Position-Management implementieren                                                     *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
  *
