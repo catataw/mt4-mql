@@ -6,6 +6,7 @@
  *  TODO:
  *  -----
  *  - Strategy vervollständigen: Exit @trend()                                                        *
+ *  - Indikatoren: Anzeige von Trends kürzer als 2 Bars reparieren                                    *
  *  - Multiple-Position-Management implementieren                                                     *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
@@ -79,33 +80,33 @@ int __DEINIT_FLAGS__[];
 
 ///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////
 
-extern /*sticky*/ string Sequence.ID             = "";
-extern            string GridDirection           = "Long | Short | Alternative";
+extern /*sticky*/ string Sequence.ID             = "";               // ************
+extern            string GridDirection           = "Long | Short";   // Long + Short
 extern            int    GridSize                = 20;
 extern            double LotSize                 = 0.1;
-extern            string StartConditions         = "";               // @trend(ALMA:7xD1[+2]) || @[bid|ask|price](double) && @time(datetime)
-extern            string StopConditions          = "";               // @trend(ALMA:7xD1[+2]) || @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
+extern            string StartConditions         = "";               // @trend(ALMA:7xD1[+1]) || @[bid|ask|price](double) && @time(datetime)
+extern            string StopConditions          = "";               // @trend(ALMA:7xD1[+1]) || @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
 extern /*sticky*/ color  Breakeven.Color         = Blue;
 extern /*sticky*/ string Sequence.StatusLocation = "";               // Unterverzeichnis
 
-       /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;        // Sticky-Variablen werden im Chart zwischengespeichert, sie überleben
-       /*sticky*/ int    orderDisplayMode        = ODM_NONE;         // dort Terminal-Restart, Profile-Wechsel oder Recompilation.
+       /*sticky*/ int    startStopDisplayMode    = SDM_PRICE;        // Sticky-Variablen werden im Chart zwischengespeichert, sie überleben dort
+       /*sticky*/ int    orderDisplayMode        = ODM_NONE;         // Terminal-Restart, Profilwechsel und Recompilation.
        /*sticky*/ int    breakeven.Width         = 0;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-string   last.Sequence.ID             = "";                          // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
-string   last.Sequence.StatusLocation = "";                          // mit den (Default-)Input-Parametern überschrieben. Um dies zu verhindern und um geänderte Parameter
-string   last.GridDirection           = "";                          // mit alten Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und
-int      last.GridSize;                                              // in init() daraus restauriert.
+string   last.Sequence.ID             = "";                          // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE mit
+string   last.Sequence.StatusLocation = "";                          // den angegebenen Default-Werten überschrieben. Um das zu verhindern und die Werte mit den vorherigen
+string   last.GridDirection           = "";                          // Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und in init()
+int      last.GridSize;                                              // daraus restauriert.
 double   last.LotSize;
 string   last.StartConditions         = "";
 string   last.StopConditions          = "";
 color    last.Breakeven.Color;
 
 int      sequenceId;
-bool     test;                                                       // ob dies eine Testsequenz ist (im Tester oder im Online-Chart)
+bool     test;                                                       // ob dies eine Testsequenz ist (entweder im Tester oder im Online-Chart)
 
 int      status = STATUS_UNINITIALIZED;
 string   status.directory;                                           // MQL-Verzeichnis der Statusdatei (unterhalb ".\files\")
@@ -129,7 +130,7 @@ bool     start.conditions;                                           // ob die S
 bool     start.conditions.triggered;
 bool     start.trend.condition;
 double   start.trend.periods;
-int      start.trend.timeframe, start.trend.timeframeFlag;           // max. PERIOD_H1
+int      start.trend.timeframe, start.trend.timeframeFlag;           // maximal PERIOD_H1
 string   start.trend.method;
 int      start.trend.shift;
 bool     start.price.condition;
