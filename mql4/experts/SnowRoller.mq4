@@ -8,6 +8,7 @@
  *  - Strategy vervollständigen: Exit @trend()                                                        *
  *  - Indikatoren: Anzeige von Trends kürzer als 2 Bars reparieren                                    *
  *  - Multiple-Position-Management implementieren                                                     *
+ *  - Startlevel implementieren                                                                       *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
  *
