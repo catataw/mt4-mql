@@ -5,7 +5,6 @@
  *
  *  TODO:
  *  -----
- *  - Indikatoren: Anzeige von Trends kürzer als 2 Bars reparieren                                    *
  *  - Multi-Position-Management implementieren                                                        *
  *  - Startlevel implementieren                                                                       *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
