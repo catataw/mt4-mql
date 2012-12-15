@@ -18,7 +18,7 @@ extern string Parameter = "dummy";
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int timeframe = PERIOD_M5;
+int timeframe = PERIOD_M1;
 int shift     = 2;
 
 
@@ -28,89 +28,51 @@ int shift     = 2;
  * @return int - Fehlerstatus
  */
 int onTick() {
-   //HandleEvent(EVENT_BAR_OPEN, PeriodFlag(timeframe));
+   int iNull[];
+   if (EventListener.BarOpen(iNull, PeriodFlag(timeframe))) {
+      Signal(8);
+      Signal(9);
+   }
    return(last_error);
 }
 
 
 /**
- * Handler für BarOpen-Events.
+ * Eventhandler zur Erkennung von Trendwechseln. Wird nur onBarOpen aufgerufen.
  *
- * @param int timeframes[] - IDs der Timeframes, in denen das BarOpen-Event aufgetreten ist
- *
- * @return int - Fehlerstatus
+ * @return bool - ob ein Trendwechsel entsprechend der Startkonfiguration aufgetreten ist
  */
-int onBarOpen(int timeframes[]) {
-   Signal();
-   return(last_error);
-}
+bool Signal(int bars) {
+   debug("Signal()   bars="+ bars);
 
-
-/**
- *
- * @return int - Fehlerstatus
- */
-int Signal() {
-   //return(NO_ERROR);
-
-   // (1) (1) Trend der letzten Bars berechnen
    int error, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
-   int    bars         = shift + 2 + 4;                              // +2 (Bar 0 u. Vorgänger) + einige Bars mehr, um aktuellen Trend sicher zu bestimmen
- //int    timeframe    = ...
-   string MA.Periods   = "60";
-   string MA.Timeframe = PeriodDescription(timeframe);
-   string MA.Method    = "LWMA";
-   string strTrend;
-
-   for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 ist immer unvollständig und wird nicht berücksichtigt
-      double trend = iCustom(NULL, timeframe, "Moving Average",
-                             MA.Periods,                             // MA.Periods
-                             MA.Timeframe,                           // MA.Timeframe
-                             MA.Method,                              // MA.Method
-                             "",                                     // MA.Method.Help
-                             "Close",                                // AppliedPrice
-                             "",                                     // AppliedPrice.Help
-                             bars + 1,                               // Max.Values: +1 wegen ungültiger Trendberechnung der ersten Bar (hat keinen Vorgänger)
-                             ForestGreen,                            // Color.UpTrend
-                             Red,                                    // Color.DownTrend
-                             "",                                     // _________________
-                             ic[IC_PTR],                             // __iCustom__
-                             BUFFER_2, bar); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
-
-      debug("Signal()   bar="+ bar +"   trend="+ NumberToStr(trend, ".+"));
+   for (int bar=bars-1; bar>0; bar--) {                                 // Bar 0 ist immer unvollständig und wird nicht berücksichtigt
+      iCustom(NULL, PERIOD_H1, "Moving Average",
+              "84",                                                     // MA.Periods
+              "H1",                                                     // MA.Timeframe
+              "SMA",                                                    // MA.Method
+              "",                                                       // MA.Method.Help
+              "Close",                                                  // AppliedPrice
+              "",                                                       // AppliedPrice.Help
+              bars+1,                                                   // Max.Values: +1 wegen ungültigem Trend der ersten Bar (hat keinen Vorgänger)
+              ForestGreen,                                              // Color.UpTrend
+              Red,                                                      // Color.DownTrend
+              "",                                                       // _________________
+              ic[IC_PTR],                                               // __iCustom__
+              BUFFER_2, bar); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
 
       error = GetLastError();
       if (IsError(error)) /*&&*/ if (error!=ERR_HISTORY_UPDATE)
-         return(catch("Signal(1)", error));
+         return(_false(catch("Signal()", error)));
       if (IsError(ic[IC_LAST_ERROR]))
-         return(SetLastError(ic[IC_LAST_ERROR]));
-
-      strTrend = StringConcatenate(strTrend, ifString(trend>0, "+", "-"));
+         return(_false(SetLastError(ic[IC_LAST_ERROR])));
    }
    if (error == ERR_HISTORY_UPDATE)
-      debug("Signal()   ERR_HISTORY_UPDATE");                        // TODO: bei ERR_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
+      debug("Signal()   ERR_HISTORY_UPDATE");                           // TODO: bei ERR_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
 
-
-   static int signal;
-
-
-   // (2) Trendwechsel detektieren (2 dem alten Trend entgegengesetzte Bars)
-   if (StringEndsWith(strTrend, "-++")) {
-      if (signal != 1) {
-         signal = 1;
-         debug("Signal()   trend change up");
-      }
-   }
-   else if (StringEndsWith(strTrend, "+--")) {
-      if (signal != -1) {
-         signal = -1;
-         debug("Signal()   trend change down");
-      }
-   }
-
-   return(catch("Signal(2)"));
+   return(false);
 }
 
 
@@ -123,16 +85,6 @@ int Signal() {
  * @return int - Fehlerstatus
  */
 int onInit() {
-
-   if (IsTesting()) {
-      ForceSound("notify.wav");
-      int button = ForceMessageBox(__NAME__ +" - StartSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to do something now?", MB_ICONQUESTION|MB_OKCANCEL);
-      if (button != IDOK) {
-         __STATUS__CANCELLED = true;
-         return(_false(catch("onInit()")));
-      }
-   }
-
    return(NO_ERROR);
 }
 

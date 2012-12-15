@@ -5,16 +5,15 @@
  *
  *  TODO:
  *  -----
- *  - Strategy vervollständigen: Exit @trend()                                                        *
  *  - Indikatoren: Anzeige von Trends kürzer als 2 Bars reparieren                                    *
- *  - Multiple-Position-Management implementieren                                                     *
+ *  - Multi-Position-Management implementieren                                                        *
  *  - Startlevel implementieren                                                                       *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
  *
  *  - Abbruch wegen geändertem Ticketstatus abfangen                                                  *
  *  - Abbruch wegen IsStopped()=TRUE abfangen                                                         *
- *
+ *  - Statusanzeige: Risikokennziffer zum Verlustpotential des Levels integrieren                     *
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Möglichkeit, WeekendStop zu (de-)aktivieren                                                     *
  *
@@ -1250,7 +1249,14 @@ bool IsStartSignal() {
       if (start.trend.condition) {
          int iNull[];
          if (EventListener.BarOpen(iNull, start.trend.timeframeFlag)) {
-            if (IsStartSignal.Trend(grid.direction == D_LONG)) {
+            int    timeframe   = start.trend.timeframe;
+            int    bars        = start.trend.shift + 2 + 5;          // +2 (Bar 0 + Vorgänger) + einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
+            string maPeriods   = NumberToStr(start.trend.periods, ".+");
+            string maTimeframe = PeriodDescription(start.trend.timeframe);
+            string maMethod    = start.trend.method;
+            bool   direction   = (grid.direction == D_LONG);         // D_LONG->up; D_SHORT->down
+
+            if (IsTrendChange(timeframe, bars, maPeriods, maTimeframe, maMethod, direction)) {
                start.conditions.triggered = true;
                if (__LOG) log(StringConcatenate("IsStartSignal()   start condition \"", start.trend.condition.txt, "\" met"));
                return(true);
@@ -1305,82 +1311,82 @@ bool IsStartSignal() {
 
 
 /**
- * Eventhandler zur Erkennung von Trendwechseln. Wird nur onBarOpen aufgerufen.
+ * BarOpen-Eventhandler zur Erkennung von MA-Trendwechseln.
  *
- * @param  bool detectChangeUp - TRUE,  wenn ein Wechsel zum Up-Trend signalisiert werden soll;
- *                               FALSE, wenn ein Wechsel zum Down-Trend signalisiert werden soll
+ * @param  int    timeframe   - zu verwendender Timeframe
+ * @param  int    bars        - Anzahl zu berechnender Indikatorwerte
+ * @param
+ * @param  string maPeriods   - Indikator-Parameter
+ * @param  string maTimeframe - Indikator-Parameter
+ * @param  string maMethod    - Indikator-Parameter
  *
- * @return bool - ob ein Trendwechsel entsprechend der Startkonfiguration aufgetreten ist
+ * @param  bool   detectUp    - TRUE,  wenn ein Wechsel zum Up-Trend signalisiert werden soll;
+ *                              FALSE, wenn ein Wechsel zum Down-Trend signalisiert werden soll
+ *
+ * @return bool - ob ein entsprechender Trendwechsel aufgetreten ist
  */
-bool IsStartSignal.Trend(bool detectChangeUp) {
-   bool detectChangeDown = !detectChangeUp;
+bool IsTrendChange(int timeframe, int bars, string maPeriods, string maTimeframe, string maMethod, bool detectUp) {
+   bool detectDown = !detectUp;
 
    // (1) Trend der letzten Bars ermitteln
    int error, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
    ic[IC_LAST_ERROR] = NO_ERROR;
 
    int    trend, barTrend, prevBarTrend;
-   string strTrend;
+   string strTrend, strChangePattern;
 
-   string indicator    = "Moving Average";
-   int    bars         = start.trend.shift + 2 + 4;                     // +2 (Bar 0 + Vorgänger) + einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
-   int    timeframe    = start.trend.timeframe;
-   string MA.Periods   = NumberToStr(start.trend.periods, ".+");
-   string MA.Timeframe = PeriodDescription(start.trend.timeframe);
-   string MA.Method    = start.trend.method;
-
-   for (int bar=bars-1; bar>0; bar--) {                                 // Bar 0 ist immer unvollständig und wird nicht berücksichtigt
+   for (int bar=bars-1; bar>0; bar--) {                              // Bar 0 ist immer unvollständig und wird nicht berücksichtigt
       // (1.1) Trend der einzelnen Bar bestimmen
-      barTrend = Round(iCustom(NULL, timeframe, indicator,
-                               MA.Periods,                              // MA.Periods
-                               MA.Timeframe,                            // MA.Timeframe
-                               MA.Method,                               // MA.Method
-                               "",                                      // MA.Method.Help
-                               "Close",                                 // AppliedPrice
-                               "",                                      // AppliedPrice.Help
-                               bars+1,                                  // Max.Values: +1 wegen ungültigem Trend der ersten Bar (hat keinen Vorgänger)
-                               ForestGreen,                             // Color.UpTrend
-                               Red,                                     // Color.DownTrend
-                               "",                                      // _________________
-                               ic[IC_PTR],                              // __iCustom__
+      barTrend = Round(iCustom(NULL, timeframe, "Moving Average",
+                               maPeriods,                            // MA.Periods
+                               maTimeframe,                          // MA.Timeframe
+                               maMethod,                             // MA.Method
+                               "",                                   // MA.Method.Help
+                               "Close",                              // AppliedPrice
+                               "",                                   // AppliedPrice.Help
+                               Max(bars+1, 10),                      // Max.Values: +1 wegen ungültigem Trend der ersten Bar, mind. 10 zur Reduktion identischer Instanzen
+                               ForestGreen,                          // Color.UpTrend
+                               Red,                                  // Color.DownTrend
+                               "",                                   // _________________
+                               ic[IC_PTR],                           // __iCustom__
                                BUFFER_2, bar)); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
 
       error = GetLastError();
       if (IsError(error)) /*&&*/ if (error!=ERR_HISTORY_UPDATE)
-         return(_false(catch("IsStartSignal.Trend(1)", error)));
+         return(_false(catch("IsTrendChange(1)", error)));
       if (IsError(ic[IC_LAST_ERROR]))
          return(_false(SetLastError(ic[IC_LAST_ERROR])));
       if (!barTrend)
-         return(_false(catch("IsStartSignal.Trend(2)->iCustom("+ indicator +")   invalid trend for bar="+ bar +": "+ barTrend, ERR_CUSTOM_INDICATOR_ERROR)));
+         return(_false(catch("IsTrendChange(2)->iCustom(Moving Average)   invalid trend for bar="+ bar +": "+ barTrend, ERR_CUSTOM_INDICATOR_ERROR)));
 
       // (1.2) vorherrschenden Trend bestimmen (mindestens 2 aufeinanderfolgende Bars in derselben Richtung)
       if (barTrend > 0) {
-         if (bar > 1 && prevBarTrend > 0)                               // nur Bars > 1 (1 triggert Trendwechsel, 0 ist irrelevant)
+         if (bar > 1 && prevBarTrend > 0)                            // nur Bars > 1 (1 triggert Trendwechsel, 0 ist irrelevant)
             trend = 1;
       }
       else /*(barTrend < 0)*/ {
-         if (bar > 1 && prevBarTrend < 0)                               // ...
+         if (bar > 1 && prevBarTrend < 0)                            // ...
             trend = -1;
       }
-      prevBarTrend = barTrend;
       strTrend     = StringConcatenate(strTrend, ifString(barTrend>0, "+", "-"));
+      prevBarTrend = barTrend;
    }
    if (error == ERR_HISTORY_UPDATE)
-      debug("IsStartSignal.Trend()   ERR_HISTORY_UPDATE");              // TODO: bei ERR_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
+      debug("IsTrendChange()   ERR_HISTORY_UPDATE");                 // TODO: bei ERR_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
 
 
    // (2) Trendwechsel detektieren
-   if (trend < 0 && detectChangeUp) {
-      string strChangeUp = "-"+ StringRepeat("+", start.trend.shift);   // "-++"
-      if (StringEndsWith(strTrend, strChangeUp)) {                      // Trendwechsel im Down-Trend
-         debug("IsStartSignal.Trend()   trend change up signal");
+   if (trend < 0 && detectUp) {
+      strChangePattern = "-"+ StringRepeat("+", start.trend.shift);  // up change "-++"
+      if (StringEndsWith(strTrend, strChangePattern)) {              // Trendwechsel im Down-Trend
+         debug("IsTrendChange()   trend change up signal");
          return(true);
       }
    }
-   if (trend > 0 && detectChangeDown) {
-      string strChangeDown = "+"+ StringRepeat("-", start.trend.shift); // "+--"
-      if (StringEndsWith(strTrend, strChangeDown)) {                    // Trendwechsel im Up-Trend
-         debug("IsStartSignal.Trend()   trend change down signal");
+   if (trend > 0 && detectDown) {
+      strChangePattern = "+"+ StringRepeat("-", start.trend.shift);  // down change "+--"
+      if (StringEndsWith(strTrend, strChangePattern)) {              // Trendwechsel im Up-Trend
+         debug("IsTrendChange()   trend change down signal");
          return(true);
       }
    }
@@ -1526,13 +1532,18 @@ bool IsStopSignal(bool checkWeekendStop=true) {
       if (stop.trend.condition) {
          int iNull[];
          if (EventListener.BarOpen(iNull, stop.trend.timeframeFlag)) {
-            /*
-            if (IsStopSignal.Trend(grid.direction == D_LONG)) {
+            int    timeframe   = stop.trend.timeframe;
+            int    bars        = stop.trend.shift + 2 + 5;           // +2 (Bar 0 + Vorgänger) + einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
+            string maPeriods   = NumberToStr(stop.trend.periods, ".+");
+            string maTimeframe = PeriodDescription(stop.trend.timeframe);
+            string maMethod    = stop.trend.method;
+            bool   direction   = (grid.direction == D_SHORT);        // D_LONG->down; D_SHORT->up
+
+            if (IsTrendChange(timeframe, bars, maPeriods, maTimeframe, maMethod, direction)) {
                stop.conditions.triggered = true;
                if (__LOG) log(StringConcatenate("IsStopSignal()   stop condition \"", stop.trend.condition.txt, "\" met"));
                return(true);
             }
-            */
          }
       }
 
@@ -2788,8 +2799,8 @@ void SS.StartStopConditions() {
    str.startConditions = "";
    str.stopConditions  = "";
 
-   if (StartConditions != "") str.startConditions = StringConcatenate("Start:           ", StartConditions, ifString(start.conditions, "", " (inactive)"), NL);
-   if (StopConditions  != "") str.stopConditions  = StringConcatenate("Stop:           ", StopConditions,  ifString(stop.conditions,  "", " (inactive)"), NL);
+   if (StartConditions != "") str.startConditions = StringConcatenate("Start:           ", StartConditions, ifString(start.conditions, "", " (triggered)"), NL);
+   if (StopConditions  != "") str.stopConditions  = StringConcatenate("Stop:           ", StopConditions,  ifString(stop.conditions,  "", " (triggered)"), NL);
 }
 
 
