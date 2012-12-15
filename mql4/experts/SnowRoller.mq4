@@ -5,8 +5,8 @@
  *
  *  TODO:
  *  -----
- *  - Multi-Position-Management implementieren                                                        *
  *  - Startlevel implementieren                                                                       *
+ *  - Multi-Position-Management implementieren                                                        *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
  *
