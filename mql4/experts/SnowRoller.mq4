@@ -5,9 +5,8 @@
  *
  *  TODO:
  *  -----
- *  - Startlevel implementieren
- *  - Anzeigen korrigieren: Start/Stop-Profits, StopsPL, ValueAtRisk
- *  - Validierung vereinfachen
+ *  - StartCondition @level implementieren
+ *  - Validierung refaktorieren
  *  - Multi-Position-Management implementieren                                                        *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
@@ -18,6 +17,7 @@
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Möglichkeit, WeekendStop zu (de-)aktivieren                                                     *
  *
+ *  - StopsPL und ValueAtRisk reparieren
  *  - Breakeven-Berechnung reparieren, Anzeige laufender Sequenz bis zum aktuellen Moment
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
@@ -411,10 +411,10 @@ bool StartSequence() {
    datetime startTime  = TimeCurrent();
    double   startPrice = NormalizeDouble((Bid + Ask)/2, Digits);
 
-   ArrayPushInt   (sequenceStart.event,  CreateEventId()                 );
-   ArrayPushInt   (sequenceStart.time,   startTime                       );
-   ArrayPushDouble(sequenceStart.price,  startPrice                      );
-   ArrayPushDouble(sequenceStart.profit, NormalizeDouble(grid.totalPL, 2));
+   ArrayPushInt   (sequenceStart.event,  CreateEventId());
+   ArrayPushInt   (sequenceStart.time,   startTime      );
+   ArrayPushDouble(sequenceStart.price,  startPrice     );
+   ArrayPushDouble(sequenceStart.profit, 0              );
 
    ArrayPushInt   (sequenceStop.event,  0);                          // Größe von sequenceStarts/Stops synchron halten
    ArrayPushInt   (sequenceStop.time,   0);
@@ -722,7 +722,10 @@ bool ResumeSequence() {
    ArrayPushInt   (sequenceStart.event,  CreateEventId());
    ArrayPushInt   (sequenceStart.time,   startTime      );
    ArrayPushDouble(sequenceStart.price,  startPrice     );
-   ArrayPushDouble(sequenceStart.profit, grid.totalPL   );                    // wird nach UpdateStatus() mit aktuellem Wert überschrieben
+   ArrayPushDouble(sequenceStart.profit, grid.totalPL   );                    // entspricht dem letzten Stop-Wert
+      int stops = ArraySize(sequenceStop.profit);
+      if (EQ(sequenceStop.profit[stops-1], 0))                                // Stops ohne PL (alter Status) aktualisieren
+         sequenceStop.profit[stops-1] = grid.totalPL;
 
    ArrayPushInt   (sequenceStop.event,  0);                                   // sequenceStart/Stop-Größe synchron halten
    ArrayPushInt   (sequenceStop.time,   0);
@@ -749,10 +752,8 @@ bool ResumeSequence() {
    int iNull[], last.grid.level=grid.level;
    if (!UpdateStatus(iNull, iNull))                                           // Wurde in UpdateOpenPositions() ein Pseudo-Ticket erstellt, wird es hier
       return(false);                                                          // in UpdateStatus() geschlossen. In diesem Fall müssen die Pending-Orders
-   if (grid.level != last.grid.level) UpdatePendingOrders();                  // nochmal aktualisiert werden.
-
-   sequenceStart.profit[ArraySize(sequenceStart.profit)-1] = grid.totalPL;    // aktuellen Wert speichern
-
+   if (grid.level != last.grid.level)                                         // nochmal aktualisiert werden.
+      UpdatePendingOrders();
    if (!SaveStatus())
       return(false);
 
