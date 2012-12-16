@@ -5,7 +5,9 @@
  *
  *  TODO:
  *  -----
- *  - Startlevel implementieren                                                                       *
+ *  - Startlevel implementieren
+ *  - Anzeigen korrigieren: Start/Stop-Profits, StopsPL, ValueAtRisk
+ *  - Validierung vereinfachen
  *  - Multi-Position-Management implementieren                                                        *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
@@ -83,8 +85,8 @@ extern /*sticky*/ string Sequence.ID             = "";               // ********
 extern            string GridDirection           = "Long | Short";   // Long + Short
 extern            int    GridSize                = 20;
 extern            double LotSize                 = 0.1;
-extern            string StartConditions         = "";               // @trend(ALMA:7xD1[+1]) || @[bid|ask|price](double) && @time(datetime)
-extern            string StopConditions          = "";               // @trend(ALMA:7xD1[+1]) || @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
+extern            string StartConditions         = "";               // @trend(ALMA:7xD1) || @[bid|ask|price](double) && @time(datetime) && @level(int)
+extern            string StopConditions          = "";               // @trend(ALMA:7xD1) || @[bid|ask|price](double) || @time(datetime) || @level(int) || @profit(double[%])
 extern /*sticky*/ color  Breakeven.Color         = Blue;
 extern /*sticky*/ string Sequence.StatusLocation = "";               // Unterverzeichnis
 
@@ -2691,14 +2693,14 @@ int ShowStatus() {
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
 
-   msg = StringConcatenate(__NAME__, msg, str.error,                                                 NL,
-                                                                                                     NL,
-                           "Grid:            ", GridSize, " pip", str.grid.base, str.grid.direction, NL,
-                           "LotSize:         ", str.LotSize,                                         NL,
-                           "Stops:           ", str.grid.stops, str.grid.stopsPL,                    NL,
-                           "Profit/Loss:    ",  str.grid.totalPL, str.grid.plStatistics,             NL,
-                           str.startConditions,                                   // enthält bereits NL, wenn gesetzt
-                           str.stopConditions);                                   // enthält bereits NL, wenn gesetzt
+   msg = StringConcatenate(__NAME__, msg, str.error,                                                  NL,
+                                                                                                      NL,
+                           "Grid:             ", GridSize, " pip", str.grid.base, str.grid.direction, NL,
+                           "LotSize:         ",  str.LotSize,                                         NL,
+                           "Stops:           ",  str.grid.stops, str.grid.stopsPL,                    NL,
+                           "Profit/Loss:    ",   str.grid.totalPL, str.grid.plStatistics,             NL,
+                           str.startConditions,                                    // enthält bereits NL, wenn gesetzt
+                           str.stopConditions);                                    // enthält bereits NL, wenn gesetzt
 
    // 2 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));

@@ -214,7 +214,7 @@ int afterInit() {
 
 
 /**
- * Die Statusbox besteht aus 3 nebeneinander angeordneten "Quadraten" ('g' in Webdings).
+ * Die Statusbox besteht aus 3 nebeneinander angeordneten "Quadraten" (Font "Webdings", Zeichen 'g').
  *
  * @return int - Fehlerstatus
  */
@@ -222,14 +222,10 @@ int CreateStatusBox() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
-   /*
-   int x[]      = {0, 97, 141};                                      // eine Zeile für Start/StopCondition
-   int fontSize = 73;
-   */
-   int x[]      = {0, 108, 130};                                     // zwei Zeilen für Start/StopCondition
-   int fontSize = 81;
-
+ //int x[]={0,  89, 142}, y=22, fontSize=67;                         // eine Zeile für Start/StopCondition
+   int x[]={0, 101, 130}, y=22, fontSize=76;                         // zwei Zeilen für Start/StopCondition
    color color.Background = C'248,248,248';                          // = Chart-Background
+
 
    // 1. Quadrat
    string label = StringConcatenate(__NAME__, ".statusbox.1");
@@ -240,7 +236,7 @@ int CreateStatusBox() {
    }
    ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
    ObjectSet(label, OBJPROP_XDISTANCE, x[0]);
-   ObjectSet(label, OBJPROP_YDISTANCE, 23  );
+   ObjectSet(label, OBJPROP_YDISTANCE, y   );
    ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
 
 
@@ -253,7 +249,7 @@ int CreateStatusBox() {
    }
    ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
    ObjectSet(label, OBJPROP_XDISTANCE, x[1]);
-   ObjectSet(label, OBJPROP_YDISTANCE, 23  );
+   ObjectSet(label, OBJPROP_YDISTANCE, y   );
    ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
 
 
@@ -266,7 +262,7 @@ int CreateStatusBox() {
    }
    ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
    ObjectSet(label, OBJPROP_XDISTANCE, x[2]);
-   ObjectSet(label, OBJPROP_YDISTANCE, 23  );
+   ObjectSet(label, OBJPROP_YDISTANCE, y   );
    ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
 
    return(catch("CreateStatusBox(4)"));
