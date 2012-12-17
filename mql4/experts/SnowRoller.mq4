@@ -7,6 +7,7 @@
  *  -----
  *  - StartCondition @level implementieren
  *  - Validierung refaktorieren
+ *  - Statusanzeige an Zeilen anpassen
  *  - Start/Stop-Display reduzieren
  *  - Multi-Position-Management implementieren                                                        *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *

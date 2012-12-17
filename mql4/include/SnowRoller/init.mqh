@@ -222,8 +222,8 @@ int CreateStatusBox() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
- //int x[]={0,  89, 142}, y=22, fontSize=67;                         // eine Zeile für Start/StopCondition
-   int x[]={0, 101, 130}, y=22, fontSize=76;                         // zwei Zeilen für Start/StopCondition
+ //int x[]={0,  89, 145}, y=22, fontSize=67;                         // eine Zeile für Start/StopCondition
+   int x[]={0, 101, 133}, y=22, fontSize=76;                         // zwei Zeilen für Start/StopCondition
    color color.Background = C'248,248,248';                          // = Chart-Background
 
 
