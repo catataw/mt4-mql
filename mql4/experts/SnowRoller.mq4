@@ -7,8 +7,6 @@
  *  -----
  *  - StartCondition @level implementieren
  *  - Validierung refaktorieren
- *  - Statusanzeige an Zeilen anpassen
- *  - Start/Stop-Display reduzieren
  *  - Multi-Position-Management implementieren                                                        *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
@@ -19,6 +17,7 @@
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Möglichkeit, WeekendStop zu (de-)aktivieren                                                     *
  *
+ *  - Statusanzeige dynamisch an Zeilen anpassen
  *  - StopsPL und ValueAtRisk reparieren
  *  - Breakeven-Berechnung reparieren, Anzeige laufender Sequenz bis zum aktuellen Moment
  *  - Bug: ChartMarker bei Stopouts
@@ -5788,8 +5787,8 @@ void RedrawOrders() {
 int ToggleStartStopDisplayMode() {
    // Mode wechseln
    int i = SearchIntArray(startStopDisplayModes, startStopDisplayMode);    // #define SDM_NONE        - keine Anzeige -
-   if (i == -1) {                                                          // #define SDM_MARKER      einfache Markierung
-      startStopDisplayMode = SDM_PRICE;           // default               // #define SDM_PRICE       Markierung mit Preisangabe
+   if (i == -1) {                                                          // #define SDM_PRICE       Markierung mit Preisangabe
+      startStopDisplayMode = SDM_PRICE;           // default
    }
    else {
       int size = ArraySize(startStopDisplayModes);
