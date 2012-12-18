@@ -147,6 +147,10 @@ bool     start.time.condition;
 string   start.time.condition.txt;
 datetime start.time.value;
 
+bool     start.level.condition;
+string   start.level.condition.txt;
+int      start.level.value;
+
 bool     stop.conditions;                                            // ob die StopConditions aktiv sind und getriggert wurden
 bool     stop.conditions.triggered;
 
@@ -444,7 +448,7 @@ bool StartSequence() {
    RedrawStartStop();
 
    if (__LOG) log(StringConcatenate("StartSequence()   sequence started at ", NumberToStr(startPrice, PriceFormat)));
-   return(IsNoError(last_error|catch("StartSequence(4)")));
+   return(!last_error|catch("StartSequence(4)"));
 }
 
 
@@ -618,7 +622,7 @@ bool StopSequence() {
                           +"  openRisk="   + DoubleToStr(grid.openRisk,    2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
    */
-   return(IsNoError(last_error|catch("StopSequence(6)")));
+   return(!last_error|catch("StopSequence(6)"));
 }
 
 
@@ -646,7 +650,7 @@ bool StopSequence.LimitStopPrice() {
    }
    sequenceStop.price[i] = NormalizeDouble(sequenceStop.price[i], Digits);
 
-   return(IsNoError(last_error|catch("StopSequence.LimitStopPrice(3)")));
+   return(!last_error|catch("StopSequence.LimitStopPrice(3)"));
 }
 
 
@@ -775,7 +779,7 @@ bool ResumeSequence() {
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
    */
    if (__LOG) log(StringConcatenate("ResumeSequence()   sequence resumed at ", NumberToStr(startPrice, PriceFormat), ", level ", grid.level));
-   return(IsNoError(last_error|catch("ResumeSequence(4)")));
+   return(!last_error|catch("ResumeSequence(4)"));
 }
 
 
@@ -992,7 +996,7 @@ bool UpdateStatus(int limits[], int stops[]) {
    if (updateStatusLocation)
       UpdateStatusLocation();
 
-   return(IsNoError(last_error|catch("UpdateStatus(4)")));
+   return(!last_error|catch("UpdateStatus(4)"));
 }
 
 
@@ -1835,7 +1839,7 @@ bool ProcessClientStops(int stops[]) {
    if (!UpdateStatus(iNull, iNull)) return(false);
    if (  !SaveStatus())             return(false);
 
-   return(IsNoError(last_error|catch("ProcessClientStops(12)")));
+   return(!last_error|catch("ProcessClientStops(12)"));
 }
 
 
@@ -1880,7 +1884,7 @@ bool UpdatePendingOrders() {
       if (!SaveStatus())
          return(false);
 
-   return(IsNoError(last_error|catch("UpdatePendingOrders(3)")));
+   return(!last_error|catch("UpdatePendingOrders(3)"));
 }
 
 
@@ -1955,7 +1959,7 @@ bool UpdateOpenPositions(datetime &lpOpenTime, double &lpOpenPrice) {
       lpOpenPrice = NormalizeDouble(openPrice, Digits);
    }
 
-   return(IsNoError(last_error|catch("UpdateOpenPositions(3)")));
+   return(!last_error|catch("UpdateOpenPositions(3)"));
 }
 
 
@@ -2098,7 +2102,7 @@ bool Grid.AddOrder(int type, int level) {
 
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openEvent, openTime, openPrice, openRisk, closeEvent, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit))
       return(false);
-   return(IsNoError(last_error|catch("Grid.AddOrder(6)")));
+   return(!last_error|catch("Grid.AddOrder(6)"));
 }
 
 
@@ -2262,7 +2266,7 @@ bool Grid.AddPosition(int type, int level) {
    orders.openRisk[i] = CalculateOpenRisk(i);
 
    ArrayResize(oe, 0);
-   return(IsNoError(last_error|catch("Grid.AddPosition(6)")));
+   return(!last_error|catch("Grid.AddPosition(6)"));
 }
 
 
@@ -2389,7 +2393,7 @@ bool Grid.TrailPendingOrder(int i) {
    orders.pendingPrice[i] = stopPrice;
    orders.stopLoss    [i] = stopLoss;
 
-   return(IsNoError(last_error|catch("Grid.TrailPendingOrder(8)")));
+   return(!last_error|catch("Grid.TrailPendingOrder(8)"));
 }
 
 
@@ -2433,7 +2437,7 @@ bool Grid.DeleteOrder(int i) {
    if (!Grid.DropData(i))
       return(false);
 
-   return(IsNoError(last_error|catch("Grid.DeleteOrder(6)")));
+   return(!last_error|catch("Grid.DeleteOrder(6)"));
 }
 
 
@@ -2578,7 +2582,7 @@ bool Grid.DropData(int i) {
    ArraySpliceDoubles(orders.commission,   i, 1);
    ArraySpliceDoubles(orders.profit,       i, 1);
 
-   return(IsNoError(last_error|catch("Grid.DropData(2)")));
+   return(!last_error|catch("Grid.DropData(2)"));
 }
 
 
@@ -2955,7 +2959,7 @@ bool Grid.CalculateBreakeven(datetime time=0, int i=-1) {
    //if (!Grid.DrawBreakeven(time))
    //   return(false);
 
-   //return(IsNoError(last_error|catch("Grid.CalculateBreakeven()")));
+   //return(!last_error|catch("Grid.CalculateBreakeven()"));
 }
 
 
@@ -3046,7 +3050,7 @@ bool Grid.DrawBreakeven(datetime time=NULL, int timeStatus=NULL) {
    //last.drawingTime         = now;
    //last.status              = nowStatus;
 
-   //return(IsNoError(last_error|catch("Grid.DrawBreakeven()")));
+   //return(!last_error|catch("Grid.DrawBreakeven()"));
 }
 
 
@@ -3558,8 +3562,8 @@ bool ValidateConfiguration(bool interactive) {
    SS.LotSize();
 
 
-   // (5) StartConditions, AND-verknüpft: "@trend(xxMA:7xD1[+2]) || (@[bid|ask|price](1.33) && @time(12:00))"
-   // -------------------------------------------------------------------------------------------------------
+   // (5) StartConditions, AND-verknüpft: "(@trend(xxMA:7xD1[+2]) || (@[bid|ask|price](1.33) && @time(12:00))) && @level(3)"
+   // ----------------------------------------------------------------------------------------------------------------------
    if (!parameterChange || StartConditions!=last.StartConditions) {
       // Bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StartConditions nur bei Änderung (re-)aktiviert werden.
       start.conditions           = false;
@@ -3567,11 +3571,12 @@ bool ValidateConfiguration(bool interactive) {
       start.trend.condition      = false;
       start.price.condition      = false;
       start.time.condition       = false;
+      start.level.condition      = false;
 
       // (5.1) StartConditions in einzelne Ausdrücke zerlegen
       string exprs[], expr, elems[], key, value;
-      double dValue;
       int    iValue, time, sizeOfElems, sizeOfExprs=Explode(StartConditions, "&&", exprs, NULL);
+      double dValue;
 
       // (5.2) jeden Ausdruck parsen und validieren
       for (int i=0; i < sizeOfExprs; i++) {
@@ -3667,7 +3672,23 @@ bool ValidateConfiguration(bool interactive) {
             start.time.condition.txt = key +"("+ TimeToStr(time) +")";
             exprs[i]                 = start.time.condition.txt;
          }
-         else                                          return(_false(ValidateConfig.HandleError("ValidateConfiguration(41)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+
+         else if (key == "@level") {
+            if (start.level.condition)                 return(_false(ValidateConfig.HandleError("ValidateConfiguration(41)", "Invalid StartConditions = \""+ StartConditions +"\" (multiple level conditions)", interactive)));
+            if (!StringIsInteger(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(42)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+            iValue = StrToInteger(value);
+            if (grid.direction == D_LONG) {
+               if (iValue < 0)                         return(_false(ValidateConfig.HandleError("ValidateConfiguration(43)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+            }
+            else if (iValue > 0)
+               iValue = -iValue;
+            if (ArraySize(sequenceStart.event) != 0)   return(_false(ValidateConfig.HandleError("ValidateConfiguration(44)", "Invalid StartConditions = \""+ StartConditions +"\" (illegal level statement)", interactive)));
+            start.level.condition     = true;
+            start.level.value         = iValue;
+            start.level.condition.txt = key +"("+ iValue +")";
+            exprs[i]                  = start.level.condition.txt;
+         }
+         else                                          return(_false(ValidateConfig.HandleError("ValidateConfiguration(45)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
          start.conditions = true;
       }
       if (start.conditions) StartConditions = JoinStrings(exprs, " && ");
@@ -3696,20 +3717,20 @@ bool ValidateConfiguration(bool interactive) {
          stop.conditions = false;                  // im Fehlerfall ist stop.conditions deaktiviert
          expr = StringToLower(StringTrim(exprs[i]));
          if (StringLen(expr) == 0) {
-            if (sizeOfExprs > 1)                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(42)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (sizeOfExprs > 1)                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(46)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             break;
          }
-         if (StringGetChar(expr, 0) != '@')            return(_false(ValidateConfig.HandleError("ValidateConfiguration(43)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
-         if (Explode(expr, "(", elems, NULL) != 2)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(44)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
-         if (!StringEndsWith(elems[1], ")"))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(45)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (StringGetChar(expr, 0) != '@')            return(_false(ValidateConfig.HandleError("ValidateConfiguration(47)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (Explode(expr, "(", elems, NULL) != 2)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(48)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (!StringEndsWith(elems[1], ")"))           return(_false(ValidateConfig.HandleError("ValidateConfiguration(49)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
          key   = StringTrim(elems[0]);
          value = StringTrim(StringLeft(elems[1], -1));
-         if (StringLen(value) == 0)                    return(_false(ValidateConfig.HandleError("ValidateConfiguration(46)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+         if (StringLen(value) == 0)                    return(_false(ValidateConfig.HandleError("ValidateConfiguration(50)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
          //debug("()   key="+ StringRightPad("\""+ key +"\"", 9, " ") +"   value=\""+ value +"\"");
 
          if (key == "@trend") {
-            if (stop.trend.condition)                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(47)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple trend conditions)", interactive)));
-            if (Explode(value, ":", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(48)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (stop.trend.condition)                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(51)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple trend conditions)", interactive)));
+            if (Explode(value, ":", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(52)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             key   = StringToUpper(StringTrim(elems[0]));
             value = StringToUpper(elems[1]);
             // key="ALMA"
@@ -3718,31 +3739,31 @@ bool ValidateConfiguration(bool interactive) {
             else if (key == "SMMA") stop.trend.method = key;
             else if (key == "LWMA") stop.trend.method = key;
             else if (key == "ALMA") stop.trend.method = key;
-            else                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(49)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            else                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(53)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             // value="7XD1[+2]"
             if (Explode(value, "+", elems, NULL) == 1) {
                stop.trend.lag = 1;
             }
             else {
                value = StringTrim(elems[1]);
-               if (!StringIsInteger(value))            return(_false(ValidateConfig.HandleError("ValidateConfiguration(50)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+               if (!StringIsInteger(value))            return(_false(ValidateConfig.HandleError("ValidateConfiguration(54)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
                stop.trend.lag = StrToInteger(value);
-               if (stop.trend.lag == 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(51)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+               if (stop.trend.lag == 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(55)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
                value = elems[0];
             }
             // value="7XD1"
-            if (Explode(value, "X", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(52)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (Explode(value, "X", elems, NULL) != 2) return(_false(ValidateConfig.HandleError("ValidateConfiguration(56)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             elems[1]             = StringTrim(elems[1]);
             stop.trend.timeframe = PeriodToId(elems[1]);
-            if (stop.trend.timeframe == -1)            return(_false(ValidateConfig.HandleError("ValidateConfiguration(53)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (stop.trend.timeframe == -1)            return(_false(ValidateConfig.HandleError("ValidateConfiguration(57)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             value = StringTrim(elems[0]);
-            if (!StringIsNumeric(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(54)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (!StringIsNumeric(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(58)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             dValue = StrToDouble(value);
-            if (dValue <= 0)                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(55)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
-            if (NE(MathModFix(dValue, 0.5), 0))        return(_false(ValidateConfig.HandleError("ValidateConfiguration(56)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (dValue <= 0)                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(59)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (NE(MathModFix(dValue, 0.5), 0))        return(_false(ValidateConfig.HandleError("ValidateConfiguration(60)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             elems[0] = NumberToStr(dValue, ".+");
             switch (stop.trend.timeframe) {            // Timeframes > H1 auf H1 umrechnen (iCustom() soll unabhängig vom MA in maximal PERIOD_H1 laufen)
-               case PERIOD_MN1:                        return(_false(ValidateConfig.HandleError("ValidateConfiguration(57)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+               case PERIOD_MN1:                        return(_false(ValidateConfig.HandleError("ValidateConfiguration(61)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
                case PERIOD_H4 : { dValue *=   4; stop.trend.timeframe = PERIOD_H1; break; }
                case PERIOD_D1 : { dValue *=  24; stop.trend.timeframe = PERIOD_H1; break; }
                case PERIOD_W1 : { dValue *= 120; stop.trend.timeframe = PERIOD_H1; break; }
@@ -3755,11 +3776,11 @@ bool ValidateConfiguration(bool interactive) {
          }
 
          else if (key=="@bid" || key=="@ask" || key=="@price") {
-            if (stop.price.condition)                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(58)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple price conditions)", interactive)));
+            if (stop.price.condition)                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(62)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple price conditions)", interactive)));
             value = StringReplace(value, "'", "");
-            if (!StringIsNumeric(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(59)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (!StringIsNumeric(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(63)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             dValue = StrToDouble(value);
-            if (dValue <= 0)                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(60)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (dValue <= 0)                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(64)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             stop.price.condition = true;
             stop.price.value     = NormalizeDouble(dValue, Digits);
             if      (key == "@bid"  ) stop.price.type = SCP_BID;
@@ -3773,11 +3794,11 @@ bool ValidateConfiguration(bool interactive) {
          }
 
          else if (key == "@level") {
-            if (stop.level.condition)                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(61)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple level conditions)", interactive)));
-            if (!StringIsInteger(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(62)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (stop.level.condition)                  return(_false(ValidateConfig.HandleError("ValidateConfiguration(65)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple level conditions)", interactive)));
+            if (!StringIsInteger(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(66)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             iValue = StrToInteger(value);
             if (grid.direction == D_LONG) {
-               if (iValue < 0)                         return(_false(ValidateConfig.HandleError("ValidateConfiguration(63)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+               if (iValue < 0)                         return(_false(ValidateConfig.HandleError("ValidateConfiguration(67)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             }
             else if (iValue > 0)
                iValue = -iValue;
@@ -3788,9 +3809,9 @@ bool ValidateConfiguration(bool interactive) {
          }
 
          else if (key == "@time") {
-            if (stop.time.condition)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(64)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple time conditions)", interactive)));
+            if (stop.time.condition)                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(68)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple time conditions)", interactive)));
             time = StrToTime(value);
-            if (IsError(GetLastError()))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(65)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (IsError(GetLastError()))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(69)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             // TODO: Validierung von @time unzureichend
             stop.time.condition     = true;
             stop.time.value         = time;
@@ -3800,12 +3821,12 @@ bool ValidateConfiguration(bool interactive) {
 
          else if (key == "@profit") {
             if (stop.profitAbs.condition || stop.profitPct.condition)
-                                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(66)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple profit conditions)", interactive)));
+                                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(70)", "Invalid StopConditions = \""+ StopConditions +"\" (multiple profit conditions)", interactive)));
             sizeOfElems = Explode(value, "%", elems, NULL);
-            if (sizeOfElems > 2)                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(67)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (sizeOfElems > 2)                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(71)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             value = StringTrim(elems[0]);
-            if (StringLen(value) == 0)                 return(_false(ValidateConfig.HandleError("ValidateConfiguration(68)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
-            if (!StringIsNumeric(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(69)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (StringLen(value) == 0)                 return(_false(ValidateConfig.HandleError("ValidateConfiguration(72)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+            if (!StringIsNumeric(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(73)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             dValue = StrToDouble(value);
             if (sizeOfElems == 1) {
                stop.profitAbs.condition     = true;
@@ -3814,14 +3835,14 @@ bool ValidateConfiguration(bool interactive) {
                exprs[i]                     = stop.profitAbs.condition.txt;
             }
             else {
-               if (dValue <= 0)                        return(_false(ValidateConfig.HandleError("ValidateConfiguration(70)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+               if (dValue <= 0)                        return(_false(ValidateConfig.HandleError("ValidateConfiguration(74)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
                stop.profitPct.condition     = true;
                stop.profitPct.value         = dValue;
                stop.profitPct.condition.txt = key +"("+ NumberToStr(dValue, ".+") +"%)";
                exprs[i]                     = stop.profitPct.condition.txt;
             }
          }
-         else                                          return(_false(ValidateConfig.HandleError("ValidateConfiguration(71)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+         else                                          return(_false(ValidateConfig.HandleError("ValidateConfiguration(75)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
          stop.conditions = true;
       }
       if (stop.conditions) StopConditions = JoinStrings(exprs, " || ");
@@ -3833,13 +3854,13 @@ bool ValidateConfiguration(bool interactive) {
    if (Breakeven.Color == 0xFF000000)                                   // kann vom Terminal falsch gesetzt worden sein
       Breakeven.Color = CLR_NONE;
    if (Breakeven.Color < CLR_NONE || Breakeven.Color > C'255,255,255')  // kann nur nicht-interaktiv falsch reinkommen
-                                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(72)", "Invalid Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), interactive)));
+                                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(76)", "Invalid Breakeven.Color = 0x"+ IntToHexStr(Breakeven.Color), interactive)));
 
    // (8) __STATUS__INVALID_INPUT zurücksetzen
    if (interactive)
       __STATUS__INVALID_INPUT = false;
 
-   return(IsNoError(last_error|catch("ValidateConfiguration(73)")));
+   return(!last_error|catch("ValidateConfiguration(77)"));
 }
 
 
@@ -4308,7 +4329,7 @@ bool SaveStatus() {
       for (int i=0; i < size; i++)
          ArrayPushString(values, StringConcatenate(sequenceStart.event[i], "|", sequenceStart.time[i], "|", NumberToStr(sequenceStart.price[i], ".+"), "|", NumberToStr(sequenceStart.profit[i], ".+")));
       if (size == 0)
-         ArrayPushString(values, "0|0|0");
+         ArrayPushString(values, "0|0|0|0");
    ArrayPushString(lines, /*string*/   "rt.sequenceStarts="       + JoinStrings(values, ","));
 
       ArrayResize(values, 0);
@@ -4316,7 +4337,7 @@ bool SaveStatus() {
       for (i=0; i < size; i++)
          ArrayPushString(values, StringConcatenate(sequenceStop.event[i], "|", sequenceStop.time[i], "|", NumberToStr(sequenceStop.price[i], ".+"), "|", NumberToStr(sequenceStop.profit[i], ".+")));
       if (size == 0)
-         ArrayPushString(values, "0|0|0");
+         ArrayPushString(values, "0|0|0|0");
    ArrayPushString(lines, /*string*/   "rt.sequenceStops="        + JoinStrings(values, ","));
       if (status==STATUS_STOPPED) /*&&*/ if (IsWeekendStopSignal())
    ArrayPushString(lines, /*int*/      "rt.weekendStop="          +             1);
@@ -4388,7 +4409,7 @@ bool SaveStatus() {
 
    ArrayResize(lines,  0);
    ArrayResize(values, 0);
-   return(IsNoError(last_error|catch("SaveStatus(4)")));
+   return(!last_error|catch("SaveStatus(4)"));
 }
 
 
@@ -4615,7 +4636,7 @@ bool RestoreStatus() {
    ArrayResize(lines, 0);
    ArrayResize(keys,  0);
    ArrayResize(parts, 0);
-   return(IsNoError(last_error|catch("RestoreStatus(16)")));
+   return(!last_error|catch("RestoreStatus(16)"));
 }
 
 
@@ -5024,7 +5045,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
 
    ArrayResize(values, 0);
    ArrayResize(data,   0);
-   return(IsNoError(last_error|catch("RestoreStatus.Runtime(102)")));
+   return(!last_error|catch("RestoreStatus.Runtime(102)"));
 }
 
 
@@ -5242,7 +5263,7 @@ bool SynchronizeStatus() {
                           +"  openRisk="   + DoubleToStr(grid.openRisk,    2)
                           +"  valueAtRisk="+ DoubleToStr(grid.valueAtRisk, 2));
    */
-   return(IsNoError(last_error|catch("SynchronizeStatus(11)")));
+   return(!last_error|catch("SynchronizeStatus(11)"));
 }
 
 
@@ -5321,7 +5342,7 @@ bool Sync.UpdateOrder(int i, bool &lpPermanentChange) {
    else if (  isClosed) lpPermanentChange = true;
    else                 lpPermanentChange = lpPermanentChange || NE(lastSwap, OrderSwap());
 
-   return(IsNoError(last_error|catch("Sync.UpdateOrder(3)")));
+   return(!last_error|catch("Sync.UpdateOrder(3)"));
 }
 
 
@@ -5573,7 +5594,7 @@ bool Sync.ProcessEvents(datetime &sequenceStopTime, double &sequenceStopPrice) {
 
    ArrayResize(events,      0);
    ArrayResize(orderEvents, 0);
-   return(IsNoError(last_error|catch("Sync.ProcessEvents(16)")));
+   return(!last_error|catch("Sync.ProcessEvents(16)"));
 }
 
 

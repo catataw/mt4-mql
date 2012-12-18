@@ -30,7 +30,7 @@ int onInitParameterChange() {
       RedrawStartStop();
    }
    else {
-      // Parameteränderung einer laufenden Sequenz
+      // Parameteränderung einer existierenden Sequenz
       if (SaveStatus()) {
          if (Breakeven.Color != last.Breakeven.Color) {
             RedrawStartStop();
