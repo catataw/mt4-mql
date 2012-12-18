@@ -6,7 +6,6 @@
  *  TODO:
  *  -----
  *  - StartCondition @level implementieren
- *  - Validierung refaktorieren
  *  - Multi-Position-Management implementieren                                                        *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
@@ -17,6 +16,7 @@
  *  - PendingOrders nicht per Tick trailen                                                            *
  *  - Möglichkeit, WeekendStop zu (de-)aktivieren                                                     *
  *
+ *  - Validierung refaktorieren
  *  - Statusanzeige dynamisch an Zeilen anpassen
  *  - StopsPL und ValueAtRisk reparieren
  *  - Breakeven-Berechnung reparieren, Anzeige laufender Sequenz bis zum aktuellen Moment
