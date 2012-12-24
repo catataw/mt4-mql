@@ -279,18 +279,18 @@ int onTick() {
    HandleEvent(EVENT_CHART_CMD);
 
 
-   bool levelChanged, baseChanged;
+   bool gridlevelChanged, gridBaseChanged;
    int  stops[];
 
 
    // (2) Sequenz wartet entweder auf Startsignal...
    if (status == STATUS_WAITING) {
-      if (IsStartSignal())                StartSequence();
+      if (IsStartSignal())                        StartSequence();
    }
 
    // (3) ...oder auf ResumeSignal...
    else if (status == STATUS_STOPPED) {
-      if (IsResumeSignal())               ResumeSequence();
+      if (IsResumeSignal())                       ResumeSequence();
       else {
          firstTick = false;
          return(last_error);
@@ -298,11 +298,11 @@ int onTick() {
    }
 
    // (4) ...oder läuft
-   else if (UpdateStatus(levelChanged, baseChanged, stops)) {
-      if         (IsStopSignal())         StopSequence();
+   else if (UpdateStatus(gridLevelChanged, gridBaseChanged, stops)) {
+      if (IsStopSignal())                         StopSequence();
       else {
-         if (ArraySize(stops ) > 0)       ProcessClientStops(stops);
-         if (levelChanged || baseChanged) UpdatePendingOrders();
+         if (ArraySize(stops ) > 0)               ProcessClientStops(stops);
+         if (gridLevelChanged || gridBaseChanged) UpdatePendingOrders();
       }
    }
 
