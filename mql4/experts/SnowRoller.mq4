@@ -5,7 +5,6 @@
  *
  *  TODO:
  *  -----
- *  - StartCondition @level implementieren
  *  - Multi-Position-Management implementieren                                                        *
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
@@ -414,7 +413,7 @@ bool StartSequence() {
 
    // (1) Startvariablen setzen
    datetime startTime  = TimeCurrent();
-   double   startPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+   double   startPrice = ifDouble(grid.direction==D_SHORT, Bid, Ask);
 
    ArrayPushInt   (sequenceStart.event,  CreateEventId());
    ArrayPushInt   (sequenceStart.time,   startTime      );
@@ -429,25 +428,40 @@ bool StartSequence() {
    sequenceStartEquity = NormalizeDouble(AccountEquity()-AccountCredit(), 2);
 
 
+   // (2) Gridbasis setzen (zeitlich nach sequenceStart.event)
+   double gridBase = startPrice;
+   if (start.conditions) /*&&*/ if (start.level.condition) {
+      grid.level    = start.level.value;
+      grid.maxLevel = grid.level;
+      gridBase      = NormalizeDouble(startPrice - grid.level*GridSize*Pips, Digits);
+   }
+   Grid.BaseReset(startTime, gridBase);
+
+
+   // (3) ggf. Startpositionen in den Markt legen und Sequenzstart aktualisieren
+   if (grid.level != 0) {
+      datetime iNull;
+      if (!UpdateOpenPositions(iNull, startPrice))
+         return(false);
+      sequenceStart.price[ArraySize(sequenceStart.price)-1] = startPrice;
+   }
+
+
    status = STATUS_PROGRESSING;
 
 
-   // (2) StartConditions deaktivieren und Weekend-Stop aktualisieren
+   // (4) StartConditions deaktivieren und Weekend-Stop aktualisieren
    start.conditions = false; SS.StartStopConditions();
    UpdateWeekendStop();
 
 
-   // (3) Gridbasis setzen (zeitlich nach sequenceStartTime)
-   Grid.BaseReset(startTime, startPrice);
-
-
-   // (4) Stop-Orders in den Markt legen
+   // (5) Stop-Orders in den Markt legen
    if (!UpdatePendingOrders())
       return(false);
 
    RedrawStartStop();
 
-   if (__LOG) log(StringConcatenate("StartSequence()   sequence started at ", NumberToStr(startPrice, PriceFormat)));
+   if (__LOG) log(StringConcatenate("StartSequence()   sequence started at ", NumberToStr(startPrice, PriceFormat), ifString(grid.level, " and level "+ grid.level, "")));
    return(!last_error|catch("StartSequence(4)"));
 }
 
@@ -718,7 +732,7 @@ bool ResumeSequence() {
    }
 
 
-   // (3) vorherige Positionen wieder in den Markt legen und letzte OrderOpenTime abfragen
+   // (3) vorherige Positionen wieder in den Markt legen und letzte last(OrderOpenTime)/avg(OrderOpenPrice) abfragen
    if (!UpdateOpenPositions(startTime, startPrice))
       return(false);
 
@@ -728,9 +742,9 @@ bool ResumeSequence() {
    ArrayPushInt   (sequenceStart.time,   startTime      );
    ArrayPushDouble(sequenceStart.price,  startPrice     );
    ArrayPushDouble(sequenceStart.profit, grid.totalPL   );                    // entspricht dem letzten Stop-Wert
-      int stops = ArraySize(sequenceStop.profit);
-      if (EQ(sequenceStop.profit[stops-1], 0))                                // Stops ohne PL (alter Status) aktualisieren
-         sequenceStop.profit[stops-1] = grid.totalPL;
+      int sizeOfStops = ArraySize(sequenceStop.profit);
+      if (EQ(sequenceStop.profit[sizeOfStops-1], 0))                          // Sequenz-Stops ohne PL aktualisieren (alte SnowRoller-Version)
+         sequenceStop.profit[sizeOfStops-1] = grid.totalPL;
 
    ArrayPushInt   (sequenceStop.event,  0);                                   // sequenceStart/Stop-Größe synchron halten
    ArrayPushInt   (sequenceStop.time,   0);
@@ -5255,6 +5269,7 @@ bool SynchronizeStatus() {
 
    /*
    debug("SynchronizeStatus() level="      + grid.level
+                          +"  maxLevel="   + grid.maxLevel
                           +"  stops="      + grid.stops
                           +"  stopsPL="    + DoubleToStr(grid.stopsPL,     2)
                           +"  closedPL="   + DoubleToStr(grid.closedPL,    2)
