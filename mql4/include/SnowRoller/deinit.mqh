@@ -26,8 +26,9 @@ int onDeinitParameterChange() {
 int onDeinitRemove() {
    // Der Status kann sich seit dem letzten Tick geändert haben.
    if (!IsTest()) /*&&*/ if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
-      int iNull[];
-      UpdateStatus(iNull, iNull);
+      bool bNull;
+      int  iNull[];
+      UpdateStatus(bNull, bNull, iNull);
       SaveStatus();
    }
    return(last_error);
@@ -79,8 +80,9 @@ int onDeinitChartClose() {
 
    // (2) Nicht im Tester:  Der Status kann sich seit dem letzten Tick geändert haben.
    if (!IsTest()) /*&&*/ if (status==STATUS_WAITING || status==STATUS_STARTING || status==STATUS_PROGRESSING || status==STATUS_STOPPING) {
-      int iNull[];
-      UpdateStatus(iNull, iNull);
+      bool bNull;
+      int  iNull[];
+      UpdateStatus(bNull, bNull, iNull);
       SaveStatus();
    }
    StoreStickyStatus();                                              // für Terminal-Restart oder Profile-Wechsel
@@ -99,8 +101,9 @@ int onDeinitUndefined() {
          return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
 
       if (status==STATUS_WAITING || status==STATUS_PROGRESSING) {
-         int iNull[];
-         if (UpdateStatus(iNull, iNull))
+         bool bNull;
+         int  iNull[];
+         if (UpdateStatus(bNull, bNull, iNull))
             StopSequence();                                          // ruft intern SaveStatus() auf
          ShowStatus();
       }

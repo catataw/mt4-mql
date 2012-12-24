@@ -278,18 +278,19 @@ int onTick() {
    // (1) Commands verarbeiten
    HandleEvent(EVENT_CHART_CMD);
 
-   static int    last.grid.level, limits[], stops[];
-   static double last.grid.base;
+
+   bool levelChanged, baseChanged;
+   int  stops[];
 
 
    // (2) Sequenz wartet entweder auf Startsignal...
    if (status == STATUS_WAITING) {
-      if (IsStartSignal())                       StartSequence();
+      if (IsStartSignal())                StartSequence();
    }
 
    // (3) ...oder auf ResumeSignal...
    else if (status == STATUS_STOPPED) {
-      if (IsResumeSignal())                      ResumeSequence();
+      if (IsResumeSignal())               ResumeSequence();
       else {
          firstTick = false;
          return(last_error);
@@ -297,13 +298,11 @@ int onTick() {
    }
 
    // (4) ...oder läuft
-   else if (UpdateStatus(limits, stops)) {
-      if         (IsStopSignal())                StopSequence();
+   else if (UpdateStatus(levelChanged, baseChanged, stops)) {
+      if         (IsStopSignal())         StopSequence();
       else {
-         if      (ArraySize(limits) > 0)         ProcessClientLimits(limits);
-         if      (ArraySize(stops ) > 0)         ProcessClientStops(stops);
-         if      (grid.level != last.grid.level) UpdatePendingOrders();
-         else if (NE(grid.base, last.grid.base)) UpdatePendingOrders();
+         if (ArraySize(stops ) > 0)       ProcessClientStops(stops);
+         if (levelChanged || baseChanged) UpdatePendingOrders();
       }
    }
 
@@ -315,8 +314,6 @@ int onTick() {
    // (6) Status anzeigen
    ShowStatus();
 
-   last.grid.level = grid.level;
-   last.grid.base  = grid.base;
    firstTick = false;
    return(last_error);
 }
@@ -351,8 +348,9 @@ int onChartCommand(string commands[]) {
       switch (status) {
          case STATUS_WAITING    :
          case STATUS_PROGRESSING:
-            int iNull[];
-            if (UpdateStatus(iNull, iNull))
+            bool bNull;
+            int  iNull[];
+            if (UpdateStatus(bNull, bNull, iNull))
                StopSequence();
             ShowStatus();
       }
@@ -372,7 +370,7 @@ int onChartCommand(string commands[]) {
 /**
  * Handler für BarOpen-Events.
  *
- * @param int timeframes[] - IDs der Timeframes, in denen das BarOpen-Event aufgetreten ist
+ * @param  int timeframes[] - IDs der Timeframes, in denen das BarOpen-Event aufgetreten ist
  *
  * @return int - Fehlerstatus
  */
@@ -612,11 +610,12 @@ bool StopSequence() {
 
 
    // (7) Daten aktualisieren und speichern
-   int iNull[];
-   if (!UpdateStatus(iNull, iNull)) return(false);
+   bool bNull;
+   int  iNull[];
+   if (!UpdateStatus(bNull, bNull, iNull)) return(false);
    sequenceStop.profit[n] = grid.totalPL;
-   if (  !SaveStatus())             return(false);
-   if (!RecordEquity(false))        return(false);
+   if (  !SaveStatus())                    return(false);
+   if (!RecordEquity(false))               return(false);
    RedrawStartStop();
 
 
@@ -768,10 +767,11 @@ bool ResumeSequence() {
 
 
    // (7) Status aktualisieren und speichern
-   int iNull[], last.grid.level=grid.level;
-   if (!UpdateStatus(iNull, iNull))                                           // Wurde in UpdateOpenPositions() ein Pseudo-Ticket erstellt, wird es hier
+   bool levelChanged, bNull;
+   int iNull[];
+   if (!UpdateStatus(levelChanged, bNull, iNull))                             // Wurde in UpdateOpenPositions() ein Pseudo-Ticket erstellt, wird es hier
       return(false);                                                          // in UpdateStatus() geschlossen. In diesem Fall müssen die Pending-Orders
-   if (grid.level != last.grid.level)                                         // nochmal aktualisiert werden.
+   if (levelChanged)                                                          // nochmal aktualisiert werden.
       UpdatePendingOrders();
    if (!SaveStatus())
       return(false);
@@ -800,17 +800,20 @@ bool ResumeSequence() {
 /**
  * Prüft und synchronisiert die im EA gespeicherten mit den aktuellen Laufzeitdaten.
  *
- * @param int limits[] - Array-Indizes der Orders mit getriggerten client-seitigen Limits
- * @param int stops[]  - Array-Indizes der Orders mit getriggerten client-seitigen Stops
+ * @param  bool lpLevelChange    - Zeiger auf Variable, die nach Rückkehr anzeigt, ob sich der Gridlevel der Sequenz geändert hat
+ * @param  bool lpGridBaseChange - Zeiger auf Variable, die nach Rückkehr anzeigt, ob sich die Gridbasis der Sequenz geändert hat
+ * @param  int  stops[]          - Array, das nach Rückkehr die Array-Indizes getriggerter client-seitiger Stops enthält (Pending- und SL-Orders)
  *
  * @return bool - Erfolgsstatus
  */
-bool UpdateStatus(int limits[], int stops[]) {
-   ArrayResize(limits, 0);
-   ArrayResize(stops,  0);
-
+bool UpdateStatus(bool &lpLevelChange, bool &lpGridBaseChange, int stops[]) {
    if (__STATUS__CANCELLED || IsLastError()) return( false);
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_false(catch("UpdateStatus(1)", ERR_ILLEGAL_STATE)));
+
+   lpLevelChange    = false;
+   lpGridBaseChange = false;
+   ArrayResize(stops, 0);
+
    if (status == STATUS_WAITING)             return( true);
 
    grid.floatingPL = 0;
@@ -848,6 +851,7 @@ bool UpdateStatus(int limits[], int stops[]) {
             grid.openRisk    = NormalizeDouble(grid.openRisk - orders.openRisk[i], 2);
             grid.valueAtRisk = NormalizeDouble(grid.openRisk + grid.stopsPL, 2); SS.Grid.ValueAtRisk();
             recalcBreakeven  = true;
+            lpLevelChange    = true;
             continue;
          }
 
@@ -874,6 +878,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                grid.openRisk        = NormalizeDouble(grid.openRisk    + orders.openRisk[i], 2);
                grid.valueAtRisk     = NormalizeDouble(grid.valueAtRisk + orders.openRisk[i], 2); SS.Grid.ValueAtRisk();  // valueAtRisk = stopsPL + openRisk
                recalcBreakeven      = true;
+               lpLevelChange        = true;
                updateStatusLocation = updateStatusLocation || !grid.maxLevel;
             }
          }
@@ -924,6 +929,7 @@ bool UpdateStatus(int limits[], int stops[]) {
                grid.openRisk    = NormalizeDouble(grid.openRisk - orders.openRisk[i], 2);
                grid.valueAtRisk = NormalizeDouble(grid.openRisk + grid.stopsPL, 2); SS.Grid.ValueAtRisk();
                recalcBreakeven  = true;
+               lpLevelChange    = true;
             }
             else {                                                               // Sequenzstop im STATUS_MONITORING oder autom. Close bei Testende
                close[0] = OrderCloseTime();
@@ -990,7 +996,8 @@ bool UpdateStatus(int limits[], int stops[]) {
 
          if (NE(grid.base, last.grid.base)) {
             Grid.BaseChange(TimeCurrent(), grid.base);
-            recalcBreakeven = true;
+            recalcBreakeven  = true;
+            lpGridBaseChange = true;
          }
       }
 
@@ -1534,7 +1541,7 @@ void UpdateWeekendResume() {
 /**
  * Signalgeber für StopSequence(). Die einzelnen Bedingungen sind OR-verknüpft.
  *
- * @param bool checkWeekendStop - ob auch auf das Wochenend-Stopsignal geprüft werden soll (default: ja)
+ * @param  bool checkWeekendStop - ob auch auf das Wochenend-Stopsignal geprüft werden soll (default: ja)
  *
  * @return bool - ob die konfigurierten Stopbedingungen erfüllt sind
  */
@@ -1716,31 +1723,10 @@ bool IsStopTriggered(int type, double stop) {
 
 
 /**
- * Ordermanagement getriggerter client-seitiger Limits. Kann eine getriggerte Limit-Order oder ein getriggerter Take-Profit sein.
- * Aufruf nur aus onTick()
- *
- * @param int limits[] - Array-Indizes der Orders mit getriggerten Limits
- *
- * @return bool - Erfolgsstatus
- */
-bool ProcessClientLimits(int limits[]) {
-   if (__STATUS__CANCELLED || IsLastError()) return( false);
-   if (IsTest()) /*&&*/ if (!IsTesting())    return(_false(catch("ProcessClientLimits(1)", ERR_ILLEGAL_STATE)));
-   if (status != STATUS_PROGRESSING)         return(_false(catch("ProcessClientLimits(2)   cannot process client-side limits of "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
-
-   int size = ArraySize(limits);
-   if (size == 0)
-      return(true);
-
-   return(_false(catch("ProcessClientLimits(3)", ERR_FUNCTION_NOT_IMPLEMENTED)));
-}
-
-
-/**
  * Ordermanagement getriggerter client-seitiger Stops. Kann eine getriggerte Stop-Order oder ein getriggerter Stop-Loss sein.
  * Aufruf nur aus onTick()
  *
- * @param int stops[] - Array-Indizes der Orders mit getriggerten Stops
+ * @param  int stops[] - Array-Indizes der Orders mit getriggerten Stops
  *
  * @return bool - Erfolgsstatus
  */
@@ -1849,9 +1835,10 @@ bool ProcessClientStops(int stops[]) {
 
 
    // (4) Status aktualisieren und speichern
-   int iNull[];
-   if (!UpdateStatus(iNull, iNull)) return(false);
-   if (  !SaveStatus())             return(false);
+   bool bNull;
+   int  iNull[];
+   if (!UpdateStatus(bNull, bNull, iNull)) return(false);
+   if (  !SaveStatus())                    return(false);
 
    return(!last_error|catch("ProcessClientStops(12)"));
 }
@@ -3459,7 +3446,7 @@ bool IsMyOrder(int sequenceId = NULL) {
 /**
  * Validiert und setzt nur die in der Konfiguration angegebene Sequenz-ID.
  *
- * @param bool interactive - ob fehlerhafte Parameter interaktiv korrigiert werden können
+ * @param  bool interactive - ob fehlerhafte Parameter interaktiv korrigiert werden können
  *
  * @return bool - ob eine gültige Sequenz-ID gefunden und restauriert wurde
  */
@@ -3494,7 +3481,7 @@ bool ValidateConfiguration.ID(bool interactive) {
 /**
  * Validiert die aktuelle Konfiguration.
  *
- * @param bool interactive - ob fehlerhafte Parameter interaktiv korrigiert werden können
+ * @param  bool interactive - ob fehlerhafte Parameter interaktiv korrigiert werden können
  *
  * @return bool - ob die Konfiguration gültig ist
  */
