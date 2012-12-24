@@ -22,7 +22,6 @@
  *  - Bug: ChartMarker bei Stopouts
  *  - Bug: Crash, wenn Statusdatei der geladenen Testsequenz gelöscht wird
  *  - Logging aller MessageBoxen
- *  - Bestätigungsprompt des Traderequests beim ersten Tick auslagern
  *
  *  - Build 419 silently crashes (1 mal)
  *  - Alpari: wiederholte Trade-Timeouts von exakt 200 sec. (Socket-Timeout???)
@@ -242,6 +241,8 @@ int      ignorePendingOrders  [];                                    // orphaned
 int      ignoreOpenPositions  [];
 int      ignoreClosedPositions[];
 
+int      lastEventId;
+
 string   str.LotSize           = "";                                 // Zwischenspeicher für schnellere Abarbeitung von ShowStatus()
 string   str.startConditions   = "";
 string   str.stopConditions    = "";
@@ -255,10 +256,6 @@ string   str.grid.maxDrawdown  = "";
 string   str.grid.valueAtRisk  = "";
 string   str.grid.plStatistics = "";
 
-bool     firstTick          = true;
-bool     firstTickConfirmed = false;
-int      lastEventId;
-
 
 #include <SnowRoller/init.mqh>
 #include <SnowRoller/deinit.mqh>
@@ -270,16 +267,14 @@ int      lastEventId;
  * @return int - Fehlerstatus
  */
 int onTick() {
-   if (status==STATUS_UNINITIALIZED || status==STATUS_DISABLED) {
-      firstTick = false;
+   if (status==STATUS_UNINITIALIZED || status==STATUS_DISABLED)
       return(NO_ERROR);
-   }
 
    // (1) Commands verarbeiten
    HandleEvent(EVENT_CHART_CMD);
 
 
-   bool gridlevelChanged, gridBaseChanged;
+   bool gridLevelChanged, gridBaseChanged;
    int  stops[];
 
 
@@ -290,11 +285,8 @@ int onTick() {
 
    // (3) ...oder auf ResumeSignal...
    else if (status == STATUS_STOPPED) {
-      if (IsResumeSignal())                       ResumeSequence();
-      else {
-         firstTick = false;
-         return(last_error);
-      }
+      if  (IsResumeSignal())                      ResumeSequence();
+      else return(last_error);
    }
 
    // (4) ...oder läuft
@@ -314,7 +306,6 @@ int onTick() {
    // (6) Status anzeigen
    ShowStatus();
 
-   firstTick = false;
    return(last_error);
 }
 
@@ -382,6 +373,34 @@ int onBarOpen(int timeframes[]) {
 
 
 /**
+ * Holt eine Bestätigung für einen Trade-Request beim ersten Tick ein (um Programmfehlern vorzubeugen).
+ *
+ * @param  string location - Ort der Bestätigung
+ * @param  string message  - Meldung
+ *
+ * @return bool - Ergebnis
+ */
+bool ConfirmTradeOnTick1(string location, string message) {
+   static bool done, confirmed;
+
+   if (!done) {
+      if (Tick > 1 || IsTesting()) {
+         confirmed = true;
+      }
+      else {
+         ForceSound("notify.wav");
+         confirmed = (IDOK == ForceMessageBox(__NAME__ + ifString(!StringLen(location), "", " - "+ location), ifString(!IsDemo(), "- Live Account -\n\n", "") + message, MB_ICONQUESTION|MB_OKCANCEL));
+         if (Tick > 0)
+            RefreshRates();                                          // bei Tick==0, also Aufruf in init(), ist RefreshRates() unnötig
+      }
+   }
+   done = true;
+
+   return(confirmed);
+}
+
+
+/**
  * Startet eine neue Trade-Sequenz.
  *
  * @return bool - Erfolgsstatus
@@ -391,19 +410,10 @@ bool StartSequence() {
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_false(catch("StartSequence(1)", ERR_ILLEGAL_STATE)));
    if (status != STATUS_WAITING)             return(_false(catch("StartSequence(2)   cannot start "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
-   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                  // Bestätigungsprompt bei Traderequest beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(__NAME__ +" - StartSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to start a new sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("StartSequence(3)")));
-         }
-         RefreshRates();
-      }
+   if (Tick == 1) /*&&*/ if (!ConfirmTradeOnTick1("StartSequence()", "Do you really want to start a new sequence now?")) {
+      __STATUS__CANCELLED = true;
+      return(_false(catch("StartSequence(3)")));
    }
-   firstTickConfirmed = true;
-
 
    status = STATUS_STARTING;
    if (__LOG) log("StartSequence()   starting sequence");
@@ -476,19 +486,10 @@ bool StopSequence() {
       if (!IsTesting() || __WHEREAMI__!=FUNC_DEINIT || status!=STATUS_STOPPED)         // ggf. wird nach Testende nur aufgeräumt
          return(_false(catch("StopSequence(2)   cannot stop "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
-
-   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                                    // Bestätigungsprompt bei Traderequest beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(__NAME__ +" - StopSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to stop the sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("StopSequence(3)")));
-         }
-         RefreshRates();
-      }
+   if (Tick == 1) /*&&*/ if (!ConfirmTradeOnTick1("StopSequence()", "Do you really want to stop the sequence now?")) {
+      __STATUS__CANCELLED = true;
+      return(_false(catch("StopSequence(3)")));
    }
-   firstTickConfirmed = true;
 
 
    // (1) eine wartende Sequenz ist noch nicht gestartet und wird gecanceled
@@ -677,18 +678,10 @@ bool ResumeSequence() {
    if (IsTest()) /*&&*/ if (!IsTesting())                          return(_false(catch("ResumeSequence(1)", ERR_ILLEGAL_STATE)));
    if (status!=STATUS_STOPPED) /*&&*/ if (status!=STATUS_STARTING) return(_false(catch("ResumeSequence(2)   cannot resume "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
-   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                           // Bestätigungsprompt bei Traderequest beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(__NAME__ +" - ResumeSequence()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to resume the sequence now?", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("ResumeSequence(3)")));
-         }
-         RefreshRates();
-      }
+   if (Tick == 1) /*&&*/ if (!ConfirmTradeOnTick1("ResumeSequence()", "Do you really want to resume the sequence now?")) {
+      __STATUS__CANCELLED = true;
+      return(_false(catch("ResumeSequence(3)")));
    }
-   firstTickConfirmed = true;
 
 
    status = STATUS_STARTING;
@@ -727,7 +720,7 @@ bool ResumeSequence() {
       Grid.BaseChange(startTime, grid.base + startPrice - lastStopPrice);
    }
    else {
-      grid.base = NormalizeDouble(gridBase, Digits);                          // Gridbasis der vorhandenen Positionen übernehmen (sollte schon gesetzt sein, doch wer weiß...)
+      grid.base = NormalizeDouble(gridBase, Digits);                 // Gridbasis der vorhandenen Positionen übernehmen (sollte schon gesetzt sein, doch wer weiß...)
    }
 
 
@@ -740,12 +733,12 @@ bool ResumeSequence() {
    ArrayPushInt   (sequenceStart.event,  CreateEventId());
    ArrayPushInt   (sequenceStart.time,   startTime      );
    ArrayPushDouble(sequenceStart.price,  startPrice     );
-   ArrayPushDouble(sequenceStart.profit, grid.totalPL   );                    // entspricht dem letzten Stop-Wert
+   ArrayPushDouble(sequenceStart.profit, grid.totalPL   );           // entspricht dem letzten Stop-Wert
       int sizeOfStops = ArraySize(sequenceStop.profit);
-      if (EQ(sequenceStop.profit[sizeOfStops-1], 0))                          // Sequenz-Stops ohne PL aktualisieren (alte SnowRoller-Version)
+      if (EQ(sequenceStop.profit[sizeOfStops-1], 0))                 // Sequenz-Stops ohne PL aktualisieren (alte SnowRoller-Version)
          sequenceStop.profit[sizeOfStops-1] = grid.totalPL;
 
-   ArrayPushInt   (sequenceStop.event,  0);                                   // sequenceStart/Stop-Größe synchron halten
+   ArrayPushInt   (sequenceStop.event,  0);                          // sequenceStart/Stop-Größe synchron halten
    ArrayPushInt   (sequenceStop.time,   0);
    ArrayPushDouble(sequenceStop.price,  0);
    ArrayPushDouble(sequenceStop.profit, 0);
@@ -769,9 +762,9 @@ bool ResumeSequence() {
    // (7) Status aktualisieren und speichern
    bool levelChanged, bNull;
    int iNull[];
-   if (!UpdateStatus(levelChanged, bNull, iNull))                             // Wurde in UpdateOpenPositions() ein Pseudo-Ticket erstellt, wird es hier
-      return(false);                                                          // in UpdateStatus() geschlossen. In diesem Fall müssen die Pending-Orders
-   if (levelChanged)                                                          // nochmal aktualisiert werden.
+   if (!UpdateStatus(levelChanged, bNull, iNull))                    // Wurde in UpdateOpenPositions() ein Pseudo-Ticket erstellt, wird es hier
+      return(false);                                                 // in UpdateStatus() geschlossen. In diesem Fall müssen die Pending-Orders
+   if (levelChanged)                                                 // nochmal aktualisiert werden.
       UpdatePendingOrders();
    if (!SaveStatus())
       return(false);
@@ -1753,18 +1746,10 @@ bool ProcessClientStops(int stops[]) {
       if (orders.ticket[i] == -1) {
          if (orders.type[i] != OP_UNDEFINED) return(_false(catch("ProcessClientStops(4)   client-side "+ OperationTypeDescription(orders.pendingType[i]) +" order at index "+ i +" already marked as open", ERR_ILLEGAL_STATE)));
 
-         if (firstTick) /*&&*/ if (!firstTickConfirmed) {                     // Bestätigungsprompt bei Traderequest beim ersten Tick
-            if (!IsTesting()) {
-               ForceSound("notify.wav");
-               button = ForceMessageBox(__NAME__ +" - ProcessClientStops()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to execute a triggered "+ OperationTypeDescription(orders.pendingType[i]) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
-               if (button != IDOK) {
-                  __STATUS__CANCELLED = true;
-                  return(_false(catch("ProcessClientStops(5)")));
-               }
-               RefreshRates();
-            }
+         if (Tick == 1) /*&&*/ if (!ConfirmTradeOnTick1("ProcessClientStops()", "Do you really want to execute a triggered client-side "+ OperationTypeDescription(orders.pendingType[i]) +" order now?")) {
+            __STATUS__CANCELLED = true;
+            return(_false(catch("ProcessClientStops(5)")));
          }
-         firstTickConfirmed = true;
 
          int  type     = orders.pendingType[i] - 4;
          int  level    = orders.level      [i];
@@ -1807,18 +1792,10 @@ bool ProcessClientStops(int stops[]) {
          if (orders.type[i] == OP_UNDEFINED) return(_false(catch("ProcessClientStops(9)   #"+ orders.ticket[i] +" with client-side stop-loss still marked as pending", ERR_ILLEGAL_STATE)));
          if (orders.closeTime[i] != 0)       return(_false(catch("ProcessClientStops(10)   #"+ orders.ticket[i] +" with client-side stop-loss already marked as closed", ERR_ILLEGAL_STATE)));
 
-         if (firstTick) /*&&*/ if (!firstTickConfirmed) {                              // Bestätigungsprompt bei Traderequest beim ersten Tick
-            if (!IsTesting()) {
-               ForceSound("notify.wav");
-               button = ForceMessageBox(__NAME__ +" - ProcessClientStops()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to execute a triggered stop-loss now?", MB_ICONQUESTION|MB_OKCANCEL);
-               if (button != IDOK) {
-                  __STATUS__CANCELLED = true;
-                  return(_false(catch("ProcessClientStops(11)")));
-               }
-               RefreshRates();
-            }
+         if (Tick == 1) /*&&*/ if (!ConfirmTradeOnTick1("ProcessClientStops()", "Do you really want to execute a triggered client-side stop-loss now?")) {
+            __STATUS__CANCELLED = true;
+            return(_false(catch("ProcessClientStops(11)")));
          }
-         firstTickConfirmed = true;
 
          double lots        = NULL;
          double price       = NULL;
@@ -2036,19 +2013,10 @@ bool Grid.AddOrder(int type, int level) {
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_false(catch("Grid.AddOrder(1)", ERR_ILLEGAL_STATE)));
    if (status != STATUS_PROGRESSING)         return(_false(catch("Grid.AddOrder(2)   cannot add order for "+ StatusDescription(status) +" sequence", ERR_RUNTIME_ERROR)));
 
-
-   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                  // Bestätigungsprompt bei Traderequest beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(__NAME__ +" - Grid.AddOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a new "+ OperationTypeDescription(type) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("Grid.AddOrder(3)")));
-         }
-         RefreshRates();
-      }
+   if (Tick == 1) /*&&*/ if (!ConfirmTradeOnTick1("Grid.AddOrder()", "Do you really want to submit a new "+ OperationTypeDescription(type) +" order now?")) {
+      __STATUS__CANCELLED = true;
+      return(_false(catch("Grid.AddOrder(3)")));
    }
-   firstTickConfirmed = true;
 
 
    // (1) Order in den Markt legen
@@ -2189,24 +2157,16 @@ bool Grid.AddPosition(int type, int level) {
 
    if (level == 0)                           return(_false(catch("Grid.AddPosition(3)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                                          // Bestätigungsprompt bei Traderequest beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(__NAME__ +" - Grid.AddPosition()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to submit a Market "+ OperationTypeDescription(type) +" order now?", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("Grid.AddPosition(4)")));
-         }
-         RefreshRates();
-      }
+   if (Tick == 1) /*&&*/ if (!ConfirmTradeOnTick1("Grid.AddPosition()", "Do you really want to submit a Market "+ OperationTypeDescription(type) +" order now?")) {
+      __STATUS__CANCELLED = true;
+      return(_false(catch("Grid.AddPosition(4)")));
    }
-   firstTickConfirmed = true;
 
 
    // (1) Position öffnen
    /*ORDER_EXECUTION*/int oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
    bool clientSL = false;
-   int  ticket   = SubmitMarketOrder(type, level, clientSL, oe);        // zuerst versuchen, server-seitigen StopLoss zu setzen...
+   int  ticket   = SubmitMarketOrder(type, level, clientSL, oe);     // zuerst versuchen, server-seitigen StopLoss zu setzen...
 
    double stopLoss = oe.StopLoss(oe);
 
@@ -2218,7 +2178,7 @@ bool Grid.AddPosition(int type, int level) {
 
       // (2) Spread violated
       if (ticket == -1) {
-         ticket   = -2;                                                 // Pseudo-Ticket "öffnen" (wird beim nächsten UpdateStatus() mit P/L=0.00 "geschlossen")
+         ticket   = -2;                                              // Pseudo-Ticket "öffnen" (wird beim nächsten UpdateStatus() mit P/L=0.00 "geschlossen")
          clientSL = true;
          oe.setOpenTime(oe, TimeCurrent());
          if (__LOG) log(StringConcatenate("Grid.AddPosition()   pseudo ticket #", ticket, " opened for spread violation (", NumberToStr(oe.Bid(oe), PriceFormat), "/", NumberToStr(oe.Ask(oe), PriceFormat), ") by ", OperationTypeDescription(type), " at ", NumberToStr(oe.OpenPrice(oe), PriceFormat), ", sl=", NumberToStr(stopLoss, PriceFormat), " (level ", level, ")"));
@@ -2227,7 +2187,7 @@ bool Grid.AddPosition(int type, int level) {
       // (3) StopDistance violated
       else if (ticket == -2) {
          clientSL = true;
-         ticket   = SubmitMarketOrder(type, level, clientSL, oe);       // danach client-seitige Stop-Verwaltung
+         ticket   = SubmitMarketOrder(type, level, clientSL, oe);    // danach client-seitige Stop-Verwaltung
          if (ticket <= 0)
             return(false);
          if (__LOG) log(StringConcatenate("Grid.AddPosition()   #", ticket, " client-side stop-loss at ", NumberToStr(stopLoss, PriceFormat), " installed (level ", level, ")"));
@@ -2235,15 +2195,15 @@ bool Grid.AddPosition(int type, int level) {
    }
 
    // (4) Daten speichern
-   //int    ticket       = ...                                          // unverändert
-   //int    level        = ...                                          // unverändert
-   //double grid.base    = ...                                          // unverändert
+   //int    ticket       = ...                                       // unverändert
+   //int    level        = ...                                       // unverändert
+   //double grid.base    = ...                                       // unverändert
 
    int      pendingType  = OP_UNDEFINED;
    datetime pendingTime  = NULL;
    double   pendingPrice = NULL;
 
-   //int    type         = ...                                          // unverändert
+   //int    type         = ...                                       // unverändert
    int      openEvent    = CreateEventId();
    datetime openTime     = oe.OpenTime (oe);
    double   openPrice    = oe.OpenPrice(oe);
@@ -2251,14 +2211,14 @@ bool Grid.AddPosition(int type, int level) {
    int      closeEvent   = NULL;
    datetime closeTime    = NULL;
    double   closePrice   = NULL;
-   //double stopLoss     = ...                                          // unverändert
-   //bool   clientSL     = ...                                          // unverändert
+   //double stopLoss     = ...                                       // unverändert
+   //bool   clientSL     = ...                                       // unverändert
    bool     closedBySL   = false;
 
-   double   swap         = oe.Swap      (oe);                           // falls Swap bereits bei OrderOpen gesetzt sein sollte
+   double   swap         = oe.Swap      (oe);                        // falls Swap bereits bei OrderOpen gesetzt sein sollte
    double   commission   = oe.Commission(oe);
    double   profit       = NULL;
-   double   openRisk     = NULL;                                        // wird nach Grid.PushData() gesetzt
+   double   openRisk     = NULL;                                     // wird nach Grid.PushData() gesetzt
 
    if (!Grid.PushData(ticket, level, grid.base, pendingType, pendingTime, pendingPrice, type, openEvent, openTime, openPrice, openRisk, closeEvent, closeTime, closePrice, stopLoss, clientSL, closedBySL, swap, commission, profit))
       return(false);
@@ -2358,18 +2318,10 @@ bool Grid.TrailPendingOrder(int i) {
    if (orders.type[i] != OP_UNDEFINED)         return(_false(catch("Grid.TrailPendingOrder(4)   cannot trail "+ OperationTypeDescription(orders.type[i]) +" position #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
    if (orders.closeTime[i] != 0)               return(_false(catch("Grid.TrailPendingOrder(5)   cannot trail cancelled "+ OperationTypeDescription(orders.type[i]) +" order #"+ orders.ticket[i], ERR_RUNTIME_ERROR)));
 
-   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                  // Bestätigungsprompt bei Traderequest beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(__NAME__ +" - Grid.TrailPendingOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to modify the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ orders.ticket[i] +" now?", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("Grid.TrailPendingOrder(6)")));
-         }
-         RefreshRates();
-      }
+   if (Tick == 1) /*&&*/ if (!ConfirmTradeOnTick1("Grid.TrailPendingOrder()", "Do you really want to modify the "+ OperationTypeDescription(orders.pendingType[i]) +" order #"+ orders.ticket[i] +" now?")) {
+      __STATUS__CANCELLED = true;
+      return(_false(catch("Grid.TrailPendingOrder(6)")));
    }
-   firstTickConfirmed = true;
 
    double stopPrice   = NormalizeDouble(grid.base +      orders.level[i]  * GridSize * Pips, Digits);
    double stopLoss    = NormalizeDouble(stopPrice - Sign(orders.level[i]) * GridSize * Pips, Digits);
@@ -2413,18 +2365,10 @@ bool Grid.DeleteOrder(int i) {
    if (i < 0 || i >= ArraySize(orders.ticket))                                 return(_false(catch("Grid.DeleteOrder(3)   illegal parameter i = "+ i, ERR_INVALID_FUNCTION_PARAMVALUE)));
    if (orders.type[i] != OP_UNDEFINED)                                         return(_false(catch("Grid.DeleteOrder(4)   cannot delete "+ ifString(orders.closeTime[i]==0, "open", "closed") +" "+ OperationTypeDescription(orders.type[i]) +" position", ERR_RUNTIME_ERROR)));
 
-   if (firstTick) /*&&*/ if (!firstTickConfirmed) {                  // Bestätigungsprompt bei Traderequest beim ersten Tick
-      if (!IsTesting()) {
-         ForceSound("notify.wav");
-         int button = ForceMessageBox(__NAME__ +" - Grid.DeleteOrder()", ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order at level "+ orders.level[i] +" now?", MB_ICONQUESTION|MB_OKCANCEL);
-         if (button != IDOK) {
-            __STATUS__CANCELLED = true;
-            return(_false(catch("Grid.DeleteOrder(5)")));
-         }
-         RefreshRates();
-      }
+   if (Tick == 1) /*&&*/ if (!ConfirmTradeOnTick1("Grid.DeleteOrder()", "Do you really want to cancel the "+ OperationTypeDescription(orders.pendingType[i]) +" order at level "+ orders.level[i] +" now?")) {
+      __STATUS__CANCELLED = true;
+      return(_false(catch("Grid.DeleteOrder(5)")));
    }
-   firstTickConfirmed = true;
 
    if (orders.ticket[i] > 0) {
       int oeFlags = NULL;

@@ -124,13 +124,10 @@ int onInitChartClose() {
          }
       }
 
-      ForceSound("notify.wav");
-      button = ForceMessageBox(__NAME__, ifString(!IsDemo(), "- Live Account -\n\n", "") +"Do you want to start a new sequence?", MB_ICONQUESTION|MB_OKCANCEL);
-      if (button == IDCANCEL) {
+      if (!ConfirmTradeOnTick1("", "Do you want to start a new sequence?")) {
          __STATUS__CANCELLED = true;
          return(last_error);
       }
-      firstTickConfirmed = true;
    }
 
 
