@@ -29,13 +29,17 @@ int onStart() {
       // (2) f¸r Command unzutreffende Sequenzen herausfiltern
       for (int i=sizeOfIds-1; i >= 0; i--) {
          switch (status[i]) {
-            case STATUS_WAITING:                                                 // STATUS_UNINITIALIZED:   // entfernen
-            case STATUS_STOPPED:                                                 // STATUS_WAITING      :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
-               if (StringGetChar(ids[i], 0)!='T' || Script.IsTesting())          // STATUS_STARTING     :   // entfernen
-                  continue;                                                      // STATUS_PROGRESSING  :   // entfernen
-            default:                                                             // STATUS_STOPPING     :   // entfernen
-               ArraySpliceStrings(ids, i, 1);                                    // STATUS_STOPPED      :   // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
-               ArraySpliceInts(status, i, 1);                                    // STATUS_DISABLED     :   // entfernen
+          //case STATUS_UNINITIALIZED:    //
+            case STATUS_WAITING      :    // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
+          //case STATUS_STARTING     :    //
+          //case STATUS_PROGRESSING  :    //
+          //case STATUS_STOPPING     :    //
+            case STATUS_STOPPED      :    // ok, solange es keine Testsequenz auﬂerhalb des Testers ist
+               if (StringGetChar(ids[i], 0)!='T' || Script.IsTesting())
+                  continue;
+            default:
+               ArraySpliceStrings(ids, i, 1);
+               ArraySpliceInts(status, i, 1);
                sizeOfIds--;
          }
       }

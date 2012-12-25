@@ -64,7 +64,6 @@ bool IsSequenceStatus(int value) {
       case STATUS_PROGRESSING  : return(true);
       case STATUS_STOPPING     : return(true);
       case STATUS_STOPPED      : return(true);
-      case STATUS_DISABLED     : return(true);
    }
    return(false);
 }

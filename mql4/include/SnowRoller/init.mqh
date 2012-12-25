@@ -213,9 +213,6 @@ int afterInit() {
    CreateStatusBox();
    SS.All();
    ShowStatus();
-
-   if (IsLastError())
-      status = STATUS_DISABLED;
    return(last_error);
 }
 

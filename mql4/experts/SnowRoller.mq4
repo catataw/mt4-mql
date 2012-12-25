@@ -265,7 +265,7 @@ string   str.grid.plStatistics = "";
  * @return int - Fehlerstatus
  */
 int onTick() {
-   if (status==STATUS_UNINITIALIZED || status==STATUS_DISABLED)
+   if (status == STATUS_UNINITIALIZED)
       return(NO_ERROR);
 
    // (1) Commands verarbeiten
@@ -2602,25 +2602,22 @@ int CreateEventId() {
  */
 int ShowStatus() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) {
-      if (IsLastError()) {
-         status = STATUS_DISABLED;
-         if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (STATUS_DISABLED)"));
-      }
+      if (__STATUS__DISABLED)
+         if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (EA_DISABLED)"));
       return(NO_ERROR);
    }
 
    string msg, str.error;
 
-   if (__STATUS__CANCELLED) {
+   if      (__STATUS__INVALID_INPUT) {
+      str.error = StringConcatenate("  [", ErrorDescription(ERR_INVALID_INPUT), "]");
+   }
+   else if (__STATUS__CANCELLED) {
       str.error = StringConcatenate("  [", ErrorDescription(ERR_CANCELLED_BY_USER), "]");
    }
-   else if (IsLastError()) {
-      status    = STATUS_DISABLED;
-      str.error = StringConcatenate("  [", ErrorDescription(last_error), "]");
-      if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (STATUS_DISABLED)"));
-   }
-   else if (__STATUS__INVALID_INPUT) {
-      str.error = StringConcatenate("  [", ErrorDescription(ERR_INVALID_INPUT), "]");
+   else if (__STATUS__DISABLED) {
+      str.error = StringConcatenate("  ", Sequence.ID, " disabled  [", ErrorDescription(last_error), "]");
+      if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (EA_DISABLED)"));
    }
 
    switch (status) {
@@ -2630,7 +2627,6 @@ int ShowStatus() {
       case STATUS_PROGRESSING:   msg = StringConcatenate("  ", Sequence.ID, " progressing at level ", grid.level, "  (", grid.maxLevel, ")"); break;
       case STATUS_STOPPING:      msg = StringConcatenate("  ", Sequence.ID, " stopping at level ",    grid.level, "  (", grid.maxLevel, ")"); break;
       case STATUS_STOPPED:       msg = StringConcatenate("  ", Sequence.ID, " stopped at level ",     grid.level, "  (", grid.maxLevel, ")"); break;
-      case STATUS_DISABLED:      msg = StringConcatenate("  ", Sequence.ID, " disabled"                                                    ); break;
       default:
          return(catch("ShowStatus(1)   illegal sequence status = "+ status, ERR_RUNTIME_ERROR));
    }
@@ -2661,8 +2657,7 @@ int ShowStatus() {
 
 
    if (IsError(catch("ShowStatus(3)"))) {
-      status = STATUS_DISABLED;
-      if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (STATUS_DISABLED)"));
+      if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (EA_DISABLED)"));
       return(last_error);
    }
    return(NO_ERROR);
@@ -3421,7 +3416,7 @@ bool ValidateConfiguration.ID(bool interactive) {
  * @return bool - ob die Konfiguration gültig ist
  */
 bool ValidateConfiguration(bool interactive) {
-   if (IsLastError() || status==STATUS_DISABLED)
+   if (__STATUS__DISABLED)
       return(false);
 
    bool parameterChange = (UninitializeReason() == REASON_PARAMETERS);
@@ -6096,7 +6091,6 @@ string StatusToStr(int status) {
       case STATUS_PROGRESSING  : return("STATUS_PROGRESSING"  );
       case STATUS_STOPPING     : return("STATUS_STOPPING"     );
       case STATUS_STOPPED      : return("STATUS_STOPPED"      );
-      case STATUS_DISABLED     : return("STATUS_DISABLED"     );
    }
    return(_empty(catch("StatusToStr()   invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
@@ -6117,7 +6111,6 @@ string StatusDescription(int status) {
       case STATUS_PROGRESSING  : return("progressing"    );
       case STATUS_STOPPING     : return("stopping"       );
       case STATUS_STOPPED      : return("stopped"        );
-      case STATUS_DISABLED     : return("disabled"       );
    }
    return(_empty(catch("StatusDescription()   invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }

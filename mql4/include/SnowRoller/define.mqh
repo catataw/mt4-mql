@@ -17,7 +17,6 @@ string  directionDescr[] = {"undefined", "Long", "Short", "Alternative"};
 #define STATUS_PROGRESSING          3
 #define STATUS_STOPPING             4
 #define STATUS_STOPPED              5
-#define STATUS_DISABLED             6
 
 
 // Event-Types für SynchronizeStatus()
