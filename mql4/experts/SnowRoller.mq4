@@ -301,9 +301,6 @@ int onTick() {
       RecordEquity(true);
    }
 
-   // (6) Status anzeigen
-   ShowStatus();
-
    return(last_error);
 }
 
@@ -337,7 +334,6 @@ int onChartCommand(string commands[]) {
             int  iNull[];
             if (UpdateStatus(bNull, bNull, iNull))
                StopSequence();
-            ShowStatus();
       }
       return(last_error);
    }
