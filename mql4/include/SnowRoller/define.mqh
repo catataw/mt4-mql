@@ -38,7 +38,7 @@ string  scpDescr[] = {"Bid", "Ask", "Avg"};
 
 // Start/StopDisplay-Modes
 #define SDM_NONE                    0                                   // - keine Anzeige -
-#define SDM_PRICE    SYMBOL_LEFTPRICE                                   // Markierung mit Preisangabe
+#define SDM_PRICE    SYMBOL_LEFTPRICE                                   // Preismarker
 int startStopDisplayModes[] = {SDM_NONE, SDM_PRICE};
 
 

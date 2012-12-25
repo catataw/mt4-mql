@@ -1,6 +1,8 @@
 
 /**
- * altes Chartfenster, alter EA, Input-Dialog
+ * Nach Parameteränderung
+ *
+ *  - altes Chartfenster, alter EA, Input-Dialog
  *
  * @return int - Fehlerstatus
  */
@@ -19,14 +21,14 @@ int onInitParameterChange() {
       // neue Sequenz anlegen
       instanceStartTime  = TimeCurrent();
       instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
-      test               = IsTesting();
+      isTest             = IsTesting();
       sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
       InitStatusLocation();
 
-      if (start.conditions)                                                            // Ohne aktivierte StartConditions erfolgt sofortiger Sequenzstart, der Status wird dabei
-         SaveStatus();                                                                 // automatisch gespeichert.
+      if (start.conditions)                                          // Ohne aktivierte StartConditions erfolgt sofortiger Sequenzstart, der Status wird dabei
+         SaveStatus();                                               // automatisch gespeichert.
       RedrawStartStop();
    }
    else {
@@ -43,19 +45,23 @@ int onInitParameterChange() {
 
 
 /**
- * altes Chartfenster, neuer EA, Input-Dialog
+ * Vorheriger EA von Hand entfernt (Chart->Expert->Remove) oder neuer EA drübergeladen
+ *
+ * - altes Chartfenster, neuer EA, Input-Dialog
  *
  * @return int - Fehlerstatus
  */
 int onInitRemove() {
    if (__STATUS__CANCELLED)
       return(NO_ERROR);
-   return(onInitChartClose());                                                         // Funktionalität entspricht onInitChartClose()
+   return(onInitChartClose());                                       // Funktionalität entspricht onInitChartClose()
 }
 
 
 /**
- * Symbol- oder Timeframe-Wechsel: altes Chartfenster, alter EA, kein Input-Dialog
+ * Nach Symbol- oder Timeframe-Wechsel
+ *
+ * - altes Chartfenster, alter EA, kein Input-Dialog
  *
  * @return int - Fehlerstatus
  */
@@ -79,7 +85,9 @@ int onInitChartChange() {
 
 
 /**
- * Altes Chartfenster mit neu geladenem Template, neuer EA, Input-Dialog, keine Statusdaten im Chart
+ * Altes Chartfenster mit neu geladenem Template
+ *
+ * - neuer EA, Input-Dialog, keine Statusdaten im Chart
  *
  * @return int - Fehlerstatus
  */
@@ -96,7 +104,7 @@ int onInitChartClose() {
       return(last_error);
    }
    else if (StringLen(StringTrim(Sequence.ID)) > 0) {
-      return(last_error);                                                              // Falscheingabe
+      return(last_error);                                            // Falscheingabe
    }
 
 
@@ -109,12 +117,12 @@ int onInitChartClose() {
          ForceSound("notify.wav");
          button = ForceMessageBox(__NAME__, ifString(!IsDemo(), "- Live Account -\n\n", "") +"Running sequence"+ ifString(sizeOfIds==1, " ", "s ") + JoinInts(ids, ", ") +" found.\n\nDo you want to load "+ ifString(sizeOfIds==1, "it", ids[i]) +"?", MB_ICONQUESTION|MB_YESNOCANCEL);
          if (button == IDYES) {
-            test        = false;
+            isTest      = false;
             sequenceId  = InstanceId(ids[i]);
             Sequence.ID = sequenceId; SS.SequenceId();
             status      = STATUS_WAITING;
-            if (RestoreStatus())                                                       // TODO: Erkennen, ob einer der anderen Parameter von Hand geändert wurde und
-               if (ValidateConfiguration(false))                                       //       sofort nach neuer Sequenz fragen.
+            if (RestoreStatus())                                     // TODO: Erkennen, ob einer der anderen Parameter von Hand geändert wurde und
+               if (ValidateConfiguration(false))                     //       sofort nach neuer Sequenz fragen.
                   SynchronizeStatus();
             return(last_error);
          }
@@ -135,14 +143,14 @@ int onInitChartClose() {
    if (ValidateConfiguration(true)) {
       instanceStartTime  = TimeCurrent();
       instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
-      test               = IsTesting();
+      isTest             = IsTesting();
       sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
       InitStatusLocation();
 
-      if (start.conditions)                                                            // Ohne aktive StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
-         SaveStatus();                                                                 // wird erst danach gespeichert.
+      if (start.conditions)                                          // Ohne aktive StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
+         SaveStatus();                                               // wird erst danach gespeichert.
       RedrawStartStop();
    }
    return(last_error);
@@ -152,8 +160,8 @@ int onInitChartClose() {
 /**
  * Kein UninitializeReason gesetzt
  *
- * - nach Terminal-Neustart, neues Chartfenster, wenn alter EA, dann kein Input-Dialog
- * - File ->New ->Chart, neues Chartfenster, neuer EA, Input-Dialog
+ * - nach Terminal-Neustart:    neues Chartfenster, vorheriger EA, kein Input-Dialog
+ * - nach File -> New -> Chart: neues Chartfenster, neuer EA, Input-Dialog
  *
  * @return int - Fehlerstatus
  */
@@ -162,20 +170,22 @@ int onInitUndefined() {
       return(NO_ERROR);
    last_error = NO_ERROR;
 
-   // Prüfen, ob im Chart Statusdaten existieren
+   // Prüfen, ob im Chart Statusdaten existieren (einziger Unterschied zwischen vorherigem/neuem EA)
    if (!RestoreStickyStatus())
       if (IsLastError())
          return(last_error);
 
-   bool data = ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0;
+   bool idFound = ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0;
 
-   if (data) return(onInitRecompile());   // ja   -> alter EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
-   else      return(onInitChartClose());  // nein -> neuer EA -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
+   if (idFound) return(onInitRecompile());      // ja:   vorheriger EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
+   else         return(onInitChartClose());     // nein: neuer      EA -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
 }
 
 
 /**
- * altes Chartfenster, alter EA, kein Input-Dialog, Statusdaten im Chart
+ * Nach Recompilation
+ *
+ * - altes Chartfenster, vorheriger EA, kein Input-Dialog, Statusdaten im Chart
  *
  * @return int - Fehlerstatus
  */
@@ -221,7 +231,7 @@ int CreateStatusBox() {
 
  //int x[]={0,  89, 145}, y=22, fontSize=67;                         // eine Zeile für Start/StopCondition
    int x[]={0, 101, 133}, y=22, fontSize=76;                         // zwei Zeilen für Start/StopCondition
-   color color.Background = C'248,248,248';                          // = Chart-Background
+   color color.Background = C'248,248,248';                          // entspricht Chart-Background
 
 
    // 1. Quadrat

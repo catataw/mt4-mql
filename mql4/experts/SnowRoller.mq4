@@ -66,10 +66,9 @@
  */
 #property stacksize 32768
 
-#include <core/define.mqh>
+#include <stddefine.mqh>
 int   __INIT_FLAGS__[] = {INIT_TIMEZONE, INIT_PIPVALUE, LOG_INSTANCE_ID, LOG_PER_INSTANCE};
 int __DEINIT_FLAGS__[];
-#include <stddefine.mqh>
 #include <stdlib.mqh>
 #include <history.mqh>
 #include <win32api.mqh>
@@ -106,10 +105,9 @@ string   last.StopConditions          = "";
 color    last.Breakeven.Color;
 
 int      sequenceId;
-bool     test;                                                       // ob dies eine Testsequenz ist (entweder im Tester oder im Online-Chart)
-
-int      status = STATUS_UNINITIALIZED;
-string   status.directory;                                           // MQL-Verzeichnis der Statusdatei (unterhalb ".\files\")
+bool     isTest;                                                     // ob die Sequenz eine Testsequenz ist (entweder im Tester oder im Online-Chart)
+int      status;
+string   status.directory;                                           // MQL-Verzeichnis der Statusdatei (unterhalb "...\files\")
 string   status.fileName;                                            // einfacher Dateiname der Statusdatei
 
 datetime instanceStartTime;                                          // Start des EA's
@@ -275,7 +273,7 @@ int onTick() {
 
 
    bool gridLevelChanged, gridBaseChanged;
-   int  stops[];
+   int  triggeredStops[];
 
 
    // (2) Sequenz wartet entweder auf Startsignal...
@@ -290,10 +288,10 @@ int onTick() {
    }
 
    // (4) ...oder läuft
-   else if (UpdateStatus(gridLevelChanged, gridBaseChanged, stops)) {
+   else if (UpdateStatus(gridLevelChanged, gridBaseChanged, triggeredStops)) {
       if (IsStopSignal())                         StopSequence();
       else {
-         if (ArraySize(stops ) > 0)               ProcessClientStops(stops);
+         if (ArraySize(triggeredStops) > 0)       ProcessClientStops(triggeredStops);
          if (gridLevelChanged || gridBaseChanged) UpdatePendingOrders();
       }
    }
@@ -325,12 +323,8 @@ int onChartCommand(string commands[]) {
 
    if (cmd == "start") {
       switch (status) {
-         case STATUS_WAITING:
-            StartSequence();
-            break;
-         case STATUS_STOPPED:
-            ResumeSequence();
-            break;
+         case STATUS_WAITING: StartSequence();  break;
+         case STATUS_STOPPED: ResumeSequence(); break;
       }
       return(last_error);
    }
@@ -795,19 +789,20 @@ bool ResumeSequence() {
  *
  * @param  bool lpLevelChange    - Zeiger auf Variable, die nach Rückkehr anzeigt, ob sich der Gridlevel der Sequenz geändert hat
  * @param  bool lpGridBaseChange - Zeiger auf Variable, die nach Rückkehr anzeigt, ob sich die Gridbasis der Sequenz geändert hat
- * @param  int  stops[]          - Array, das nach Rückkehr die Array-Indizes getriggerter client-seitiger Stops enthält (Pending- und SL-Orders)
+ * @param  int  triggeredStops[] - Array, das nach Rückkehr die Array-Indizes getriggerter client-seitiger Stops enthält (Pending- und SL-Orders)
  *
  * @return bool - Erfolgsstatus
  */
-bool UpdateStatus(bool &lpLevelChange, bool &lpGridBaseChange, int stops[]) {
+bool UpdateStatus(bool &lpLevelChange, bool &lpGridBaseChange, int triggeredStops[]) {
    if (__STATUS__CANCELLED || IsLastError()) return( false);
    if (IsTest()) /*&&*/ if (!IsTesting())    return(_false(catch("UpdateStatus(1)", ERR_ILLEGAL_STATE)));
 
    lpLevelChange    = false;
    lpGridBaseChange = false;
-   ArrayResize(stops, 0);
+   ArrayResize(triggeredStops, 0);
 
-   if (status == STATUS_WAITING)             return( true);
+   if (status == STATUS_WAITING)
+      return(true);
 
    grid.floatingPL = 0;
 
@@ -824,7 +819,7 @@ bool UpdateStatus(bool &lpLevelChange, bool &lpGridBaseChange, int stops[]) {
          if (wasPending) /*&&*/ if (orders.ticket[i] == -1) {
             if (IsStopTriggered(orders.pendingType[i], orders.pendingPrice[i])) {
                if (__LOG) log(UpdateStatus.StopTriggerMsg(i));
-               ArrayPushInt(stops, i);
+               ArrayPushInt(triggeredStops, i);
             }
             continue;
          }
@@ -897,7 +892,7 @@ bool UpdateStatus(bool &lpLevelChange, bool &lpGridBaseChange, int stops[]) {
 
                if (orders.clientSL[i]) /*&&*/ if (IsStopTriggered(orders.type[i], orders.stopLoss[i])) {
                   if (__LOG) log(UpdateStatus.StopTriggerMsg(i));
-                  ArrayPushInt(stops, i);
+                  ArrayPushInt(triggeredStops, i);
                }
             }
             grid.floatingPL = NormalizeDouble(grid.floatingPL + orders.swap[i] + orders.commission[i] + orders.profit[i], 2);
@@ -3232,7 +3227,7 @@ bool RestoreStickyStatus() {
    if (ObjectFind(label) == 0) {
       strValue = StringToUpper(StringTrim(ObjectDescription(label)));
       if (StringLeft(strValue, 1) == "T") {
-         test     = true;
+         isTest   = true;
          strValue = StringRight(strValue, -1);
       }
       if (!StringIsDigit(strValue))
@@ -3405,7 +3400,7 @@ bool ValidateConfiguration.ID(bool interactive) {
       return(false);
 
    if (StringLeft(strValue, 1) == "T") {
-      test     = true;
+      isTest   = true;
       strValue = StringRight(strValue, -1);
    }
    if (!StringIsDigit(strValue))
@@ -4178,7 +4173,7 @@ bool SaveStatus() {
    Speichernotwendigkeit der einzelnen Variablen
    ---------------------------------------------
    int      status;                    // nein: kann aus Orderdaten und offenen Positionen restauriert werden
-   bool     test;                      // nein: wird aus Statusdatei ermittelt
+   bool     isTest;                    // nein: wird aus Statusdatei ermittelt
 
    datetime instanceStartTime;         // ja
    double   instanceStartPrice;        // ja
@@ -4505,8 +4500,8 @@ bool RestoreStatus() {
       else if (key == "Sequence.ID") {
          value = StringToUpper(value);
          if (StringLeft(value, 1) == "T") {
-            test  = true;
-            value = StringRight(value, -1);
+            isTest = true;
+            value  = StringRight(value, -1);
          }
          if (value != StringConcatenate("", sequenceId))                return(_false(catch("RestoreStatus(7)   invalid status file \""+ fileName +"\" (line \""+ lines[i] +"\")", ERR_RUNTIME_ERROR)));
          Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
@@ -5997,7 +5992,7 @@ bool ChartMarker.PositionClosed(int i) {
  * @return bool
  */
 bool IsTest() {
-   return(test || IsTesting());
+   return(isTest || IsTesting());
 }
 
 
