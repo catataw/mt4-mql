@@ -7,7 +7,7 @@
  * @return int - Fehlerstatus
  */
 int onInitParameterChange() {
-   if (__STATUS__CANCELLED)
+   if (__STATUS_CANCELLED)
       return(NO_ERROR);
 
    StoreConfiguration();
@@ -52,7 +52,7 @@ int onInitParameterChange() {
  * @return int - Fehlerstatus
  */
 int onInitRemove() {
-   if (__STATUS__CANCELLED)
+   if (__STATUS_CANCELLED)
       return(NO_ERROR);
    return(onInitChartClose());                                       // Funktionalität entspricht onInitChartClose()
 }
@@ -66,7 +66,7 @@ int onInitRemove() {
  * @return int - Fehlerstatus
  */
 int onInitChartChange() {
-   if (__STATUS__CANCELLED)
+   if (__STATUS_CANCELLED)
       return(NO_ERROR);
 
    // nur die nicht-statischen Input-Parameter restaurieren
@@ -92,7 +92,7 @@ int onInitChartChange() {
  * @return int - Fehlerstatus
  */
 int onInitChartClose() {
-   if (__STATUS__CANCELLED)
+   if (__STATUS_CANCELLED)
       return(NO_ERROR);
 
    // (1) Zuerst eine angegebene Sequenz restaurieren...
@@ -127,13 +127,13 @@ int onInitChartClose() {
             return(last_error);
          }
          if (button == IDCANCEL) {
-            __STATUS__CANCELLED = true;
+            __STATUS_CANCELLED = true;
             return(last_error);
          }
       }
 
       if (!ConfirmTradeOnTick1("", "Do you want to start a new sequence?")) {
-         __STATUS__CANCELLED = true;
+         __STATUS_CANCELLED = true;
          return(last_error);
       }
    }
@@ -166,7 +166,7 @@ int onInitChartClose() {
  * @return int - Fehlerstatus
  */
 int onInitUndefined() {
-   if (__STATUS__CANCELLED)
+   if (__STATUS_CANCELLED)
       return(NO_ERROR);
    last_error = NO_ERROR;
 
@@ -190,7 +190,7 @@ int onInitUndefined() {
  * @return int - Fehlerstatus
  */
 int onInitRecompile() {
-   if (__STATUS__CANCELLED)
+   if (__STATUS_CANCELLED)
       return(NO_ERROR);
 
    // im Chart gespeicherte Sequenz restaurieren

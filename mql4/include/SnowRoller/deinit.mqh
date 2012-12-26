@@ -60,7 +60,7 @@ int onDeinitChartChange() {
 int onDeinitChartClose() {
    // (1) Im Tester
    if (IsTesting()) {
-      __STATUS__CANCELLED = true;
+      __STATUS_CANCELLED = true;
       /**
        * !!! Vorsicht: Die start()-Funktion wurde gewaltsam beendet, die primitiven Variablen können Datenmüll enthalten !!!
        *
@@ -97,7 +97,7 @@ int onDeinitChartClose() {
  */
 int onDeinitUndefined() {
    if (IsTesting()) {
-      if (__STATUS__CANCELLED)
+      if (__STATUS_CANCELLED)
          return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
 
       if (status==STATUS_WAITING || status==STATUS_PROGRESSING) {

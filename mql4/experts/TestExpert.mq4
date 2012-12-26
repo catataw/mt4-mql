@@ -35,8 +35,8 @@ int onTick() {
 int ShowStatus() {
    string msg;
 
-   if (__STATUS__CANCELLED) msg = StringConcatenate("  [", ErrorDescription(ERR_CANCELLED_BY_USER), "]");
-   else if (IsLastError())  msg = StringConcatenate("  [", ErrorDescription(last_error)           , "]");
+   if (__STATUS_CANCELLED) msg = StringConcatenate("  [", ErrorDescription(ERR_CANCELLED_BY_USER), "]");
+   else if (IsLastError()) msg = StringConcatenate("  [", ErrorDescription(last_error)           , "]");
 
    // 2 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, msg));
