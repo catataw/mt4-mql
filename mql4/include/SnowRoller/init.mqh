@@ -7,9 +7,6 @@
  * @return int - Fehlerstatus
  */
 int onInitParameterChange() {
-   if (__STATUS_CANCELLED)
-      return(NO_ERROR);
-
    StoreConfiguration();
 
    if (!ValidateConfiguration(true)) {
@@ -52,8 +49,6 @@ int onInitParameterChange() {
  * @return int - Fehlerstatus
  */
 int onInitRemove() {
-   if (__STATUS_CANCELLED)
-      return(NO_ERROR);
    return(onInitChartClose());                                       // Funktionalität entspricht onInitChartClose()
 }
 
@@ -66,9 +61,6 @@ int onInitRemove() {
  * @return int - Fehlerstatus
  */
 int onInitChartChange() {
-   if (__STATUS_CANCELLED)
-      return(NO_ERROR);
-
    // nur die nicht-statischen Input-Parameter restaurieren
    Sequence.ID             = last.Sequence.ID;
    Sequence.StatusLocation = last.Sequence.StatusLocation;
@@ -92,9 +84,6 @@ int onInitChartChange() {
  * @return int - Fehlerstatus
  */
 int onInitChartClose() {
-   if (__STATUS_CANCELLED)
-      return(NO_ERROR);
-
    // (1) Zuerst eine angegebene Sequenz restaurieren...
    if (ValidateConfiguration.ID(true)) {
       status = STATUS_WAITING;
@@ -166,19 +155,15 @@ int onInitChartClose() {
  * @return int - Fehlerstatus
  */
 int onInitUndefined() {
-   if (__STATUS_CANCELLED)
-      return(NO_ERROR);
-   last_error = NO_ERROR;
-
    // Prüfen, ob im Chart Statusdaten existieren (einziger Unterschied zwischen vorherigem/neuem EA)
    if (!RestoreStickyStatus())
-      if (IsLastError())
+      if (__STATUS_ERROR)
          return(last_error);
 
-   bool idFound = ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0;
+   bool statusFound = ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0;
 
-   if (idFound) return(onInitRecompile());      // ja:   vorheriger EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
-   else         return(onInitChartClose());     // nein: neuer      EA -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
+   if (statusFound) return(onInitRecompile());     // ja:   vorheriger EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
+   else             return(onInitChartClose());    // nein: neuer      EA -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
 }
 
 
@@ -190,9 +175,6 @@ int onInitUndefined() {
  * @return int - Fehlerstatus
  */
 int onInitRecompile() {
-   if (__STATUS_CANCELLED)
-      return(NO_ERROR);
-
    // im Chart gespeicherte Sequenz restaurieren
    if (RestoreStickyStatus()) {
       if (RestoreStatus())
@@ -212,7 +194,6 @@ int onInitRecompile() {
 int afterInit() {
    CreateStatusBox();
    SS.All();
-   ShowStatus();
    return(last_error);
 }
 

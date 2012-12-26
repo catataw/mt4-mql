@@ -19,7 +19,7 @@ int onDeinitParameterChange() {
 
 
 /**
- * EA von Hand entfernt (Chart ->Expert ->Remove) oder neuer EA drübergeladen
+ * EA von Hand entfernt (Chart -> Expert -> Remove) oder neuer EA drübergeladen
  *
  * @return int - Fehlerstatus
  */
@@ -67,7 +67,7 @@ int onDeinitChartClose() {
        * Das Flag "Statusfile nicht löschen" kann nicht über primitive Variablen oder den Chart kommuniziert werden.
        *  => Strings/Arrays testen (ansonsten globale Variable mit Thread-ID)
        */
-      if (IsLastError()) {
+      if (__STATUS_ERROR) {
          // Statusfile löschen
          FileDelete(GetMqlStatusFileName());
          GetLastError();                                             // falls in FileDelete() ein Fehler auftrat
