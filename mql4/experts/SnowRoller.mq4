@@ -2602,8 +2602,8 @@ int CreateEventId() {
  */
 int ShowStatus() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode()) {
-      if (__STATUS__DISABLED)
-         if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (EA_DISABLED)"));
+      if (__STATUS__ERROR)
+         if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (__STATUS__ERROR)"));
       return(NO_ERROR);
    }
 
@@ -2615,9 +2615,9 @@ int ShowStatus() {
    else if (__STATUS__CANCELLED) {
       str.error = StringConcatenate("  [", ErrorDescription(ERR_CANCELLED_BY_USER), "]");
    }
-   else if (__STATUS__DISABLED) {
+   else if (__STATUS__ERROR) {
       str.error = StringConcatenate("  ", Sequence.ID, " disabled  [", ErrorDescription(last_error), "]");
-      if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (EA_DISABLED)"));
+      if (__LOG) log(StringConcatenate("ShowStatus()   last_error=", last_error, " (__STATUS__ERROR)"));
    }
 
    switch (status) {
@@ -3416,7 +3416,7 @@ bool ValidateConfiguration.ID(bool interactive) {
  * @return bool - ob die Konfiguration gültig ist
  */
 bool ValidateConfiguration(bool interactive) {
-   if (__STATUS__DISABLED)
+   if (__STATUS__ERROR)
       return(false);
 
    bool parameterChange = (UninitializeReason() == REASON_PARAMETERS);
