@@ -1361,10 +1361,10 @@ bool IsTrendChange(int timeframe, string maPeriods, string maTimeframe, string m
                                Red,                                  // Color.DownTrend
                                "",                                   // _________________
                                ic[IC_PTR],                           // __iCustom__
-                               BUFFER_2, bar)); //throws ERR_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+                               BUFFER_2, bar)); //throws ERS_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
 
       error = GetLastError();
-      if (IsError(error)) /*&&*/ if (error!=ERR_HISTORY_UPDATE)
+      if (IsError(error)) /*&&*/ if (error!=ERS_HISTORY_UPDATE)
          return(_false(catch("IsTrendChange(1)", error)));
       if (IsError(ic[IC_LAST_ERROR]))
          return(_false(SetLastError(ic[IC_LAST_ERROR])));
@@ -1383,8 +1383,8 @@ bool IsTrendChange(int timeframe, string maPeriods, string maTimeframe, string m
       strTrend     = StringConcatenate(strTrend, ifString(barTrend>0, "+", "-"));
       prevBarTrend = barTrend;
    }
-   if (error == ERR_HISTORY_UPDATE)
-      debug("IsTrendChange()   ERR_HISTORY_UPDATE");                 // TODO: bei ERR_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
+   if (error == ERS_HISTORY_UPDATE)
+      debug("IsTrendChange()   ERS_HISTORY_UPDATE");                 // TODO: bei ERS_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
 
 
    // (2) Trendwechsel detektieren
@@ -2613,7 +2613,7 @@ int ShowStatus() {
       str.error = StringConcatenate("  [", ErrorDescription(ERR_INVALID_INPUT), "]");
    }
    else if (__STATUS_CANCELLED) {
-      str.error = StringConcatenate("  [", ErrorDescription(ERR_CANCELLED_BY_USER), "]");
+      str.error = StringConcatenate("  [", ErrorDescription(ERS_CANCELLED_BY_USER), "]");
    }
    else if (__STATUS_ERROR) {
       str.error = StringConcatenate("  ", Sequence.ID, " disabled  [", ErrorDescription(last_error), "]");
