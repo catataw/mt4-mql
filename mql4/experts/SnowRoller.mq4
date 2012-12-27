@@ -3138,7 +3138,7 @@ double DistanceToProfit(double distance) {
 /**
  * Speichert temporäre Werte des Sequenzstatus im Chart, sodaß der volle Status nach einem Recompile oder Terminal-Restart daraus wiederhergestellt werden kann.
  * Die temporären Werte umfassen die Parameter, die zur Ermittlung des vollen Dateinamens der Statusdatei erforderlich sind und jene User-Eingaben, die nicht
- * in der Statusdatei gespeichert sind (aktuelle Display-Modes, Farben und Strichstärken) sowie die Flags __STATUS_CANCELLED und __STATUS_INVALID_INPUT.
+ * in der Statusdatei gespeichert sind (aktuelle Display-Modes, Farben und Strichstärken) sowie die Flags __STATUS_INVALID_INPUT und __STATUS_CANCELLED.
  *
  * @return int - Fehlerstatus
  */
@@ -3187,19 +3187,19 @@ int StoreStickyStatus() {
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
    ObjectSetText(label, StringConcatenate("", breakeven.Width), 1);
 
-   label = StringConcatenate(__NAME__, ".sticky.__STATUS_CANCELLED");
-   if (ObjectFind(label) == 0)
-      ObjectDelete(label);
-   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
-   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
-   ObjectSetText(label, StringConcatenate("", __STATUS_CANCELLED), 1);
-
    label = StringConcatenate(__NAME__, ".sticky.__STATUS_INVALID_INPUT");
    if (ObjectFind(label) == 0)
       ObjectDelete(label);
    ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
    ObjectSetText(label, StringConcatenate("", __STATUS_INVALID_INPUT), 1);
+
+   label = StringConcatenate(__NAME__, ".sticky.__STATUS_CANCELLED");
+   if (ObjectFind(label) == 0)
+      ObjectDelete(label);
+   ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
+   ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
+   ObjectSetText(label, StringConcatenate("", __STATUS_CANCELLED), 1);
 
    return(catch("StoreStickyStatus()"));
 }
@@ -3287,20 +3287,20 @@ bool RestoreStickyStatus() {
          breakeven.Width = iValue;
       }
 
-      label = StringConcatenate(__NAME__, ".sticky.__STATUS_CANCELLED");
-      if (ObjectFind(label) == 0) {
-         strValue = StringTrim(ObjectDescription(label));
-         if (!StringIsDigit(strValue))
-            return(_false(catch("RestoreStickyStatus(11)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
-         __STATUS_CANCELLED = StrToInteger(strValue) != 0;
-      }
-
       label = StringConcatenate(__NAME__, ".sticky.__STATUS_INVALID_INPUT");
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsDigit(strValue))
-            return(_false(catch("RestoreStickyStatus(12)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+            return(_false(catch("RestoreStickyStatus(11)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
          __STATUS_INVALID_INPUT = StrToInteger(strValue) != 0;
+      }
+
+      label = StringConcatenate(__NAME__, ".sticky.__STATUS_CANCELLED");
+      if (ObjectFind(label) == 0) {
+         strValue = StringTrim(ObjectDescription(label));
+         if (!StringIsDigit(strValue))
+            return(_false(catch("RestoreStickyStatus(12)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
+         __STATUS_CANCELLED = StrToInteger(strValue) != 0;
       }
    }
 
@@ -3419,13 +3419,13 @@ bool ValidateConfiguration(bool interactive) {
    if (__STATUS_ERROR)
       return(false);
 
-   bool parameterChange = (UninitializeReason() == REASON_PARAMETERS);
-   if (parameterChange)
+   bool reasonParameters = (UninitializeReason() == REASON_PARAMETERS);
+   if (reasonParameters)
       interactive = true;
 
 
    // (1) Sequence.ID
-   if (parameterChange) {
+   if (reasonParameters) {
       if (status == STATUS_UNINITIALIZED) {
          if (Sequence.ID != last.Sequence.ID) {  return(_false(ValidateConfig.HandleError("ValidateConfiguration(1)", "Loading of another sequence not yet implemented!", interactive)));
             if (ValidateConfiguration.ID(interactive)) {
@@ -3449,7 +3449,7 @@ bool ValidateConfiguration(bool interactive) {
 
 
    // (2) GridDirection
-   if (parameterChange) {
+   if (reasonParameters) {
       if (GridDirection != last.GridDirection)
          if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(5)", "Cannot change GridDirection of "+ StatusDescription(status) +" sequence", interactive)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
@@ -3467,7 +3467,7 @@ bool ValidateConfiguration(bool interactive) {
 
 
    // (3) GridSize
-   if (parameterChange) {
+   if (reasonParameters) {
       if (GridSize != last.GridSize)
          if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(8)", "Cannot change GridSize of "+ StatusDescription(status) +" sequence", interactive)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
@@ -3476,7 +3476,7 @@ bool ValidateConfiguration(bool interactive) {
 
 
    // (4) LotSize
-   if (parameterChange) {
+   if (reasonParameters) {
       if (NE(LotSize, last.LotSize))
          if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(10)", "Cannot change LotSize of "+ StatusDescription(status) +" sequence", interactive)));
       // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
@@ -3495,7 +3495,7 @@ bool ValidateConfiguration(bool interactive) {
 
    // (5) StartConditions, AND-verknüpft: "(@trend(xxMA:7xD1[+2]) || (@[bid|ask|price](1.33) && @time(12:00))) && @level(3)"
    // ----------------------------------------------------------------------------------------------------------------------
-   if (!parameterChange || StartConditions!=last.StartConditions) {
+   if (!reasonParameters || StartConditions!=last.StartConditions) {
       // Bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StartConditions nur bei Änderung (re-)aktiviert werden.
       start.conditions           = false;
       start.conditions.triggered = false;
@@ -3629,7 +3629,7 @@ bool ValidateConfiguration(bool interactive) {
 
    // (6) StopConditions, OR-verknüpft: "@trend(ALMA:7xD1) || @[bid|ask|price](1.33) || @level(5) || @time(12:00) || @profit(1234[%])"
    // --------------------------------------------------------------------------------------------------------------------------------
-   if (!parameterChange || StopConditions!=last.StopConditions) {
+   if (!reasonParameters || StopConditions!=last.StopConditions) {
       // Bei Parameteränderung Werte nur übernehmen, wenn sie sich tatsächlich geändert haben, sodaß StopConditions nur bei Änderung (re-)aktiviert werden.
       stop.conditions           = false;
       stop.conditions.triggered = false;

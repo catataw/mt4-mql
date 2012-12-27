@@ -156,14 +156,13 @@ int onInitChartClose() {
  */
 int onInitUndefined() {
    // Prüfen, ob im Chart Statusdaten existieren (einziger Unterschied zwischen vorherigem/neuem EA)
-   if (!RestoreStickyStatus())
-      if (__STATUS_ERROR)
-         return(last_error);
+   if (RestoreStickyStatus())
+      return(onInitRecompile());    // ja:   vorheriger EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
 
-   bool statusFound = ObjectFind(StringConcatenate(__NAME__, ".sticky.Sequence.ID")) == 0;
+   if (__STATUS_ERROR)
+      return(last_error);
 
-   if (statusFound) return(onInitRecompile());     // ja:   vorheriger EA -> kein Input-Dialog: Funktionalität entspricht onInitRecompile()
-   else             return(onInitChartClose());    // nein: neuer      EA -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
+   return(onInitChartClose());      // nein: neuer EA      -> Input-Dialog:      Funktionalität entspricht onInitChartClose()
 }
 
 
