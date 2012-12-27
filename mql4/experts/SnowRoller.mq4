@@ -129,9 +129,8 @@ bool     start.conditions.triggered;
 
 bool     start.trend.condition;
 string   start.trend.condition.txt;
-int      start.trend.eventTimeframeFlag;                             // maximal PERIOD_H1
 double   start.trend.periods;
-int      start.trend.timeframe;
+int      start.trend.timeframe, start.trend.timeframeFlag;           // maximal PERIOD_H1
 string   start.trend.method;
 int      start.trend.lag;
 
@@ -153,9 +152,8 @@ bool     stop.conditions.triggered;
 
 bool     stop.trend.condition;
 string   stop.trend.condition.txt;
-int      stop.trend.eventTimeframeFlag;                              // maximal PERIOD_H1
 double   stop.trend.periods;
-int      stop.trend.timeframe;
+int      stop.trend.timeframe, stop.trend.timeframeFlag;             // maximal PERIOD_H1
 string   stop.trend.method;
 int      stop.trend.lag;
 
@@ -1262,7 +1260,7 @@ bool IsStartSignal() {
       // -- start.trend: bei Trendwechsel in die angegebene Richtung erfüllt --------------------------------------------
       if (start.trend.condition) {
          int iNull[];
-         if (EventListener.BarOpen(iNull, start.trend.eventTimeframeFlag)) {
+         if (EventListener.BarOpen(iNull, start.trend.timeframeFlag)) {
             int    timeframe   = start.trend.timeframe;
             string maPeriods   = NumberToStr(start.trend.periods, ".+");
             string maTimeframe = PeriodDescription(start.trend.timeframe);
@@ -1545,7 +1543,7 @@ bool IsStopSignal(bool checkWeekendStop=true) {
       // -- stop.trend: bei Trendwechsel in die angegebene Richtung erfüllt -----------------------------------------------
       if (stop.trend.condition) {
          int iNull[];
-         if (EventListener.BarOpen(iNull, stop.trend.eventTimeframeFlag)) {
+         if (EventListener.BarOpen(iNull, stop.trend.timeframeFlag)) {
             int    timeframe   = stop.trend.timeframe;
             string maPeriods   = NumberToStr(stop.trend.periods, ".+");
             string maTimeframe = PeriodDescription(stop.trend.timeframe);
@@ -3556,18 +3554,23 @@ bool ValidateConfiguration(bool interactive) {
             elems[1]              = StringTrim(elems[1]);
             start.trend.timeframe = PeriodToId(elems[1]);
             if (start.trend.timeframe == -1)           return(_false(ValidateConfig.HandleError("ValidateConfiguration(29)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
-            if (start.trend.timeframe == PERIOD_MN1)   return(_false(ValidateConfig.HandleError("ValidateConfiguration(30)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             value = StringTrim(elems[0]);
-            if (!StringIsNumeric(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(31)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+            if (!StringIsNumeric(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(30)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             dValue = StrToDouble(value);
-            if (dValue <= 0)                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(32)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
-            if (NE(MathModFix(dValue, 0.5), 0))        return(_false(ValidateConfig.HandleError("ValidateConfiguration(33)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+            if (dValue <= 0)                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(31)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+            if (NE(MathModFix(dValue, 0.5), 0))        return(_false(ValidateConfig.HandleError("ValidateConfiguration(32)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             elems[0] = NumberToStr(dValue, ".+");
-            start.trend.periods            = NormalizeDouble(dValue, 1);
-            start.trend.eventTimeframeFlag = PeriodFlag(Min(start.trend.timeframe, PERIOD_H1));    // iCustom() soll unabhängig vom MA unter maximal PERIOD_H1 laufen
-            start.trend.condition          = true;
-            start.trend.condition.txt      = "@trend("+ start.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(start.trend.lag==1, "", "+"+ start.trend.lag) +")";
-            exprs[i]                       = start.trend.condition.txt;
+            switch (start.trend.timeframe) {           // Timeframes > H1 auf H1 umrechnen, iCustom() soll unabhängig vom MA mit maximal PERIOD_H1 laufen
+               case PERIOD_MN1:                        return(_false(ValidateConfig.HandleError("ValidateConfiguration(33)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+               case PERIOD_H4 : { dValue *=   4; start.trend.timeframe = PERIOD_H1; break; }
+               case PERIOD_D1 : { dValue *=  24; start.trend.timeframe = PERIOD_H1; break; }
+               case PERIOD_W1 : { dValue *= 120; start.trend.timeframe = PERIOD_H1; break; }
+            }
+            start.trend.periods       = NormalizeDouble(dValue, 1);
+            start.trend.timeframeFlag = PeriodFlag(start.trend.timeframe);
+            start.trend.condition     = true;
+            start.trend.condition.txt = "@trend("+ start.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(start.trend.lag==1, "", "+"+ start.trend.lag) +")";
+            exprs[i]                  = start.trend.condition.txt;
          }
 
          else if (key=="@bid" || key=="@ask" || key=="@price") {
@@ -3684,18 +3687,23 @@ bool ValidateConfiguration(bool interactive) {
             elems[1]             = StringTrim(elems[1]);
             stop.trend.timeframe = PeriodToId(elems[1]);
             if (stop.trend.timeframe == -1)            return(_false(ValidateConfig.HandleError("ValidateConfiguration(57)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
-            if (stop.trend.timeframe == PERIOD_MN1)    return(_false(ValidateConfig.HandleError("ValidateConfiguration(57)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             value = StringTrim(elems[0]);
             if (!StringIsNumeric(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(58)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             dValue = StrToDouble(value);
             if (dValue <= 0)                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(59)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             if (NE(MathModFix(dValue, 0.5), 0))        return(_false(ValidateConfig.HandleError("ValidateConfiguration(60)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             elems[0] = NumberToStr(dValue, ".+");
-            stop.trend.periods            = NormalizeDouble(dValue, 1);
-            stop.trend.eventTimeframeFlag = PeriodFlag(Min(stop.trend.timeframe, PERIOD_H1));   // iCustom() soll unabhängig vom MA unter maximal PERIOD_H1 laufen
-            stop.trend.condition          = true;
-            stop.trend.condition.txt      = "@trend("+ stop.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(stop.trend.lag==1, "", "+"+ stop.trend.lag) +")";
-            exprs[i]                      = stop.trend.condition.txt;
+            switch (stop.trend.timeframe) {            // Timeframes > H1 auf H1 umrechnen, iCustom() soll unabhängig vom MA mit maximal PERIOD_H1 laufen
+               case PERIOD_MN1:                        return(_false(ValidateConfig.HandleError("ValidateConfiguration(61)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+               case PERIOD_H4 : { dValue *=   4; stop.trend.timeframe = PERIOD_H1; break; }
+               case PERIOD_D1 : { dValue *=  24; stop.trend.timeframe = PERIOD_H1; break; }
+               case PERIOD_W1 : { dValue *= 120; stop.trend.timeframe = PERIOD_H1; break; }
+            }
+            stop.trend.periods       = NormalizeDouble(dValue, 1);
+            stop.trend.timeframeFlag = PeriodFlag(stop.trend.timeframe);
+            stop.trend.condition     = true;
+            stop.trend.condition.txt = "@trend("+ stop.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(stop.trend.lag==1, "", "+"+ stop.trend.lag) +")";
+            exprs[i]                 = stop.trend.condition.txt;
          }
 
          else if (key=="@bid" || key=="@ask" || key=="@price") {
@@ -3837,9 +3845,9 @@ void StoreConfiguration(bool save=true) {
 
    static bool     _start.trend.condition;
    static string   _start.trend.condition.txt;
-   static int      _start.trend.eventTimeframeFlag;
    static double   _start.trend.periods;
    static int      _start.trend.timeframe;
+   static int      _start.trend.timeframeFlag;
    static string   _start.trend.method;
    static int      _start.trend.lag;
 
@@ -3861,9 +3869,9 @@ void StoreConfiguration(bool save=true) {
 
    static bool     _stop.trend.condition;
    static string   _stop.trend.condition.txt;
-   static int      _stop.trend.eventTimeframeFlag;
    static double   _stop.trend.periods;
    static int      _stop.trend.timeframe;
+   static int      _stop.trend.timeframeFlag;
    static string   _stop.trend.method;
    static int      _stop.trend.lag;
 
@@ -3889,140 +3897,140 @@ void StoreConfiguration(bool save=true) {
    static double   _stop.profitPct.value;
 
    if (save) {
-      _Sequence.ID                    = StringConcatenate(Sequence.ID,             "");  // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
-      _GridDirection                  = StringConcatenate(GridDirection,           "");
-      _GridSize                       = GridSize;
-      _LotSize                        = LotSize;
-      _StartConditions                = StringConcatenate(StartConditions,         "");
-      _StopConditions                 = StringConcatenate(StopConditions,          "");
-      _Breakeven.Color                = Breakeven.Color;
-      _Sequence.StatusLocation        = StringConcatenate(Sequence.StatusLocation, "");
+      _Sequence.ID                  = StringConcatenate(Sequence.ID,             "");  // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
+      _GridDirection                = StringConcatenate(GridDirection,           "");
+      _GridSize                     = GridSize;
+      _LotSize                      = LotSize;
+      _StartConditions              = StringConcatenate(StartConditions,         "");
+      _StopConditions               = StringConcatenate(StopConditions,          "");
+      _Breakeven.Color              = Breakeven.Color;
+      _Sequence.StatusLocation      = StringConcatenate(Sequence.StatusLocation, "");
 
-      _grid.direction                 = grid.direction;
+      _grid.direction               = grid.direction;
 
-      _start.conditions               = start.conditions;
-      _start.conditions.triggered     = start.conditions.triggered;
+      _start.conditions             = start.conditions;
+      _start.conditions.triggered   = start.conditions.triggered;
 
-      _start.trend.condition          = start.trend.condition;
-      _start.trend.condition.txt      = start.trend.condition.txt;
-      _start.trend.eventTimeframeFlag = start.trend.eventTimeframeFlag;
-      _start.trend.periods            = start.trend.periods;
-      _start.trend.timeframe          = start.trend.timeframe;
-      _start.trend.method             = start.trend.method;
-      _start.trend.lag                = start.trend.lag;
+      _start.trend.condition        = start.trend.condition;
+      _start.trend.condition.txt    = start.trend.condition.txt;
+      _start.trend.periods          = start.trend.periods;
+      _start.trend.timeframe        = start.trend.timeframe;
+      _start.trend.timeframeFlag    = start.trend.timeframeFlag;
+      _start.trend.method           = start.trend.method;
+      _start.trend.lag              = start.trend.lag;
 
-      _start.price.condition          = start.price.condition;
-      _start.price.condition.txt      = start.price.condition.txt;
-      _start.price.type               = start.price.type;
-      _start.price.value              = start.price.value;
+      _start.price.condition        = start.price.condition;
+      _start.price.condition.txt    = start.price.condition.txt;
+      _start.price.type             = start.price.type;
+      _start.price.value            = start.price.value;
 
-      _start.time.condition           = start.time.condition;
-      _start.time.condition.txt       = start.time.condition.txt;
-      _start.time.value               = start.time.value;
+      _start.time.condition         = start.time.condition;
+      _start.time.condition.txt     = start.time.condition.txt;
+      _start.time.value             = start.time.value;
 
-      _start.level.condition          = start.level.condition;
-      _start.level.condition.txt      = start.level.condition.txt;
-      _start.level.value              = start.level.value;
+      _start.level.condition        = start.level.condition;
+      _start.level.condition.txt    = start.level.condition.txt;
+      _start.level.value            = start.level.value;
 
-      _stop.conditions                = stop.conditions;
-      _stop.conditions.triggered      = stop.conditions.triggered;
+      _stop.conditions              = stop.conditions;
+      _stop.conditions.triggered    = stop.conditions.triggered;
 
-      _stop.trend.condition           = stop.trend.condition;
-      _stop.trend.condition.txt       = stop.trend.condition.txt;
-      _stop.trend.eventTimeframeFlag  = stop.trend.eventTimeframeFlag;
-      _stop.trend.periods             = stop.trend.periods;
-      _stop.trend.timeframe           = stop.trend.timeframe;
-      _stop.trend.method              = stop.trend.method;
-      _stop.trend.lag                 = stop.trend.lag;
+      _stop.trend.condition         = stop.trend.condition;
+      _stop.trend.condition.txt     = stop.trend.condition.txt;
+      _stop.trend.periods           = stop.trend.periods;
+      _stop.trend.timeframe         = stop.trend.timeframe;
+      _stop.trend.timeframeFlag     = stop.trend.timeframeFlag;
+      _stop.trend.method            = stop.trend.method;
+      _stop.trend.lag               = stop.trend.lag;
 
-      _stop.price.condition           = stop.price.condition;
-      _stop.price.condition.txt       = stop.price.condition.txt;
-      _stop.price.type                = stop.price.type;
-      _stop.price.value               = stop.price.value;
+      _stop.price.condition         = stop.price.condition;
+      _stop.price.condition.txt     = stop.price.condition.txt;
+      _stop.price.type              = stop.price.type;
+      _stop.price.value             = stop.price.value;
 
-      _stop.level.condition           = stop.level.condition;
-      _stop.level.condition.txt       = stop.level.condition.txt;
-      _stop.level.value               = stop.level.value;
+      _stop.level.condition         = stop.level.condition;
+      _stop.level.condition.txt     = stop.level.condition.txt;
+      _stop.level.value             = stop.level.value;
 
-      _stop.time.condition            = stop.time.condition;
-      _stop.time.condition.txt        = stop.time.condition.txt;
-      _stop.time.value                = stop.time.value;
+      _stop.time.condition          = stop.time.condition;
+      _stop.time.condition.txt      = stop.time.condition.txt;
+      _stop.time.value              = stop.time.value;
 
-      _stop.profitAbs.condition       = stop.profitAbs.condition;
-      _stop.profitAbs.condition.txt   = stop.profitAbs.condition.txt;
-      _stop.profitAbs.value           = stop.profitAbs.value;
+      _stop.profitAbs.condition     = stop.profitAbs.condition;
+      _stop.profitAbs.condition.txt = stop.profitAbs.condition.txt;
+      _stop.profitAbs.value         = stop.profitAbs.value;
 
-      _stop.profitPct.condition       = stop.profitPct.condition;
-      _stop.profitPct.condition.txt   = stop.profitPct.condition.txt;
-      _stop.profitPct.value           = stop.profitPct.value;
+      _stop.profitPct.condition     = stop.profitPct.condition;
+      _stop.profitPct.condition.txt = stop.profitPct.condition.txt;
+      _stop.profitPct.value         = stop.profitPct.value;
    }
    else {
-      Sequence.ID                    = _Sequence.ID;
-      GridDirection                  = _GridDirection;
-      GridSize                       = _GridSize;
-      LotSize                        = _LotSize;
-      StartConditions                = _StartConditions;
-      StopConditions                 = _StopConditions;
-      Breakeven.Color                = _Breakeven.Color;
-      Sequence.StatusLocation        = _Sequence.StatusLocation;
+      Sequence.ID                   = _Sequence.ID;
+      GridDirection                 = _GridDirection;
+      GridSize                      = _GridSize;
+      LotSize                       = _LotSize;
+      StartConditions               = _StartConditions;
+      StopConditions                = _StopConditions;
+      Breakeven.Color               = _Breakeven.Color;
+      Sequence.StatusLocation       = _Sequence.StatusLocation;
 
-      grid.direction                 = _grid.direction;
+      grid.direction                = _grid.direction;
 
-      start.conditions               = _start.conditions;
-      start.conditions.triggered     = _start.conditions.triggered;
+      start.conditions              = _start.conditions;
+      start.conditions.triggered    = _start.conditions.triggered;
 
-      start.trend.condition          = _start.trend.condition;
-      start.trend.condition.txt      = _start.trend.condition.txt;
-      start.trend.eventTimeframeFlag = _start.trend.eventTimeframeFlag;
-      start.trend.periods            = _start.trend.periods;
-      start.trend.timeframe          = _start.trend.timeframe;
-      start.trend.method             = _start.trend.method;
-      start.trend.lag                = _start.trend.lag;
+      start.trend.condition         = _start.trend.condition;
+      start.trend.condition.txt     = _start.trend.condition.txt;
+      start.trend.periods           = _start.trend.periods;
+      start.trend.timeframe         = _start.trend.timeframe;
+      start.trend.timeframeFlag     = _start.trend.timeframeFlag;
+      start.trend.method            = _start.trend.method;
+      start.trend.lag               = _start.trend.lag;
 
-      start.price.condition          = _start.price.condition;
-      start.price.condition.txt      = _start.price.condition.txt;
-      start.price.type               = _start.price.type;
-      start.price.value              = _start.price.value;
+      start.price.condition         = _start.price.condition;
+      start.price.condition.txt     = _start.price.condition.txt;
+      start.price.type              = _start.price.type;
+      start.price.value             = _start.price.value;
 
-      start.time.condition           = _start.time.condition;
-      start.time.condition.txt       = _start.time.condition.txt;
-      start.time.value               = _start.time.value;
+      start.time.condition          = _start.time.condition;
+      start.time.condition.txt      = _start.time.condition.txt;
+      start.time.value              = _start.time.value;
 
-      start.level.condition          = _start.level.condition;
-      start.level.condition.txt      = _start.level.condition.txt;
-      start.level.value              = _start.level.value;
+      start.level.condition         = _start.level.condition;
+      start.level.condition.txt     = _start.level.condition.txt;
+      start.level.value             = _start.level.value;
 
-      stop.conditions                = _stop.conditions;
-      stop.conditions.triggered      = _stop.conditions.triggered;
+      stop.conditions               = _stop.conditions;
+      stop.conditions.triggered     = _stop.conditions.triggered;
 
-      stop.trend.condition           = _stop.trend.condition;
-      stop.trend.condition.txt       = _stop.trend.condition.txt;
-      stop.trend.eventTimeframeFlag  = _stop.trend.eventTimeframeFlag;
-      stop.trend.periods             = _stop.trend.periods;
-      stop.trend.timeframe           = _stop.trend.timeframe;
-      stop.trend.method              = _stop.trend.method;
-      stop.trend.lag                 = _stop.trend.lag;
+      stop.trend.condition          = _stop.trend.condition;
+      stop.trend.condition.txt      = _stop.trend.condition.txt;
+      stop.trend.periods            = _stop.trend.periods;
+      stop.trend.timeframe          = _stop.trend.timeframe;
+      stop.trend.timeframeFlag      = _stop.trend.timeframeFlag;
+      stop.trend.method             = _stop.trend.method;
+      stop.trend.lag                = _stop.trend.lag;
 
-      stop.price.condition           = _stop.price.condition;
-      stop.price.condition.txt       = _stop.price.condition.txt;
-      stop.price.type                = _stop.price.type;
-      stop.price.value               = _stop.price.value;
+      stop.price.condition          = _stop.price.condition;
+      stop.price.condition.txt      = _stop.price.condition.txt;
+      stop.price.type               = _stop.price.type;
+      stop.price.value              = _stop.price.value;
 
-      stop.level.condition           = _stop.level.condition;
-      stop.level.condition.txt       = _stop.level.condition.txt;
-      stop.level.value               = _stop.level.value;
+      stop.level.condition          = _stop.level.condition;
+      stop.level.condition.txt      = _stop.level.condition.txt;
+      stop.level.value              = _stop.level.value;
 
-      stop.time.condition            = _stop.time.condition;
-      stop.time.condition.txt        = _stop.time.condition.txt;
-      stop.time.value                = _stop.time.value;
+      stop.time.condition           = _stop.time.condition;
+      stop.time.condition.txt       = _stop.time.condition.txt;
+      stop.time.value               = _stop.time.value;
 
-      stop.profitAbs.condition       = _stop.profitAbs.condition;
-      stop.profitAbs.condition.txt   = _stop.profitAbs.condition.txt;
-      stop.profitAbs.value           = _stop.profitAbs.value;
+      stop.profitAbs.condition      = _stop.profitAbs.condition;
+      stop.profitAbs.condition.txt  = _stop.profitAbs.condition.txt;
+      stop.profitAbs.value          = _stop.profitAbs.value;
 
-      stop.profitPct.condition       = _stop.profitPct.condition;
-      stop.profitPct.condition.txt   = _stop.profitPct.condition.txt;
-      stop.profitPct.value           = _stop.profitPct.value;
+      stop.profitPct.condition      = _stop.profitPct.condition;
+      stop.profitPct.condition.txt  = _stop.profitPct.condition.txt;
+      stop.profitPct.value          = _stop.profitPct.value;
    }
 }
 
