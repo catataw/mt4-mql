@@ -1269,11 +1269,14 @@ bool IsStartSignal() {
             int    lag         = start.trend.lag;
             int    bars        = start.trend.lag + 2 + 4;            // +2 (Bar 0 + Bar 3) und einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
             int    direction   = ifInt(grid.direction==D_LONG, MODE_UPTREND, MODE_DOWNTREND);
+            int    signal;
 
-            if (IsTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, direction)) {
-               start.conditions.triggered = true;
-               if (__LOG) log(StringConcatenate("IsStartSignal()   start condition \"", start.trend.condition.txt, "\" met"));
-               return(true);
+            if (CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, direction, signal)) {
+               if (signal != 0) {
+                  start.conditions.triggered = true;
+                  if (__LOG) log(StringConcatenate("IsStartSignal()   start condition \"", start.trend.condition.txt, "\" met"));
+                  return(true);
+               }
             }
          }
          return(false);
@@ -1469,8 +1472,11 @@ bool IsStopSignal(bool checkWeekendStop=true) {
             int    lag         = stop.trend.lag;
             int    bars        = stop.trend.lag + 2 + 4;             // +2 (Bar 0 + Bar 3) und einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
             int    direction   = ifInt(grid.direction==D_LONG, MODE_DOWNTREND, MODE_UPTREND);
+            int    signal;
 
-            if (IsTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, direction)) {
+            if (!CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, direction, signal))
+               return(false);
+            if (signal != 0) {
                stop.conditions.triggered = true;
                if (__LOG) log(StringConcatenate("IsStopSignal()   stop condition \"", stop.trend.condition.txt, "\" met"));
                return(true);
@@ -6324,10 +6330,10 @@ bool RecordEquity(bool collectTicks) {
  * Unterdrückt unnütze Compilerwarnungen.
  */
 void DummyCalls() {
-   string sNulls[];
-   int    iNulls[];
+   string sNull, sNulls[];
+   int    iNull, iNulls[];
    FindChartSequences(sNulls, iNulls);
-   IsTrendChange(NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+   CheckTrendChange(NULL, NULL, NULL, NULL, NULL, NULL, NULL, iNull);
 }
 
 

@@ -93,5 +93,6 @@ int onStart() {
  * Unterdrückt unnütze Compilerwarnungen.
  */
 void DummyCalls() {
-   IsTrendChange(NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+   int iNull;
+   CheckTrendChange(NULL, NULL, NULL, NULL, NULL, NULL, NULL, iNull);
 }

@@ -46,8 +46,12 @@ int onTick() {
    int signal;
 
    if (IsStartSignal(signal)) {
-      if (signal > 0) { /*StartSequence( D_LONG);*/ }
-      else            { /*StartSequence(D_SHORT);*/ }
+      if (signal > 0) {
+         //debug("IsStartSignal()   D_LONG");
+      }
+      else            {
+         //debug("IsStartSignal()   D_SHORT");
+      }
    }
    return(catch("onTick()")|last_error);
 }
@@ -77,14 +81,15 @@ bool IsStartSignal(int &lpSignal) {
          int    bars        = start.trend.lag + 2 + 4;            // +2 (Bar 0 + Bar 3) und einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
          int    directions  = MODE_UPTREND | MODE_DOWNTREND;
 
-         if (IsTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, directions)) {
+         if (CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, directions, lpSignal)) {
+            if (!lpSignal)
+               return(false);
             if (__LOG) log(StringConcatenate("IsStartSignal()   start condition \"", start.trend.condition.txt, "\" met"));
-            lpSignal = true;  // Fehler
             return(true);
          }
       }
    }
-   lpSignal = false;          // Fehler
+   lpSignal = 0;
    return(false);
 }
 
