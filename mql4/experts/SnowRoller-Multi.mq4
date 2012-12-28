@@ -47,10 +47,10 @@ int onTick() {
 
    if (IsStartSignal(signal)) {
       if (signal > 0) {
-         //debug("IsStartSignal()   D_LONG");
+         debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal long");
       }
       else            {
-         //debug("IsStartSignal()   D_SHORT");
+         debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal short");
       }
    }
    return(catch("onTick()")|last_error);
@@ -78,10 +78,9 @@ bool IsStartSignal(int &lpSignal) {
          string maTimeframe = PeriodDescription(start.trend.timeframe);
          string maMethod    = start.trend.method;
          int    lag         = start.trend.lag;
-         int    bars        = start.trend.lag + 2 + 4;            // +2 (Bar 0 + Bar 3) und einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
          int    directions  = MODE_UPTREND | MODE_DOWNTREND;
 
-         if (CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, directions, lpSignal)) {
+         if (CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, directions, lpSignal)) {
             if (!lpSignal)
                return(false);
             if (__LOG) log(StringConcatenate("IsStartSignal()   start condition \"", start.trend.condition.txt, "\" met"));
@@ -199,13 +198,13 @@ bool ValidateConfiguration(bool interactive) {
             else                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(25)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             // value="7XD1[+2]"
             if (Explode(value, "+", elems, NULL) == 1) {
-               start.trend.lag = 1;
+               start.trend.lag = 0;
             }
             else {
                value = StringTrim(elems[1]);
-               if (!StringIsInteger(value))            return(_false(ValidateConfig.HandleError("ValidateConfiguration(26)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+               if (!StringIsDigit(value))              return(_false(ValidateConfig.HandleError("ValidateConfiguration(26)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
                start.trend.lag = StrToInteger(value);
-               if (start.trend.lag == 0)               return(_false(ValidateConfig.HandleError("ValidateConfiguration(27)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+               if (start.trend.lag < 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(27)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
                value = elems[0];
             }
             // value="7XD1"
@@ -228,7 +227,7 @@ bool ValidateConfiguration(bool interactive) {
             start.trend.periods       = NormalizeDouble(dValue, 1);
             start.trend.timeframeFlag = PeriodFlag(start.trend.timeframe);
             start.trend.condition     = true;
-            start.trend.condition.txt = "@trend("+ start.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(start.trend.lag==1, "", "+"+ start.trend.lag) +")";
+            start.trend.condition.txt = "@trend("+ start.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(!start.trend.lag, "", "+"+ start.trend.lag) +")";
             exprs[i]                  = start.trend.condition.txt;
          }
          else                                          return(_false(ValidateConfig.HandleError("ValidateConfiguration(45)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));

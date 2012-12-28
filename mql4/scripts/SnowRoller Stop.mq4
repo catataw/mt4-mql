@@ -94,5 +94,5 @@ int onStart() {
  */
 void DummyCalls() {
    int iNull;
-   CheckTrendChange(NULL, NULL, NULL, NULL, NULL, NULL, NULL, iNull);
+   CheckTrendChange(NULL, NULL, NULL, NULL, NULL, NULL, iNull);
 }

@@ -1267,11 +1267,10 @@ bool IsStartSignal() {
             string maTimeframe = PeriodDescription(start.trend.timeframe);
             string maMethod    = start.trend.method;
             int    lag         = start.trend.lag;
-            int    bars        = start.trend.lag + 2 + 4;            // +2 (Bar 0 + Bar 3) und einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
             int    direction   = ifInt(grid.direction==D_LONG, MODE_UPTREND, MODE_DOWNTREND);
             int    signal;
 
-            if (CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, direction, signal)) {
+            if (CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, direction, signal)) {
                if (signal != 0) {
                   start.conditions.triggered = true;
                   if (__LOG) log(StringConcatenate("IsStartSignal()   start condition \"", start.trend.condition.txt, "\" met"));
@@ -1470,11 +1469,10 @@ bool IsStopSignal(bool checkWeekendStop=true) {
             string maTimeframe = PeriodDescription(stop.trend.timeframe);
             string maMethod    = stop.trend.method;
             int    lag         = stop.trend.lag;
-            int    bars        = stop.trend.lag + 2 + 4;             // +2 (Bar 0 + Bar 3) und einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
             int    direction   = ifInt(grid.direction==D_LONG, MODE_DOWNTREND, MODE_UPTREND);
             int    signal;
 
-            if (!CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, direction, signal))
+            if (!CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, direction, signal))
                return(false);
             if (signal != 0) {
                stop.conditions.triggered = true;
@@ -3464,13 +3462,13 @@ bool ValidateConfiguration(bool interactive) {
             else                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(25)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             // value="7XD1[+2]"
             if (Explode(value, "+", elems, NULL) == 1) {
-               start.trend.lag = 1;
+               start.trend.lag = 0;
             }
             else {
                value = StringTrim(elems[1]);
-               if (!StringIsInteger(value))            return(_false(ValidateConfig.HandleError("ValidateConfiguration(26)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+               if (!StringIsDigit(value))              return(_false(ValidateConfig.HandleError("ValidateConfiguration(26)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
                start.trend.lag = StrToInteger(value);
-               if (start.trend.lag == 0)               return(_false(ValidateConfig.HandleError("ValidateConfiguration(27)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+               if (start.trend.lag < 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(27)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
                value = elems[0];
             }
             // value="7XD1"
@@ -3493,7 +3491,7 @@ bool ValidateConfiguration(bool interactive) {
             start.trend.periods       = NormalizeDouble(dValue, 1);
             start.trend.timeframeFlag = PeriodFlag(start.trend.timeframe);
             start.trend.condition     = true;
-            start.trend.condition.txt = "@trend("+ start.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(start.trend.lag==1, "", "+"+ start.trend.lag) +")";
+            start.trend.condition.txt = "@trend("+ start.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(!start.trend.lag, "", "+"+ start.trend.lag) +")";
             exprs[i]                  = start.trend.condition.txt;
          }
 
@@ -3597,13 +3595,13 @@ bool ValidateConfiguration(bool interactive) {
             else                                       return(_false(ValidateConfig.HandleError("ValidateConfiguration(53)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
             // value="7XD1[+2]"
             if (Explode(value, "+", elems, NULL) == 1) {
-               stop.trend.lag = 1;
+               stop.trend.lag = 0;
             }
             else {
                value = StringTrim(elems[1]);
-               if (!StringIsInteger(value))            return(_false(ValidateConfig.HandleError("ValidateConfiguration(54)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+               if (!StringIsDigit(value))              return(_false(ValidateConfig.HandleError("ValidateConfiguration(54)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
                stop.trend.lag = StrToInteger(value);
-               if (stop.trend.lag == 0)                return(_false(ValidateConfig.HandleError("ValidateConfiguration(55)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
+               if (stop.trend.lag < 0)                 return(_false(ValidateConfig.HandleError("ValidateConfiguration(55)", "Invalid StopConditions = \""+ StopConditions +"\"", interactive)));
                value = elems[0];
             }
             // value="7XD1"
@@ -3626,7 +3624,7 @@ bool ValidateConfiguration(bool interactive) {
             stop.trend.periods       = NormalizeDouble(dValue, 1);
             stop.trend.timeframeFlag = PeriodFlag(stop.trend.timeframe);
             stop.trend.condition     = true;
-            stop.trend.condition.txt = "@trend("+ stop.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(stop.trend.lag==1, "", "+"+ stop.trend.lag) +")";
+            stop.trend.condition.txt = "@trend("+ stop.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(!stop.trend.lag, "", "+"+ stop.trend.lag) +")";
             exprs[i]                 = stop.trend.condition.txt;
          }
 
@@ -6333,7 +6331,7 @@ void DummyCalls() {
    string sNull, sNulls[];
    int    iNull, iNulls[];
    FindChartSequences(sNulls, iNulls);
-   CheckTrendChange(NULL, NULL, NULL, NULL, NULL, NULL, NULL, iNull);
+   CheckTrendChange(NULL, NULL, NULL, NULL, NULL, NULL, iNull);
 }
 
 
