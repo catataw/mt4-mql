@@ -7,9 +7,11 @@
  * @return int - Fehlerstatus
  */
 int onInitParameterChange() {
+   bool interactive = true;
+
    StoreConfiguration();
 
-   if (!ValidateConfiguration(true)) {
+   if (!ValidateConfiguration(interactive)) {
       RestoreConfiguration();
       return(last_error);
    }
@@ -61,7 +63,7 @@ int onInitRemove() {
  * @return int - Fehlerstatus
  */
 int onInitChartChange() {
-   // nur die nicht-statischen Input-Parameter restaurieren
+   // nicht-statische Input-Parameter restaurieren
    Sequence.ID             = last.Sequence.ID;
    Sequence.StatusLocation = last.Sequence.StatusLocation;
    GridDirection           = last.GridDirection;
@@ -84,11 +86,13 @@ int onInitChartChange() {
  * @return int - Fehlerstatus
  */
 int onInitChartClose() {
+   bool interactive = true;
+
    // (1) Zuerst eine angegebene Sequenz restaurieren...
-   if (ValidateConfiguration.ID(true)) {
+   if (ValidateConfiguration.ID(interactive)) {
       status = STATUS_WAITING;
       if (RestoreStatus())
-         if (ValidateConfiguration(true))
+         if (ValidateConfiguration(interactive))
             SynchronizeStatus();
       return(last_error);
    }
@@ -174,10 +178,12 @@ int onInitUndefined() {
  * @return int - Fehlerstatus
  */
 int onInitRecompile() {
+   bool interactive = false;
+
    // im Chart gespeicherte Sequenz restaurieren
    if (RestoreStickyStatus()) {
       if (RestoreStatus())
-         if (ValidateConfiguration(false))
+         if (ValidateConfiguration(interactive))
             SynchronizeStatus();
    }
    ClearStickyStatus();

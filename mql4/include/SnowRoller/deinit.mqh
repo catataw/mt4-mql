@@ -5,7 +5,7 @@
  * @return int - Fehlerstatus
  */
 int onDeinitParameterChange() {
-   // alte Parameter für Vergleich mit neuen Parametern zwischenspeichern
+   // nicht-statische Input-Parameter für Vergleich mit neuen Werten zwischenspeichern
    last.Sequence.ID             = StringConcatenate(Sequence.ID,             "");   // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
    last.Sequence.StatusLocation = StringConcatenate(Sequence.StatusLocation, "");
    last.GridDirection           = StringConcatenate(GridDirection,           "");
@@ -41,7 +41,7 @@ int onDeinitRemove() {
  * @return int - Fehlerstatus
  */
 int onDeinitChartChange() {
-   // nicht-statische Input-Parameter werden für's nächste init() zwischengespeichert
+   // nicht-statische Input-Parameter zwischenspeichern
    return(onDeinitParameterChange());                                // entspricht onDeinitParameterChange()
 }
 
@@ -55,7 +55,7 @@ int onDeinitChartChange() {
  * @return int - Fehlerstatus
  *
  *
- * NOTE: Der "Stop"-Button des Testers kann intern betätigt worden sein (nach Fehler oder Testabschluß).
+ * NOTE: Der "Stop"-Button des Testers kann vom Code "betätigt" worden sein (nach Fehler oder Testabschluß).
  */
 int onDeinitChartClose() {
    // (1) Im Tester
@@ -109,7 +109,7 @@ int onDeinitUndefined() {
       }
       return(last_error);
    }
-   return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wann hier jemand reinlatscht
+   return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wer hier wann reintappt
 }
 
 

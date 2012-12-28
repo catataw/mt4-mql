@@ -11,7 +11,8 @@ int __DEINIT_FLAGS__[];
 //#include <win32api.mqh>
 
 #include <core/expert.mqh>
-//#include <SnowRoller/define.mqh>
+#include <SnowRoller/define.mqh>
+#include <SnowRoller/functions.mqh>
 
 
 ///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////
@@ -20,10 +21,10 @@ extern /*sticky*/ string StartConditions = "@trend(ALMA:3.5xD1)";    // @trend(A
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-string   last.StartConditions = "";                                  // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE mit
-                                                                     // den angegebenen Default-Werten überschrieben. Um das zu verhindern und die Werte mit den vorherigen
-                                                                     // Werten vergleichen zu können, werden sie in deinit() in last.* zwischengespeichert und in init()
-                                                                     // daraus restauriert.
+string   last.StartConditions = "";                                  // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
+                                                                     // mit den Default-Werten überschrieben. Um dies zu verhindern und um neue mit vorherigen Werten
+                                                                     // vergleichen zu können, werden sie in deinit() in diesen Variablen zwischengespeichert und in
+                                                                     // init() wieder daraus restauriert.
 bool     start.trend.condition;
 string   start.trend.condition.txt;
 double   start.trend.periods;
@@ -42,11 +43,11 @@ int      start.trend.lag;
  * @return int - Fehlerstatus
  */
 int onTick() {
-   int signal = CheckStartSignal();
+   int signal;
 
-   if (signal != 0) {
-      if (signal > 0) {}            // Buy signal
-      else            {}            // Sell signal
+   if (IsStartSignal(signal)) {
+      if (signal > 0) { /*StartSequence( D_LONG);*/ }
+      else            { /*StartSequence(D_SHORT);*/ }
    }
    return(catch("onTick()")|last_error);
 }
@@ -55,34 +56,36 @@ int onTick() {
 /**
  * Signalgeber für Start einer neuen Sequence
  *
- * @return int - +1 für ein Buy-Signal; -1 für ein Sell-Signal; 0 für kein Signal
+ * @param  int lpSignal - Zeiger auf Variable zur Signalaufnahme (+: Buy-Signal, -: Sell-Signal)
+ *
+ * @return bool - ob ein Signal aufgetreten ist
  */
-int CheckStartSignal() {
+bool IsStartSignal(int &lpSignal) {
    if (__STATUS_CANCELLED || __STATUS_ERROR)
-      return(0);
+      return(false);
 
    // -- start.trend: bei Trendwechsel erfüllt -----------------------------------------------------------------------
    if (start.trend.condition) {
       int iNull[];
       if (EventListener.BarOpen(iNull, start.trend.timeframeFlag)) {
 
-         debug("CheckStartSignal()   event BarOpen");
-
          int    timeframe   = start.trend.timeframe;
          string maPeriods   = NumberToStr(start.trend.periods, ".+");
          string maTimeframe = PeriodDescription(start.trend.timeframe);
          string maMethod    = start.trend.method;
-         int    bars        = start.trend.lag + 2 + 4;            // +2 (Bar 0 + Vorgänger) + einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
          int    lag         = start.trend.lag;
-         /*
-         if (IsTrendChange(timeframe, maPeriods, maTimeframe, maMethod, bars, direction, lag)) {
-            if (__LOG) log(StringConcatenate("CheckStartSignal()   start condition \"", start.trend.condition.txt, "\" met"));
+         int    bars        = start.trend.lag + 2 + 4;            // +2 (Bar 0 + Bar 3) und einige Bars mehr, um vorherrschenden Trend sicher zu bestimmen
+         int    directions  = MODE_UPTREND | MODE_DOWNTREND;
+
+         if (IsTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, bars, directions)) {
+            if (__LOG) log(StringConcatenate("IsStartSignal()   start condition \"", start.trend.condition.txt, "\" met"));
+            lpSignal = true;  // Fehler
             return(true);
          }
-         */
       }
    }
-   return(0);
+   lpSignal = false;          // Fehler
+   return(false);
 }
 
 
@@ -346,4 +349,14 @@ int ClearStickyStatus() {
          ObjectDelete(label);
    }
    return(catch("ClearStickyStatus()"));
+}
+
+
+/**
+ * Unterdrückt unnütze Compilerwarnungen.
+ */
+void DummyCalls() {
+   string sNulls[];
+   int    iNulls[];
+   FindChartSequences(sNulls, iNulls);
 }

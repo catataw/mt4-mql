@@ -67,3 +67,93 @@ bool IsSequenceStatus(int value) {
    }
    return(false);
 }
+
+
+/**
+ * BarOpen-Eventhandler zur Erkennung von MA-Trendwechseln.
+ *
+ * @param  int    timeframe   - zu verwendender Timeframe
+ * @param  string maPeriods   - Indikator-Parameter
+ * @param  string maTimeframe - Indikator-Parameter
+ * @param  string maMethod    - Indikator-Parameter
+ * @param  int    lag         - Trigger-Verzögerung, mindestens 1 (eine Bar)
+ * @param  int    bars        - Anzahl zu berechnender Indikatorwerte zur Ermittlung des vorherrschenden Trends
+ * @param  int    directions  - Kombination von Trend-Identifiern:
+ *                              MODE_UPTREND   - ein Wechsel zum Up-Trend soll signalisiert werden
+ *                              MODE_DOWNTREND - ein Wechsel zum Down-Trend soll signalisiert werden
+ *
+ * @return bool - ob ein entsprechender Trendwechsel aufgetreten ist
+ *
+ *
+ *  TODO: 1) refaktorieren und auslagern
+ *        2) Die Funktion könnte den Indikator selbst berechnen und nur bei abweichender Periode auf iCustom() zurückgreifen.
+ */
+bool IsTrendChange(int timeframe, string maPeriods, string maTimeframe, string maMethod, int lag, int bars, int directions) {
+   bool detectUp   = _bool(directions & MODE_UPTREND  );
+   bool detectDown = _bool(directions & MODE_DOWNTREND);
+
+
+   // (1) Trend der letzten Bars ermitteln
+   int error, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);
+   ic[IC_LAST_ERROR] = NO_ERROR;
+
+   int    trend, barTrend, prevBarTrend;
+   string strTrend, strChangePattern;
+
+   for (int bar=bars-1; bar>0; bar--) {                        // Bar 0 ist immer unvollständig und wird nicht berücksichtigt
+      // (1.1) Trend der einzelnen Bar bestimmen
+      barTrend = iCustom(NULL, timeframe, "Moving Average",    // (int) double ohne Präzisionsfehler (siehe MA-Implementierung)
+                         maPeriods,                            // MA.Periods
+                         maTimeframe,                          // MA.Timeframe
+                         maMethod,                             // MA.Method
+                         "",                                   // MA.Method.Help
+                         "Close",                              // AppliedPrice
+                         "",                                   // AppliedPrice.Help
+                         Max(bars+1, 10),                      // Max.Values: +1 wegen fehlendem Trend der ältesten Bar; mind. 10 (Wert beliebig) zur Reduktion ansonsten
+                         ForestGreen,                          // Color.UpTrend                                       | identischer Indikator-Instanzen (mit und ohne Lag)
+                         Red,                                  // Color.DownTrend
+                         "",                                   // _________________
+                         ic[IC_PTR],                           // __iCustom__
+                         BUFFER_2, bar); //throws ERS_HISTORY_UPDATE, ERR_TIMEFRAME_NOT_AVAILABLE
+
+      error = GetLastError();
+      if (IsError(error)) /*&&*/ if (error!=ERS_HISTORY_UPDATE)
+         return(_false(catch("IsTrendChange(1)", error)));
+      if (IsError(ic[IC_LAST_ERROR]))
+         return(_false(SetLastError(ic[IC_LAST_ERROR])));
+      if (!barTrend)
+         return(_false(catch("IsTrendChange(2)->iCustom(Moving Average)   invalid trend for bar="+ bar +": "+ barTrend, ERR_CUSTOM_INDICATOR_ERROR)));
+
+      // (1.2) vorherrschenden Trend bestimmen (mindestens 2 aufeinanderfolgende Bars in derselben Richtung)
+      if (barTrend > 0) {
+         if (bar > 1 && prevBarTrend > 0)                            // nur Bars > 1 (1 triggert Trendwechsel, 0 ist irrelevant)
+            trend = 1;
+      }                                                              // TODO: Prüfung in Abhängigkeit von "lag" implementieren
+      else /*(barTrend < 0)*/ {
+         if (bar > 1 && prevBarTrend < 0)                            // ...
+            trend = -1;
+      }
+      strTrend     = StringConcatenate(strTrend, ifString(barTrend>0, "+", "-"));
+      prevBarTrend = barTrend;
+   }
+   if (error == ERS_HISTORY_UPDATE)
+      debug("IsTrendChange()   ERS_HISTORY_UPDATE");                 // TODO: bei ERS_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
+
+
+   // (2) Trendwechsel detektieren
+   if (trend < 0 && detectUp) {
+      strChangePattern = "-"+ StringRepeat("+", lag);                // up change "-++"
+      if (StringEndsWith(strTrend, strChangePattern)) {              // Trendwechsel im Down-Trend
+         debug("IsTrendChange()   trend change up signal");
+         return(true);
+      }
+   }
+   if (trend > 0 && detectDown) {
+      strChangePattern = "+"+ StringRepeat("-", lag);                // down change "+--"
+      if (StringEndsWith(strTrend, strChangePattern)) {              // Trendwechsel im Up-Trend
+         debug("IsTrendChange()   trend change down signal");
+         return(true);
+      }
+   }
+   return(false);
+}

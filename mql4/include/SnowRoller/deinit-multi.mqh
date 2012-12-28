@@ -5,7 +5,7 @@
  * @return int - Fehlerstatus
  */
 int onDeinitParameterChange() {
-   // alte Parameter f¸r Vergleich mit neuen Parametern zwischenspeichern
+   // nicht-statische Input-Parameter f¸r Vergleich mit neuen Werten zwischenspeichern
    last.StartConditions = StringConcatenate(StartConditions, "");    // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
    return(-1);
 }
@@ -27,7 +27,7 @@ int onDeinitRemove() {
  * @return int - Fehlerstatus
  */
 int onDeinitChartChange() {
-   // nicht-statische Input-Parameter werden f¸r's n‰chste init() zwischengespeichert
+   // nicht-statische Input-Parameter zwischenspeichern
    return(onDeinitParameterChange());                                // entspricht onDeinitParameterChange()
 }
 
@@ -36,12 +36,12 @@ int onDeinitChartChange() {
  * - Chart geschlossen                       -oder-
  * - Template wird neu geladen               -oder-
  * - Terminal-Shutdown                       -oder-
- * - im Tester nach Bet‰tigen des "Stop"-Buttons oder nach Chart ->Close
+ * - im Tester nach Bet‰tigen des "Stop"-Buttons oder nach Chart->Close
  *
  * @return int - Fehlerstatus
  *
  *
- * NOTE: Der "Stop"-Button des Testers kann intern bet‰tigt worden sein (nach Fehler oder Testabschluﬂ).
+ * NOTE: Der "Stop"-Button des Testers kann vom Code "bet‰tigt" worden sein (nach Fehler oder Testabschluﬂ).
  */
 int onDeinitChartClose() {
    // (1) Im Tester
@@ -67,7 +67,7 @@ int onDeinitUndefined() {
          return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
       return(last_error);
    }
-   return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wann hier jemand reinlatscht
+   return(catch("onDeinitUndefined()", ERR_RUNTIME_ERROR));          // mal schaun, wer hier wann reintappt
 }
 
 

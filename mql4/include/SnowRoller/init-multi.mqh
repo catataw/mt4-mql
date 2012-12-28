@@ -7,9 +7,11 @@
  * @return int - Fehlerstatus
  */
 int onInitParameterChange() {
+   bool interactive = true;
+
    StoreConfiguration();
 
-   if (!ValidateConfiguration(true))
+   if (!ValidateConfiguration(interactive))
       RestoreConfiguration();
 
    return(last_error);
@@ -36,7 +38,7 @@ int onInitRemove() {
  * @return int - Fehlerstatus
  */
 int onInitChartChange() {
-   // nur die nicht-statischen Input-Parameter restaurieren
+   // nicht-statische Input-Parameter restaurieren
    StartConditions = last.StartConditions;
 
    // TODO: Symbolwechsel behandeln
@@ -52,7 +54,10 @@ int onInitChartChange() {
  * @return int - Fehlerstatus
  */
 int onInitChartClose() {
-   ValidateConfiguration(true);
+   bool interactive = true;
+
+   ValidateConfiguration(interactive);
+
    return(last_error);
 }
 
@@ -85,9 +90,11 @@ int onInitUndefined() {
  * @return int - Fehlerstatus
  */
 int onInitRecompile() {
+   bool interactive = false;
+
    // im Chart gespeicherte Daten restaurieren
    if (RestoreStickyStatus())
-      ValidateConfiguration(false);
+      ValidateConfiguration(interactive);
 
    ClearStickyStatus();
    return(last_error);
