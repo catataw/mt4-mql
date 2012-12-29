@@ -47,10 +47,10 @@ int onTick() {
 
    if (IsStartSignal(signal)) {
       if (signal > 0) {
-         debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal long");
+         //debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal long");
       }
       else            {
-         debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal short");
+         //debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal short");
       }
    }
    return(catch("onTick()")|last_error);

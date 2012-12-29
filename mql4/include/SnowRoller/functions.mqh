@@ -92,22 +92,18 @@ bool CheckTrendChange(int timeframe, string maPeriods, string maTimeframe, strin
    if (lag < 0)
       return(!catch("CheckTrendChange(1)   illegal parameter lag = "+ lag, ERR_INVALID_FUNCTION_PARAMVALUE));
 
-   bool detectUp   = _bool(directions & MODE_UPTREND  );
-   bool detectDown = _bool(directions & MODE_DOWNTREND);
+   lpSignal = 0;
 
-
-   //[2788] MetaTrader::EURUSD,H1::SnowRoller.Strategy::CheckTrendChange()   2012.11.20 11:00   trend change down
-
-   // (1) Trend der letzten Bars ermitteln                                       // +-----+------+
    int error, /*ICUSTOM*/ic[]; if (!ArraySize(ic)) InitializeICustom(ic, NULL);  // | lag | bars |
    ic[IC_LAST_ERROR] = NO_ERROR;                                                 // +-----+------+
-                                                                                 // |  0  |   4  | - Erkennung onBarOpen der neuen Bar (neuer Trend 1 Periode lang, frühester Zeitpunkt)
-   int    barTrend, trend, counterTrend;                                         // |  1  |  12  | - Erkennung onBarOpen der nächsten Bar (neuer Trend 2 Perioden lang)
-   string strTrend, changePattern;                                               // |  2  |  20  | - Erkennung onBarOpen der übernächsten Bar (neuer Trend 3 Perioden lang)
-   int    bars = 4 + 8*lag;                                                      // +-----+------+
+                                                                                 // |  0  |   4  | Erkennung onBarOpen der neuen Bar (neuer Trend 1 Periode lang, frühester Zeitpunkt)
+   int    barTrend, trend, counterTrend;                                         // |  1  |  12  | Erkennung onBarOpen der nächsten Bar (neuer Trend 2 Perioden lang)
+   string strTrend, changePattern;                                               // |  2  |  20  | Erkennung onBarOpen der übernächsten Bar (neuer Trend 3 Perioden lang)
+   int    bars   = 4 + 8*lag;                                                    // +-----+------+
+   int    values = Max(bars+1, 20);                            // +1 wegen fehlendem Trend der ältesten Bar; 20 (größtes lag) zur Reduktion ansonsten ident. Indikator-Instanzen
 
    for (int bar=bars-1; bar>0; bar--) {                        // Bar 0 ist immer unvollständig und wird nicht benötigt
-      // (1.1) Trend der einzelnen Bar bestimmen
+      // (1) Trend der einzelnen Bar ermitteln
       barTrend = iCustom(NULL, timeframe, "Moving Average",    // (int) double ohne Präzisionsfehler (siehe MA-Implementierung)
                          maPeriods,                            // MA.Periods
                          maTimeframe,                          // MA.Timeframe
@@ -115,8 +111,8 @@ bool CheckTrendChange(int timeframe, string maPeriods, string maTimeframe, strin
                          "",                                   // MA.Method.Help
                          "Close",                              // AppliedPrice
                          "",                                   // AppliedPrice.Help
-                         Max(bars+1, 20),                      // Max.Values: +1 wegen fehlendem Trend der ältesten Bar; mind. 20 (lag=2) zur Reduktion ansonsten identischer
-                         ForestGreen,                          // Color.UpTrend                                        | Indikator-Instanzen (mit oder ohne Lag)
+                         values,                               // Max.Values
+                         ForestGreen,                          // Color.UpTrend
                          Red,                                  // Color.DownTrend
                          "",                                   // _________________
                          ic[IC_PTR],                           // __iCustom__
@@ -129,51 +125,41 @@ bool CheckTrendChange(int timeframe, string maPeriods, string maTimeframe, strin
          return(_false(SetLastError(ic[IC_LAST_ERROR])));
       if (!barTrend)
          return(_false(catch("CheckTrendChange(3)->iCustom(Moving Average)   invalid trend for bar="+ bar +": "+ barTrend, ERR_CUSTOM_INDICATOR_ERROR)));
-      if (barTrend > 0) barTrend =  1;
-      else              barTrend = -1;
 
-      // (1.2) vorherrschenden Trend bestimmen
+
+      // (2) Trendwechsel detektieren
       if (bar == bars-1) {
          trend = barTrend;                                     // Initialisierung
       }
-      else if (bar > 1) {
-         if (barTrend == trend) {
-            counterTrend = 0;
-         }
-         else {
-            counterTrend++;
-            if (counterTrend > lag) {
+      else if (barTrend == trend) {
+         counterTrend = 0;
+      }
+      else {
+         counterTrend++;
+         if (counterTrend > lag) {
+            if (bar > 1) {
                trend        = -Sign(trend);
                counterTrend = 0;
+               continue;
+            }
+            // Trendwechsel in Bar 1 (nach Berücksichtigung von lag)
+            if (trend < 0) {
+               if (_bool(directions & MODE_UPTREND)) {
+                  lpSignal = 1;
+                  debug("CheckTrendChange()   "+ TimeToStr(TimeCurrent()) +"   trend change up");
+               }
+            }
+            else {
+               if (_bool(directions & MODE_DOWNTREND)) {
+                  lpSignal = -1;
+                  debug("CheckTrendChange()   "+ TimeToStr(TimeCurrent()) +"   trend change down");
+               }
             }
          }
       }
-      strTrend = StringConcatenate(strTrend, ifString(barTrend>0, "+", "-"));
    }
+
    if (error == ERS_HISTORY_UPDATE)
       debug("CheckTrendChange()   ERS_HISTORY_UPDATE");        // TODO: bei ERS_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
-
-
-   lpSignal = 0;
-
-   // (2) Trendwechsel detektieren
-   if (trend < 0) {
-      if (detectUp) {
-         changePattern = "-"+ StringRepeat("+", lag+1);        // up change "-++" für lag=1
-         if (StringEndsWith(strTrend, changePattern)) {        // Trendwechsel im Down-Trend
-            lpSignal = 1;
-            //debug("CheckTrendChange()   "+ TimeToStr(TimeCurrent()) +"   trend change up");
-         }
-      }
-   }
-   else if (trend > 0) {
-      if (detectDown) {
-         changePattern = "+"+ StringRepeat("-", lag+1);        // down change "+--" für lag=1
-         if (StringEndsWith(strTrend, changePattern)) {        // Trendwechsel im Up-Trend
-            lpSignal = -1;
-            //debug("CheckTrendChange()   "+ TimeToStr(TimeCurrent()) +"   trend change down");
-         }
-      }
-   }
    return(!catch("CheckTrendChange(4)"));
 }
