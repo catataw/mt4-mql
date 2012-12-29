@@ -18,16 +18,16 @@ int onInitParameterChange() {
 
    if (status == STATUS_UNINITIALIZED) {
       // neue Sequenz anlegen
-      instanceStartTime  = TimeCurrent();
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+      instanceStartTime  = TimeCurrent();                            // nur für RedrawStartStop() benötigt
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);   // ...
       isTest             = IsTesting();
       sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
       InitStatusLocation();
 
-      if (start.conditions)                                          // Ohne aktivierte StartConditions erfolgt sofortiger Sequenzstart, der Status wird dabei
-         SaveStatus();                                               // automatisch gespeichert.
+      if (start.conditions)                                          // Ohne StartConditions speichert der sofortige Sequenzstart automatisch.
+         SaveStatus();
       RedrawStartStop();
    }
    else {
@@ -130,16 +130,16 @@ int onInitChartClose() {
 
    // (3) ...zum Schluß neue Sequenz anlegen.
    if (ValidateConfiguration(true)) {
-      instanceStartTime  = TimeCurrent();
-      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);
+      instanceStartTime  = TimeCurrent();                            // nur für RedrawStartStop() benötigt
+      instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);   // ...
       isTest             = IsTesting();
       sequenceId         = InstanceId(CreateSequenceId());
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
       InitStatusLocation();
 
-      if (start.conditions)                                          // Ohne aktive StartConditions kann vorm Sequenzstart abgebrochen werden, der Status
-         SaveStatus();                                               // wird erst danach gespeichert.
+      if (start.conditions)                                          // Ohne StartConditions speichert der sofortige Sequenzstart automatisch.
+         SaveStatus();
       RedrawStartStop();
    }
    return(last_error);

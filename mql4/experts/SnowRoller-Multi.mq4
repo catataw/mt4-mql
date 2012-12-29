@@ -65,11 +65,20 @@ int CreateSequence(int direction) {
    if (__STATUS_ERROR)                                   return(0);
    if (direction!=D_LONG) /*&&*/ if (direction!=D_SHORT) return(!catch("CreateSequence(1)   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE));
 
+
    // (1) Sequenz erzeugen
-   int sid = -1;
+   int  sid    = CreateSequenceId();
+   bool isTest = IsTesting();
+   int  status = STATUS_WAITING;
+
+   int six = Strategy.AddSequence(sid, isTest, status);
+
+   //InstanceId(sequenceId);
+   //InitStatusLocation();
 
 
-   // (2) StartSequence(six);
+   // (2) Sequenz starten
+   StartSequence(six);
 
 
    if      (sid > 0) debug("CreateSequence()   new "+ directionDescr[direction] +" sequence created, sid = "+ sid);
@@ -358,7 +367,7 @@ bool RestoreStickyStatus() {
       }
    }
 
-   return(statusFound && IsNoError(last_error|catch("RestoreStickyStatus(3)")));
+   return(statusFound && !(last_error|catch("RestoreStickyStatus(3)")));
 }
 
 
