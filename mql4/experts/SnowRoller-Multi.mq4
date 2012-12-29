@@ -52,8 +52,10 @@ int onTick() {
       else {
          debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   trend change down");
       }
+      //StartSequence();
+
    }
-   return(catch("onTick()")|last_error);
+   return(last_error);
 }
 
 
