@@ -9,11 +9,12 @@
  *  - Equity-Charts: paralleles Schreiben mehrerer Timeframes, Schreiben aus Online-Chart             *
  *  - Laufzeitumgebung auf Server einrichten                                                          *
  *
- *  - Abbruch wegen geändertem Ticketstatus abfangen                                                  *
- *  - Abbruch wegen IsStopped()=TRUE abfangen                                                         *
- *  - Statusanzeige: Risikokennziffer zum Verlustpotential des Levels integrieren                     *
- *  - PendingOrders nicht per Tick trailen                                                            *
- *  - Möglichkeit, WeekendStop zu (de-)aktivieren                                                     *
+ *  - Sequenz-IDs auf Eindeutigkeit prüfen
+ *  - Abbruch wegen geändertem Ticketstatus abfangen
+ *  - Abbruch wegen IsStopped()=TRUE abfangen
+ *  - Statusanzeige: Risikokennziffer zum Verlustpotential des Levels integrieren
+ *  - PendingOrders nicht per Tick trailen
+ *  - Möglichkeit, WeekendStop zu (de-)aktivieren
  *
  *  - Validierung refaktorieren
  *  - Statusanzeige dynamisch an Zeilen anpassen
@@ -2464,21 +2465,6 @@ int Grid.FindOpenPosition(int level) {
       return(i);
    }
    return(-1);
-}
-
-
-/**
- * Generiert eine neue Sequenz-ID.
- *
- * @return int - Sequenz-ID im Bereich 1000-16383 (14 bit)
- */
-int CreateSequenceId() {
-   MathSrand(GetTickCount());
-   int id;
-   while (id < 2000) {                                               // Das abschließende Shiften halbiert den Wert und wir brauchen eine mindestens 4-stellige ID.
-      id = MathRand();
-   }
-   return(id >> 1);
 }
 
 

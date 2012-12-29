@@ -71,14 +71,14 @@ int CreateSequence(int direction) {
    bool isTest = IsTesting();
    int  status = STATUS_WAITING;
 
-   int six = Strategy.AddSequence(sid, isTest, status);
+   //int six = Strategy.AddSequence(sid, isTest, status);
 
-   //InstanceId(sequenceId);
+   //InstanceId(sid);
    //InitStatusLocation();
 
 
    // (2) Sequenz starten
-   StartSequence(six);
+   //StartSequence(six);
 
 
    if      (sid > 0) debug("CreateSequence()   new "+ directionDescr[direction] +" sequence created, sid = "+ sid);

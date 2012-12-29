@@ -163,3 +163,18 @@ bool CheckTrendChange(int timeframe, string maPeriods, string maTimeframe, strin
       debug("CheckTrendChange()   ERS_HISTORY_UPDATE");        // TODO: bei ERS_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
    return(!catch("CheckTrendChange(4)"));
 }
+
+
+/**
+ * Generiert eine neue Sequenz-ID.
+ *
+ * @return int - Sequenz-ID im Bereich 1000-16383 (14 bit)
+ */
+int CreateSequenceId() {
+   MathSrand(GetTickCount());
+   int id;
+   while (id < 2000) {                                               // Das abschließende Shiften halbiert den Wert, wir brauchen aber mindestens eine 4-stellige ID.
+      id = MathRand();
+   }
+   return(id >> 1);                                                  // TODO: auf Eindeutigkeit prüfen
+}
