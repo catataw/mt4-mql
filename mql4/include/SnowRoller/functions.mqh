@@ -37,7 +37,7 @@ bool FindChartSequences(string ids[], int status[]) {
          strValue = StringTrim(data[1]);
          if (!StringIsDigit(strValue))                 return(_false(catch("FindChartSequences(3)   illegal sequence status in chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
          iValue = StrToInteger(strValue);
-         if (!IsSequenceStatus(iValue))                return(_false(catch("FindChartSequences(4)   illegal sequence status in chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
+         if (!IsValidSequenceStatus(iValue))           return(_false(catch("FindChartSequences(4)   invalid sequence status in chart label "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_RUNTIME_ERROR)));
          int sequenceStatus = iValue;
 
          ArrayPushString(ids,    strSequenceId );
@@ -50,7 +50,7 @@ bool FindChartSequences(string ids[], int status[]) {
 
 
 /**
- * Ob ein Wert einen gültigen Sequenzstatus-Code darstellt.
+ * Ob ein Wert einen Sequenzstatus-Code darstellt.
  *
  * @param  int value
  *
@@ -59,6 +59,26 @@ bool FindChartSequences(string ids[], int status[]) {
 bool IsSequenceStatus(int value) {
    switch (value) {
       case STATUS_UNINITIALIZED: return(true);
+      case STATUS_WAITING      : return(true);
+      case STATUS_STARTING     : return(true);
+      case STATUS_PROGRESSING  : return(true);
+      case STATUS_STOPPING     : return(true);
+      case STATUS_STOPPED      : return(true);
+   }
+   return(false);
+}
+
+
+/**
+ * Ob ein Wert einen gültigen Sequenzstatus-Code darstellt.
+ *
+ * @param  int value
+ *
+ * @return bool
+ */
+bool IsValidSequenceStatus(int value) {
+   switch (value) {
+    //case STATUS_UNINITIALIZED: return(true);                       // ungültig
       case STATUS_WAITING      : return(true);
       case STATUS_STARTING     : return(true);
       case STATUS_PROGRESSING  : return(true);
@@ -166,15 +186,15 @@ bool CheckTrendChange(int timeframe, string maPeriods, string maTimeframe, strin
 
 
 /**
- * Generiert eine neue Sequenz-ID.
+ * Generiert eine neue Sequenz-ID. Im Tester werden fortlaufende IDs generiert.
  *
- * @return int - Sequenz-ID im Bereich 1000-16383 (14 bit)
+ * @return int - Sequenz-ID im Bereich 1000-16383 (mindestens 4-stellig, maximal 14 bit)
  */
 int CreateSequenceId() {
    MathSrand(GetTickCount());
    int id;
-   while (id < 2000) {                                               // Das abschließende Shiften halbiert den Wert, wir brauchen aber mindestens eine 4-stellige ID.
+   while (id < SID_MIN || id > SID_MAX) {
       id = MathRand();
    }
-   return(id >> 1);                                                  // TODO: auf Eindeutigkeit prüfen
+   return(id);                                                 // TODO: auf Eindeutigkeit prüfen
 }

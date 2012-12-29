@@ -1,5 +1,10 @@
 /**
  * SnowRoller-Strategy (Multi-Sequence-SnowRoller)
+ *
+ *  TODO:
+ *  -----
+ *  - Sequenz-IDs auf Eindeutigkeit prüfen
+ *  - im Tester fortlaufende Sequenz-IDs generieren
  */
 #property stacksize 32768
 
@@ -23,14 +28,17 @@ extern /*sticky*/ string StartConditions = "@trend(ALMA:3.5xD1)";    // @trend(A
 
 string   last.StartConditions = "";                                  // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
                                                                      // mit den Default-Werten überschrieben. Um dies zu verhindern und um neue mit vorherigen Werten
-                                                                     // vergleichen zu können, werden sie in deinit() in diesen Variablen zwischengespeichert und in
-                                                                     // init() wieder daraus restauriert.
-bool     start.trend.condition;
-string   start.trend.condition.txt;
-double   start.trend.periods;
+bool     start.trend.condition;                                      // vergleichen zu können, werden sie in deinit() in diesen Variablen zwischengespeichert und in
+string   start.trend.condition.txt;                                  // init() wieder daraus restauriert.
+double   start.trend.periods;                                        //
 int      start.trend.timeframe, start.trend.timeframeFlag;           // maximal PERIOD_H1
 string   start.trend.method;
 int      start.trend.lag;
+
+int      sequence.id         [];
+bool     sequence.test       [];                                     // ob die Sequenz eine Testsequenz ist (entweder im Tester oder im Online-Chart)
+int      sequence.status     [];
+string   sequence.status.file[][2];                                  // [0] MQL-Verzeichnisname (unterhalb "...\files\"), [1] Dateiname der Statusdatei
 
 
 #include <SnowRoller/init.strategy.mqh>
@@ -47,7 +55,7 @@ int onTick() {
 
    if (IsStartSignal(signal)) {
       //debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal "+ ifString(signal>0, "up", "down"));
-      CreateSequence(ifInt(signal>0, D_LONG, D_SHORT));
+      Strategy.CreateSequence(ifInt(signal>0, D_LONG, D_SHORT));
    }
    return(last_error);
 }
@@ -58,32 +66,99 @@ int onTick() {
  *
  * @param  int direction - Sequenztyp: D_LONG | D_SHORT
  *
- * @return int - ID der neuen Sequenz (positiver Wert) oder MoneyManagement-Code (negativer Wert);
+ * @return int - ID der erzeugten Sequenz (>= SID_MIN) oder MoneyManagement-Code (< SID_MIN);
  *               0, falls ein Fehler auftrat
  */
-int CreateSequence(int direction) {
+int Strategy.CreateSequence(int direction) {
    if (__STATUS_ERROR)                                   return(0);
-   if (direction!=D_LONG) /*&&*/ if (direction!=D_SHORT) return(!catch("CreateSequence(1)   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE));
-
+   if (direction!=D_LONG) /*&&*/ if (direction!=D_SHORT) return(!catch("Strategy.CreateSequence(1)   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE));
 
    // (1) Sequenz erzeugen
    int  sid    = CreateSequenceId();
-   bool isTest = IsTesting();
+   bool test   = IsTesting();
    int  status = STATUS_WAITING;
 
-   //int six = Strategy.AddSequence(sid, isTest, status);
+   int six = Strategy.AddSequence(sid, test, status);
+   if (six == -1)
+      return(0);
 
-   //InstanceId(sid);
-   //InitStatusLocation();
+   if      (sid >= SID_MIN) debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence created: "+ sid);
+   else if (sid != 0      ) debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence denied");
 
 
    // (2) Sequenz starten
    //StartSequence(six);
 
-
-   if      (sid > 0) debug("CreateSequence()   new "+ directionDescr[direction] +" sequence created, sid = "+ sid);
-   else if (sid < 0) debug("CreateSequence()   new "+ directionDescr[direction] +" sequence denied");
    return(sid);
+}
+
+
+/**
+ * Erzeugt und startet eine neue Sequenz.
+ *
+ * @param  int  sid    - Sequenz-ID
+ * @param  bool test   - Teststatus der Sequenz
+ * @param  int  status - Laufzeit-Status der Sequenz
+ *
+ * @return int - Verwaltungsindex der Sequenz (nicht die Sequenz-ID) oder -1, falls ein Fehler auftrat
+ */
+int Strategy.AddSequence(int sid, bool test, int status) {
+   if (__STATUS_ERROR)                    return(-1);
+   if (IntInArray(sequence.id, sid))      return(_int(-1, catch("Strategy.AddSequence(1)   sequence "+ sid +" already exists", ERR_RUNTIME_ERROR)));
+   if (BoolInArray(sequence.test, !test)) return(_int(-1, catch("Strategy.AddSequence(2)   illegal mix of test/non-test sequences: tried to add "+ sid +" (test="+ test +"), found "+ sequence.id[SearchBoolArray(sequence.test, !test)] +" (test="+ (!test) +")", ERR_RUNTIME_ERROR)));
+   if (!IsValidSequenceStatus(status))    return(_int(-1, catch("Strategy.AddSequence(3)   invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   int size=ArraySize(sequence.id), six=size;
+   Strategy.ResizeArrays(size+1);
+
+   sequence.id    [six] = sid;
+   sequence.test  [six] = test;
+   sequence.status[six] = status;
+   InitStatusLocation(six);
+
+   //InstanceId(sid);
+   return(six);
+}
+
+
+/**
+ * Initialisiert die Dateinamensvariablen der Statusdatei mit den Ausgangswerten einer neuen Sequenz.
+ *
+ * @param  int - Verwaltungsindex der Sequenz
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool InitStatusLocation(int six) {
+   if (__STATUS_ERROR)                            return( false);
+   if (six < 0 || six > ArraySize(sequence.id)-1) return(_false(catch("InitStatusLocation(1)   invalid parameter six = "+ six, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   if      (IsTesting())        sequence.status.file[six][0] = "presets\\";
+   else if (sequence.test[six]) sequence.status.file[six][0] = "presets\\tester\\";
+   else                         sequence.status.file[six][0] = "presets\\"+ ShortAccountCompany() +"\\";
+
+   sequence.status.file[six][1] = StringConcatenate(StringToLower(StdSymbol()), ".SR.", sequence.id[six], ".set");
+
+   return(!catch("InitStatusLocation(2)"));
+}
+
+
+/**
+ * Setzt die Größe der Arrays für die Sequenzverwaltung auf den angegebenen Wert.
+ *
+ * @param  int size - neue Größe
+ *
+ * @return int - neue Größe der Arrays
+ */
+int Strategy.ResizeArrays(int size) {
+   int oldSize = ArraySize(sequence.id);
+
+   if (size != oldSize) {
+      ArrayResize(sequence.id,          size);
+      ArrayResize(sequence.test,        size);
+      ArrayResize(sequence.status,      size);
+      ArrayResize(sequence.status.file, size);
+   }
+   return(size);
 }
 
 
@@ -395,4 +470,5 @@ void DummyCalls() {
    string sNulls[];
    int    iNulls[];
    FindChartSequences(sNulls, iNulls);
+   IsSequenceStatus(NULL);
 }

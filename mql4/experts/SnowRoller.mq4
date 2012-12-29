@@ -10,6 +10,7 @@
  *  - Laufzeitumgebung auf Server einrichten                                                          *
  *
  *  - Sequenz-IDs auf Eindeutigkeit prüfen
+ *  - im Tester fortlaufende Sequenz-IDs generieren
  *  - Abbruch wegen geändertem Ticketstatus abfangen
  *  - Abbruch wegen IsStopped()=TRUE abfangen
  *  - Statusanzeige: Risikokennziffer zum Verlustpotential des Levels integrieren
@@ -2476,8 +2477,8 @@ int Grid.FindOpenPosition(int level) {
  * @return int - MagicNumber oder -1, falls ein Fehler auftrat
  */
 int CreateMagicNumber(int level) {
-   if (sequenceId < 1000) return(_int(-1, catch("CreateMagicNumber(1)   illegal sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
-   if (!level)            return(_int(-1, catch("CreateMagicNumber(2)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (sequenceId < SID_MIN) return(_int(-1, catch("CreateMagicNumber(1)   illegal sequenceId = "+ sequenceId, ERR_RUNTIME_ERROR)));
+   if (!level)               return(_int(-1, catch("CreateMagicNumber(2)   illegal parameter level = "+ level, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    // Für bessere Obfuscation ist die Reihenfolge der Werte [ea,level,sequence] und nicht [ea,sequence,level], was aufeinander folgende Werte wären.
    int ea       = STRATEGY_ID & 0x3FF << 22;                         // 10 bit (Bits größer 10 löschen und auf 32 Bit erweitern)  | Position in MagicNumber: Bits 23-32
@@ -2548,14 +2549,15 @@ int ShowStatus() {
       WindowRedraw();
 
 
-   // für Fernbedienung unsichtbaren Status im Chart speichern
+   // für Fernbedienung Status im Chart speichern (versteckt)
    string label = "SnowRoller.status";
    if (ObjectFind(label) != 0) {
       if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
          return(catch("ShowStatus(2)"));
       ObjectSet(label, OBJPROP_TIMEFRAMES, EMPTY);                   // hidden on all timeframes
    }
-   ObjectSetText(label, StringConcatenate(Sequence.ID, "|", status), 1);
+   if (status == STATUS_UNINITIALIZED) ObjectDelete(label);
+   else                                ObjectSetText(label, StringConcatenate(Sequence.ID, "|", status), 1);
 
 
    if (IsError(catch("ShowStatus(3)"))) {
@@ -3130,7 +3132,7 @@ bool RestoreStickyStatus() {
          status  = STATUS_UNINITIALIZED;
          idFound = false;
       }
-      else if (iValue < 1000 || iValue > 16383) {
+      else if (iValue < SID_MIN || iValue > SID_MAX) {
          return(_false(catch("RestoreStickyStatus(2)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
       }
       else {
@@ -3301,7 +3303,7 @@ bool ValidateConfiguration.ID(bool interactive) {
       return(_false(ValidateConfig.HandleError("ValidateConfiguration.ID(1)", "Illegal input parameter Sequence.ID = \""+ Sequence.ID +"\"", interactive)));
 
    int iValue = StrToInteger(strValue);
-   if (iValue < 1000 || iValue > 16383)
+   if (iValue < SID_MIN || iValue > SID_MAX)
       return(_false(ValidateConfig.HandleError("ValidateConfiguration.ID(2)", "Illegal input parameter Sequence.ID = \""+ Sequence.ID +"\"", interactive)));
 
    sequenceId  = InstanceId(iValue); SS.SequenceId();
@@ -6059,8 +6061,6 @@ int ResizeArrays(int size, bool reset=false) {
          orders.type       [i] = OP_UNDEFINED;                       // 0 ist ein gültiger Wert und daher als Default unzulässig.
       }
    }
-
-   catch("ResizeArrays()");
    return(size);
 }
 
@@ -6300,6 +6300,7 @@ void DummyCalls() {
    GetMqlStatusDirectory();
    GetMqlStatusFileName();
    GridDirectionToStr(NULL);
+   IsSequenceStatus(NULL);
    OrderDisplayModeToStr(NULL);
    ProfitToDistance(NULL, NULL, NULL, NULL, NULL);
    StatusToStr(NULL);
