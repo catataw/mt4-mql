@@ -47,10 +47,10 @@ int onTick() {
 
    if (IsStartSignal(signal)) {
       if (signal > 0) {
-         //debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal long");
+         debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   trend change up");
       }
-      else            {
-         //debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal short");
+      else {
+         debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   trend change down");
       }
    }
    return(catch("onTick()")|last_error);
@@ -68,6 +68,8 @@ bool IsStartSignal(int &lpSignal) {
    if (__STATUS_CANCELLED || __STATUS_ERROR)
       return(false);
 
+   lpSignal = 0;
+
    // -- start.trend: bei Trendwechsel erfüllt -----------------------------------------------------------------------
    if (start.trend.condition) {
       int iNull[];
@@ -83,12 +85,11 @@ bool IsStartSignal(int &lpSignal) {
          if (CheckTrendChange(timeframe, maPeriods, maTimeframe, maMethod, lag, directions, lpSignal)) {
             if (!lpSignal)
                return(false);
-            if (__LOG) log(StringConcatenate("IsStartSignal()   start condition \"", start.trend.condition.txt, "\" met"));
+            if (__LOG) log(StringConcatenate("IsStartSignal()   start signal \"", start.trend.condition.txt, "\" ", ifString(lpSignal>0, "up", "down")));
             return(true);
          }
       }
    }
-   lpSignal = 0;
    return(false);
 }
 

@@ -146,13 +146,13 @@ bool CheckTrendChange(int timeframe, string maPeriods, string maTimeframe, strin
             if (trend < 0) {
                if (_bool(directions & MODE_UPTREND)) {
                   lpSignal = 1;
-                  debug("CheckTrendChange()   "+ TimeToStr(TimeCurrent()) +"   trend change up");
+                  //debug("CheckTrendChange()   "+ TimeToStr(TimeCurrent()) +"   trend change up");
                }
             }
             else {
                if (_bool(directions & MODE_DOWNTREND)) {
                   lpSignal = -1;
-                  debug("CheckTrendChange()   "+ TimeToStr(TimeCurrent()) +"   trend change down");
+                  //debug("CheckTrendChange()   "+ TimeToStr(TimeCurrent()) +"   trend change down");
                }
             }
          }
