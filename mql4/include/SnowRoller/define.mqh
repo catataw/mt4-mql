@@ -6,8 +6,7 @@
 // Grid-Directions
 #define D_LONG                      1
 #define D_SHORT                     2
-#define D_ALT                       3
-string  directionDescr[] = {"undefined", "Long", "Short", "Alternative"};
+string  directionDescr[] = {"undefined", "Long", "Short"};
 
 
 // Sequenzstatus-Werte

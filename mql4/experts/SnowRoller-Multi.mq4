@@ -68,7 +68,12 @@ int CreateSequence(int type) {
    if (__STATUS_ERROR)                         return(0);
    if (type!=D_LONG) /*&&*/ if (type!=D_SHORT) return(!catch("CreateSequence(1)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE));
 
-   return(-1);
+   // (1) Sequenz erzeugen
+   int sid = -1;
+
+   // (2) StartSequence(six);
+
+   return(sid);
 }
 
 

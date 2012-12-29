@@ -188,7 +188,6 @@ datetime weekend.resume.time;
 bool     weekend.resume.triggered;
 
 int      grid.direction;
-bool     grid.direction.alternative;
 double   grid.commission;                                            // Commission-Betrag je Level (falls zutreffend)
 
 int      grid.level;                                                 // aktueller Grid-Level
@@ -3377,11 +3376,9 @@ bool ValidateConfiguration(bool interactive) {
    switch (StringGetChar(strValue, 0)) {
       case 'l': grid.direction = D_LONG;  break;
       case 's': grid.direction = D_SHORT; break;
-      case 'a': grid.direction = D_ALT;   break;
       default:                                   return(_false(ValidateConfig.HandleError("ValidateConfiguration(7)", "Invalid GridDirection = \""+ GridDirection +"\"", interactive)));
    }
-   grid.direction.alternative = (grid.direction == D_ALT);
-   GridDirection              = directionDescr[grid.direction]; SS.Grid.Direction();
+   GridDirection = directionDescr[grid.direction]; SS.Grid.Direction();
 
 
    // (3) GridSize
