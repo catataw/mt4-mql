@@ -60,7 +60,6 @@ int onDeinitChartChange() {
 int onDeinitChartClose() {
    // (1) Im Tester
    if (IsTesting()) {
-      __STATUS_CANCELLED = true;
       /**
        * !!! Vorsicht: Die start()-Funktion wurde gewaltsam beendet, die primitiven Variablen können Datenmüll enthalten !!!
        *
@@ -73,6 +72,9 @@ int onDeinitChartClose() {
          GetLastError();                                             // falls in FileDelete() ein Fehler auftrat
 
          // Der Fenstertitel des Testers kann nicht zurückgesetzt werden: SendMessage() führt in deinit() zu Deadlock.
+      }
+      else {
+         SetLastError(ERR_CANCELLED_BY_USER);
       }
       return(last_error);
    }
@@ -97,7 +99,7 @@ int onDeinitChartClose() {
  */
 int onDeinitUndefined() {
    if (IsTesting()) {
-      if (__STATUS_CANCELLED)
+      if (__STATUS_ERROR)
          return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
 
       if (status==STATUS_WAITING || status==STATUS_PROGRESSING) {

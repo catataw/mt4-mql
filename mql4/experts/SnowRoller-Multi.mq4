@@ -46,16 +46,29 @@ int onTick() {
    int signal;
 
    if (IsStartSignal(signal)) {
-      if (signal > 0) {
-         debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   trend change up");
-      }
-      else {
-         debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   trend change down");
-      }
-      //StartSequence();
+      debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal "+ ifString(signal>0, "up", "down"));
 
+      if (CreateSequence(ifInt(signal>0, D_LONG, D_SHORT)) > 0) {
+         debug("IsStartSignal()   new sequence created");
+      }
    }
    return(last_error);
+}
+
+
+/**
+ * Erzeugt und startet eine neue Sequenz.
+ *
+ * @param  int type - Sequenztyp: D_LONG | D_SHORT
+ *
+ * @return int - ID der neuen Sequenz (positiver Wert) oder MoneyManagement-Code (negativer Wert);
+ *               0, falls ein Fehler auftrat
+ */
+int CreateSequence(int type) {
+   if (__STATUS_ERROR)                         return(0);
+   if (type!=D_LONG) /*&&*/ if (type!=D_SHORT) return(!catch("CreateSequence(1)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE));
+
+   return(-1);
 }
 
 
@@ -67,7 +80,7 @@ int onTick() {
  * @return bool - ob ein Signal aufgetreten ist
  */
 bool IsStartSignal(int &lpSignal) {
-   if (__STATUS_CANCELLED || __STATUS_ERROR)
+   if (__STATUS_ERROR)
       return(false);
 
    lpSignal = 0;
@@ -277,7 +290,7 @@ int ValidateConfig.HandleError(string location, string message, bool interactive
 
 /**
  * Speichert die Konfiguartionsdaten des EA's im Chart, sodaﬂ der Status nach einem Recompile oder Terminal-Restart daraus wiederhergestellt werden kann.
- * Diese Werte umfassen die Input-Parameter sowie die Flags __STATUS_INVALID_INPUT und __STATUS_CANCELLED.
+ * Diese Werte umfassen die Input-Parameter, das Flag __STATUS_INVALID_INPUT und den Fehler ERR_CANCELLED_BY_USER.
  *
  * @return int - Fehlerstatus
  */
@@ -296,12 +309,12 @@ int StoreStickyStatus() {
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
    ObjectSetText(label, StringConcatenate("", __STATUS_INVALID_INPUT), 1);
 
-   label = StringConcatenate(__NAME__, ".sticky.__STATUS_CANCELLED");
+   label = StringConcatenate(__NAME__, ".sticky.CANCELLED_BY_USER");
    if (ObjectFind(label) == 0)
       ObjectDelete(label);
    ObjectCreate (label, OBJ_LABEL, 0, 0, 0);
    ObjectSet    (label, OBJPROP_TIMEFRAMES, EMPTY);                           // hidden on all timeframes
-   ObjectSetText(label, StringConcatenate("", __STATUS_CANCELLED), 1);
+   ObjectSetText(label, StringConcatenate("", (last_error==ERR_CANCELLED_BY_USER)), 1);
 
    return(catch("StoreStickyStatus()"));
 }
@@ -329,12 +342,13 @@ bool RestoreStickyStatus() {
          __STATUS_INVALID_INPUT = StrToInteger(strValue) != 0;
       }
 
-      label = StringConcatenate(__NAME__, ".sticky.__STATUS_CANCELLED");
+      label = StringConcatenate(__NAME__, ".sticky.CANCELLED_BY_USER");
       if (ObjectFind(label) == 0) {
          strValue = StringTrim(ObjectDescription(label));
          if (!StringIsDigit(strValue))
             return(_false(catch("RestoreStickyStatus(2)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
-         __STATUS_CANCELLED = StrToInteger(strValue) != 0;
+         if (StrToInteger(strValue) != 0)
+            SetLastError(ERR_CANCELLED_BY_USER);
       }
    }
 

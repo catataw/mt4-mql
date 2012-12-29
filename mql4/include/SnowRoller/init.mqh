@@ -119,16 +119,12 @@ int onInitChartClose() {
                   SynchronizeStatus();
             return(last_error);
          }
-         if (button == IDCANCEL) {
-            __STATUS_CANCELLED = true;
-            return(last_error);
-         }
+         if (button == IDCANCEL)
+            return(SetLastError(ERR_CANCELLED_BY_USER));
       }
 
-      if (!ConfirmTradeOnTick1("", "Do you want to start a new sequence?")) {
-         __STATUS_CANCELLED = true;
-         return(last_error);
-      }
+      if (!ConfirmTradeOnTick1("", "Do you want to start a new sequence?"))
+         return(SetLastError(ERR_CANCELLED_BY_USER));
    }
 
 

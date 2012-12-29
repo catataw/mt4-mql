@@ -45,10 +45,10 @@ int onDeinitChartChange() {
  */
 int onDeinitChartClose() {
    // (1) Im Tester
-   if (IsTesting()) {
-      __STATUS_CANCELLED = true;
+   if (IsTesting())
+      if (!__STATUS_ERROR)
+         SetLastError(ERR_CANCELLED_BY_USER);
       return(last_error);
-   }
 
    // (2) Nicht im Tester
    StoreStickyStatus();                                              // für Terminal-Restart oder Profile-Wechsel
@@ -63,7 +63,7 @@ int onDeinitChartClose() {
  */
 int onDeinitUndefined() {
    if (IsTesting()) {
-      if (__STATUS_CANCELLED)
+      if (__STATUS_ERROR)
          return(onDeinitChartClose());                               // entspricht gewaltsamen Ende
       return(last_error);
    }
