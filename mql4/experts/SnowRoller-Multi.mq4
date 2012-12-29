@@ -46,11 +46,8 @@ int onTick() {
    int signal;
 
    if (IsStartSignal(signal)) {
-      debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal "+ ifString(signal>0, "up", "down"));
-
-      if (CreateSequence(ifInt(signal>0, D_LONG, D_SHORT)) > 0) {
-         debug("IsStartSignal()   new sequence created");
-      }
+      //debug("IsStartSignal()   "+ TimeToStr(TimeCurrent()) +"   signal "+ ifString(signal>0, "up", "down"));
+      CreateSequence(ifInt(signal>0, D_LONG, D_SHORT));
    }
    return(last_error);
 }
@@ -59,20 +56,24 @@ int onTick() {
 /**
  * Erzeugt und startet eine neue Sequenz.
  *
- * @param  int type - Sequenztyp: D_LONG | D_SHORT
+ * @param  int direction - Sequenztyp: D_LONG | D_SHORT
  *
  * @return int - ID der neuen Sequenz (positiver Wert) oder MoneyManagement-Code (negativer Wert);
  *               0, falls ein Fehler auftrat
  */
-int CreateSequence(int type) {
-   if (__STATUS_ERROR)                         return(0);
-   if (type!=D_LONG) /*&&*/ if (type!=D_SHORT) return(!catch("CreateSequence(1)   illegal parameter type = "+ type, ERR_INVALID_FUNCTION_PARAMVALUE));
+int CreateSequence(int direction) {
+   if (__STATUS_ERROR)                                   return(0);
+   if (direction!=D_LONG) /*&&*/ if (direction!=D_SHORT) return(!catch("CreateSequence(1)   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE));
 
    // (1) Sequenz erzeugen
    int sid = -1;
 
+
    // (2) StartSequence(six);
 
+
+   if      (sid > 0) debug("CreateSequence()   new "+ directionDescr[direction] +" sequence created, sid = "+ sid);
+   else if (sid < 0) debug("CreateSequence()   new "+ directionDescr[direction] +" sequence denied");
    return(sid);
 }
 
