@@ -17,7 +17,8 @@ extern string Parameter = "dummy";
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-#include <testlib.mqh>
+#include <test/library.mqh>
+//#include <test/static.mqh>
 
 
 /**
@@ -26,8 +27,16 @@ extern string Parameter = "dummy";
  * @return int - Fehlerstatus
  */
 int onTick() {
+   bool sized = false;
+   bool init  = false;
 
-   LocalPrimitives(false);
+   GlobalArrays(sized, init);
+
 
    return(last_error);
+
+   GlobalPrimitives(NULL);
+   LocalPrimitives(NULL);
+   GlobalArrays(NULL, NULL);
+   LocalArrays(NULL, NULL);
 }
