@@ -123,7 +123,7 @@ int onInitChartClose() {
             return(SetLastError(ERR_CANCELLED_BY_USER));
       }
 
-      if (!ConfirmTradeOnTick1("", "Do you want to start a new sequence?"))
+      if (!ConfirmTick1Trade("", "Do you want to start a new sequence?"))
          return(SetLastError(ERR_CANCELLED_BY_USER));
    }
 

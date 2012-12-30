@@ -110,7 +110,7 @@ bool IsValidSequenceStatus(int value) {
  */
 bool CheckTrendChange(int timeframe, string maPeriods, string maTimeframe, string maMethod, int lag, int directions, int &lpSignal) {
    if (lag < 0)
-      return(!catch("CheckTrendChange(1)   illegal parameter lag = "+ lag, ERR_INVALID_FUNCTION_PARAMVALUE));
+      return(_false(catch("CheckTrendChange(1)   illegal parameter lag = "+ lag, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    lpSignal = 0;
 
@@ -181,6 +181,7 @@ bool CheckTrendChange(int timeframe, string maPeriods, string maTimeframe, strin
 
    if (error == ERS_HISTORY_UPDATE)
       debug("CheckTrendChange()   ERS_HISTORY_UPDATE");        // TODO: bei ERS_HISTORY_UPDATE die zur Berechnung verwendeten Bars prüfen
+
    return(!catch("CheckTrendChange(4)"));
 }
 

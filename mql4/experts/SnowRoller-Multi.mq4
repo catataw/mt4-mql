@@ -66,30 +66,106 @@ int onTick() {
  *
  * @param  int direction - Sequenztyp: D_LONG | D_SHORT
  *
- * @return int - ID der erzeugten Sequenz (>= SID_MIN) oder MoneyManagement-Code (< SID_MIN);
+ * @return int - ID der erzeugten Sequenz (>= SID_MIN) oder Sequenz-Management-Code (< SID_MIN);
  *               0, falls ein Fehler auftrat
  */
 int Strategy.CreateSequence(int direction) {
    if (__STATUS_ERROR)                                   return(0);
-   if (direction!=D_LONG) /*&&*/ if (direction!=D_SHORT) return(!catch("Strategy.CreateSequence(1)   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE));
+   if (direction!=D_LONG) /*&&*/ if (direction!=D_SHORT) return(_NULL(catch("Strategy.CreateSequence(1)   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    // (1) Sequenz erzeugen
    int  sid    = CreateSequenceId();
    bool test   = IsTesting();
-   int  status = STATUS_WAITING;
+   int  status = STATUS_WAITING;                            // TODO: Sequence-Management einbauen
 
    int six = Strategy.AddSequence(sid, test, status);
    if (six == -1)
       return(0);
-
    if      (sid >= SID_MIN) debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence created: "+ sid);
    else if (sid != 0      ) debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence denied");
 
 
    // (2) Sequenz starten
-   //StartSequence(six);
+   if (!StartSequence(six))
+      return(0);
 
    return(sid);
+}
+
+
+/**
+ * Startet eine neue Trade-Sequenz.
+ *
+ * @param  int six - Verwaltungsindex der Sequenz
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool StartSequence(int six) {
+   if (__STATUS_ERROR)                            return( false);
+   if (six < 0 || six > ArraySize(sequence.id)-1) return(_false(catch("StartSequence(1)   invalid parameter six = "+ six, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (sequence.status[six] != STATUS_WAITING)    return(_false(catch("StartSequence(2)   cannot start "+ StatusDescription(sequence.status[six]) +" sequence "+ sequence.id[six], ERR_RUNTIME_ERROR)));
+
+   if (Tick==1) /*&&*/ if (!ConfirmTick1Trade("StartSequence()", "Do you really want to start the new sequence "+ sequence.id[six] +" now?"))
+      return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StartSequence(3)")));
+
+   InstanceId(sequence.id[six]);
+   if (__LOG) log("StartSequence()   starting sequence "+ sequence.id[six]);
+
+   sequence.status[six] = STATUS_STARTING;
+
+
+   // (1) Startvariablen setzen
+   datetime startTime  = TimeCurrent();
+   double   startPrice = ifDouble(grid.direction==D_SHORT, Bid, Ask);
+
+   ArrayPushInt   (sequenceStart.event,  CreateEventId());
+   ArrayPushInt   (sequenceStart.time,   startTime      );
+   ArrayPushDouble(sequenceStart.price,  startPrice     );
+   ArrayPushDouble(sequenceStart.profit, 0              );
+
+   ArrayPushInt   (sequenceStop.event,  0);                          // Größe von sequenceStarts/Stops synchron halten
+   ArrayPushInt   (sequenceStop.time,   0);
+   ArrayPushDouble(sequenceStop.price,  0);
+   ArrayPushDouble(sequenceStop.profit, 0);
+
+   sequenceStartEquity = NormalizeDouble(AccountEquity()-AccountCredit(), 2);
+
+
+   // (2) Gridbasis setzen (zeitlich nach sequenceStart.event)
+   double gridBase = startPrice;
+   if (start.conditions) /*&&*/ if (start.level.condition) {
+      grid.level    = start.level.value;
+      grid.maxLevel = grid.level;
+      gridBase      = NormalizeDouble(startPrice - grid.level*GridSize*Pips, Digits);
+   }
+   Grid.BaseReset(startTime, gridBase);
+
+
+   // (3) ggf. Startpositionen in den Markt legen und Sequenzstart aktualisieren
+   if (grid.level != 0) {
+      datetime iNull;
+      if (!UpdateOpenPositions(iNull, startPrice))
+         return(false);
+      sequenceStart.price[ArraySize(sequenceStart.price)-1] = startPrice;
+   }
+
+
+   status = STATUS_PROGRESSING;
+
+
+   // (4) StartConditions deaktivieren und Weekend-Stop aktualisieren
+   start.conditions = false; SS.StartStopConditions();
+   UpdateWeekendStop();
+
+
+   // (5) Stop-Orders in den Markt legen
+   if (!UpdatePendingOrders())
+      return(false);
+
+   RedrawStartStop();
+
+   if (__LOG) log(StringConcatenate("StartSequence()   sequence started at ", NumberToStr(startPrice, PriceFormat), ifString(grid.level, " and level "+ grid.level, "")));
+   return(!last_error|catch("StartSequence(4)"));
 }
 
 
@@ -100,7 +176,7 @@ int Strategy.CreateSequence(int direction) {
  * @param  bool test   - Teststatus der Sequenz
  * @param  int  status - Laufzeit-Status der Sequenz
  *
- * @return int - Verwaltungsindex der Sequenz (nicht die Sequenz-ID) oder -1, falls ein Fehler auftrat
+ * @return int - Verwaltungsindex der Sequenz oder -1, falls ein Fehler auftrat
  */
 int Strategy.AddSequence(int sid, bool test, int status) {
    if (__STATUS_ERROR)                    return(-1);
@@ -115,8 +191,6 @@ int Strategy.AddSequence(int sid, bool test, int status) {
    sequence.test  [six] = test;
    sequence.status[six] = status;
    InitStatusLocation(six);
-
-   //InstanceId(sid);
    return(six);
 }
 
@@ -124,7 +198,7 @@ int Strategy.AddSequence(int sid, bool test, int status) {
 /**
  * Initialisiert die Dateinamensvariablen der Statusdatei mit den Ausgangswerten einer neuen Sequenz.
  *
- * @param  int - Verwaltungsindex der Sequenz
+ * @param  int six - Verwaltungsindex der Sequenz
  *
  * @return bool - Erfolgsstatus
  */

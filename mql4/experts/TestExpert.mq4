@@ -17,11 +17,17 @@ extern string Parameter = "dummy";
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
+#include <testlib.mqh>
+
+
 /**
  * Main-Funktion
  *
  * @return int - Fehlerstatus
  */
 int onTick() {
+
+   LocalPrimitives(false);
+
    return(last_error);
 }
