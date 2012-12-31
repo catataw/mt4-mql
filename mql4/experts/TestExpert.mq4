@@ -27,14 +27,29 @@ extern string Parameter = "dummy";
  * @return int - Fehlerstatus
  */
 int onTick() {
-   bool sized = false;
-   bool init  = false;
+   bool sized = true;
+   bool init  = true;
 
-   GlobalArrays(sized, init);
+   //GlobalPrimitives(init);
+   //LocalPrimitives(init);
 
+   //GlobalArrays(sized, init);
+   LocalArrays(sized, init);
 
    return(last_error);
+}
 
+
+
+
+
+
+
+/**
+ *
+ * @return int - Fehlerstatus
+ */
+void DummyCalls() {
    GlobalPrimitives(NULL);
    LocalPrimitives(NULL);
    GlobalArrays(NULL, NULL);
