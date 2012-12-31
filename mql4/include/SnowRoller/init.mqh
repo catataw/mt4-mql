@@ -21,9 +21,10 @@ int onInitParameterChange() {
       instanceStartTime  = TimeCurrent();                            // nur für RedrawStartStop() benötigt
       instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);   // ...
       isTest             = IsTesting();
-      sequenceId         = InstanceId(CreateSequenceId());
+      sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
+      SetInstanceId(sequenceId);
       InitStatusLocation();
 
       if (start.conditions)                                          // Ohne StartConditions speichert der sofortige Sequenzstart automatisch.
@@ -111,7 +112,7 @@ int onInitChartClose() {
          button = ForceMessageBox(__NAME__, ifString(!IsDemo(), "- Live Account -\n\n", "") +"Running sequence"+ ifString(sizeOfIds==1, " ", "s ") + JoinInts(ids, ", ") +" found.\n\nDo you want to load "+ ifString(sizeOfIds==1, "it", ids[i]) +"?", MB_ICONQUESTION|MB_YESNOCANCEL);
          if (button == IDYES) {
             isTest      = false;
-            sequenceId  = InstanceId(ids[i]);
+            sequenceId  = SetInstanceId(ids[i]);
             Sequence.ID = sequenceId; SS.SequenceId();
             status      = STATUS_WAITING;
             if (RestoreStatus())                                     // TODO: Erkennen, ob einer der anderen Parameter von Hand geändert wurde und
@@ -133,9 +134,10 @@ int onInitChartClose() {
       instanceStartTime  = TimeCurrent();                            // nur für RedrawStartStop() benötigt
       instanceStartPrice = NormalizeDouble((Bid + Ask)/2, Digits);   // ...
       isTest             = IsTesting();
-      sequenceId         = InstanceId(CreateSequenceId());
+      sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
+      SetInstanceId(sequenceId);
       InitStatusLocation();
 
       if (start.conditions)                                          // Ohne StartConditions speichert der sofortige Sequenzstart automatisch.
