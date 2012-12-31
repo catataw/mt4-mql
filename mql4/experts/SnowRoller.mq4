@@ -3116,10 +3116,11 @@ bool RestoreStickyStatus() {
          return(_false(catch("RestoreStickyStatus(2)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
       }
       else {
-         sequenceId  = SetInstanceId(iValue); SS.SequenceId();
+         sequenceId  = iValue; SS.SequenceId();
          Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
          status      = STATUS_WAITING;
          idFound     = true;
+         SetCustomLog(sequenceId, NULL);
       }
 
       label = StringConcatenate(__NAME__, ".sticky.Sequence.StatusLocation");
@@ -3286,8 +3287,9 @@ bool ValidateConfiguration.ID(bool interactive) {
    if (iValue < SID_MIN || iValue > SID_MAX)
       return(_false(ValidateConfig.HandleError("ValidateConfiguration.ID(2)", "Illegal input parameter Sequence.ID = \""+ Sequence.ID +"\"", interactive)));
 
-   sequenceId  = SetInstanceId(iValue); SS.SequenceId();
+   sequenceId  = iValue; SS.SequenceId();
    Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
+   SetCustomLog(sequenceId, NULL);
 
    return(true);
 }

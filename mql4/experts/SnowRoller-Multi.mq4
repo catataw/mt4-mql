@@ -109,9 +109,7 @@ bool StartSequence(int six) {
       return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StartSequence(3)")));
 
    // Logfile umschalten
-   //SetCustomLog();
-   //SetInstanceId(sequence.id[six]);
-
+   SetCustomLog(sequence.id[six], NULL);
    if (__LOG) log("StartSequence()   starting sequence "+ sequence.id[six]);
 
    sequence.status[six] = STATUS_STARTING;

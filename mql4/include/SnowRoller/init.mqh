@@ -24,8 +24,8 @@ int onInitParameterChange() {
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
-      SetInstanceId(sequenceId);
       InitStatusLocation();
+      SetCustomLog(sequenceId, status.directory + status.fileName);
 
       if (start.conditions)                                          // Ohne StartConditions speichert der sofortige Sequenzstart automatisch.
          SaveStatus();
@@ -112,9 +112,10 @@ int onInitChartClose() {
          button = ForceMessageBox(__NAME__, ifString(!IsDemo(), "- Live Account -\n\n", "") +"Running sequence"+ ifString(sizeOfIds==1, " ", "s ") + JoinInts(ids, ", ") +" found.\n\nDo you want to load "+ ifString(sizeOfIds==1, "it", ids[i]) +"?", MB_ICONQUESTION|MB_YESNOCANCEL);
          if (button == IDYES) {
             isTest      = false;
-            sequenceId  = SetInstanceId(ids[i]);
+            sequenceId  = ids[i];
             Sequence.ID = sequenceId; SS.SequenceId();
             status      = STATUS_WAITING;
+            SetCustomLog(sequenceId, NULL);
             if (RestoreStatus())                                     // TODO: Erkennen, ob einer der anderen Parameter von Hand geändert wurde und
                if (ValidateConfiguration(false))                     //       sofort nach neuer Sequenz fragen.
                   SynchronizeStatus();
@@ -137,8 +138,8 @@ int onInitChartClose() {
       sequenceId         = CreateSequenceId();
       Sequence.ID        = ifString(IsTest(), "T", "") + sequenceId; SS.SequenceId();
       status             = STATUS_WAITING;
-      SetInstanceId(sequenceId);
       InitStatusLocation();
+      SetCustomLog(sequenceId, status.directory + status.fileName);
 
       if (start.conditions)                                          // Ohne StartConditions speichert der sofortige Sequenzstart automatisch.
          SaveStatus();
