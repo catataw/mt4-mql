@@ -69,7 +69,7 @@
 #property stacksize 32768
 
 #include <stddefine.mqh>
-int   __INIT_FLAGS__[] = {INIT_TIMEZONE, INIT_PIPVALUE, LOG_INSTANCE_ID, LOG_PER_INSTANCE};
+int   __INIT_FLAGS__[] = {INIT_TIMEZONE, INIT_PIPVALUE, LOG_CUSTOM};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
 #include <history.mqh>
@@ -3116,7 +3116,7 @@ bool RestoreStickyStatus() {
          return(_false(catch("RestoreStickyStatus(2)   illegal chart value "+ label +" = \""+ ObjectDescription(label) +"\"", ERR_INVALID_CONFIG_PARAMVALUE)));
       }
       else {
-         sequenceId  = InstanceId(iValue); SS.SequenceId();
+         sequenceId  = SetInstanceId(iValue); SS.SequenceId();
          Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
          status      = STATUS_WAITING;
          idFound     = true;
@@ -3286,7 +3286,7 @@ bool ValidateConfiguration.ID(bool interactive) {
    if (iValue < SID_MIN || iValue > SID_MAX)
       return(_false(ValidateConfig.HandleError("ValidateConfiguration.ID(2)", "Illegal input parameter Sequence.ID = \""+ Sequence.ID +"\"", interactive)));
 
-   sequenceId  = InstanceId(iValue); SS.SequenceId();
+   sequenceId  = SetInstanceId(iValue); SS.SequenceId();
    Sequence.ID = ifString(IsTest(), "T", "") + sequenceId;
 
    return(true);

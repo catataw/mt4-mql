@@ -108,7 +108,10 @@ bool StartSequence(int six) {
    if (Tick==1) /*&&*/ if (!ConfirmTick1Trade("StartSequence()", "Do you really want to start the new sequence "+ sequence.id[six] +" now?"))
       return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StartSequence(3)")));
 
-   InstanceId(sequence.id[six]);
+   // Logfile umschalten
+   //SetCustomLog();
+   //SetInstanceId(sequence.id[six]);
+
    if (__LOG) log("StartSequence()   starting sequence "+ sequence.id[six]);
 
    sequence.status[six] = STATUS_STARTING;
