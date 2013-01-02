@@ -39,6 +39,8 @@ int onInitRemove() {
  */
 int onInitChartChange() {
    // nicht-statische Input-Parameter restaurieren
+   GridSize        = last.GridSize;
+   LotSize         = last.LotSize;
    StartConditions = last.StartConditions;
 
    // TODO: Symbolwechsel behandeln

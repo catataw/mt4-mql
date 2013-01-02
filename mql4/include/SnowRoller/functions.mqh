@@ -199,3 +199,43 @@ int CreateSequenceId() {
    }
    return(id);                                                 // TODO: auf Eindeutigkeit prüfen
 }
+
+
+/**
+ * Holt eine Bestätigung für einen Trade-Request beim ersten Tick ein (um Programmfehlern vorzubeugen).
+ *
+ * @param  string location - Ort der Bestätigung
+ * @param  string message  - Meldung
+ *
+ * @return bool - Ergebnis
+ */
+bool ConfirmTick1Trade(string location, string message) {
+   static bool done, confirmed;
+   if (!done) {
+      if (Tick > 1 || IsTesting()) {
+         confirmed = true;
+      }
+      else {
+         ForceSound("notify.wav");
+         confirmed = (IDOK == ForceMessageBox(__NAME__ + ifString(!StringLen(location), "", " - "+ location), ifString(!IsDemo(), "- Live Account -\n\n", "") + message, MB_ICONQUESTION|MB_OKCANCEL));
+         if (Tick > 0)
+            RefreshRates();                                          // bei Tick==0, also Aufruf in init(), ist RefreshRates() unnötig
+      }
+      done = true;
+   }
+   return(confirmed);
+}
+
+
+int lastEventId;
+
+
+/**
+ * Generiert eine neue Event-ID.
+ *
+ * @return int - ID (ein fortlaufender Zähler)
+ */
+int CreateEventId() {
+   lastEventId++;
+   return(lastEventId);
+}

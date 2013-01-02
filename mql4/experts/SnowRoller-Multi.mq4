@@ -22,23 +22,52 @@ int __DEINIT_FLAGS__[];
 
 ///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////
 
+extern            int    GridSize        = 20;
+extern            double LotSize         = 0.1;
 extern /*sticky*/ string StartConditions = "@trend(ALMA:3.5xD1)";    // @trend(ALMA:3.5xD1)
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-string   last.StartConditions = "";                                  // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
-                                                                     // mit den Default-Werten überschrieben. Um dies zu verhindern und um neue mit vorherigen Werten
-bool     start.trend.condition;                                      // vergleichen zu können, werden sie in deinit() in diesen Variablen zwischengespeichert und in
-string   start.trend.condition.txt;                                  // init() wieder daraus restauriert.
-double   start.trend.periods;                                        //
+int      last.GridSize;                                              // Input-Parameter sind nicht statisch. Extern geladene Parameter werden bei REASON_CHARTCHANGE
+double   last.LotSize;                                               // mit den Default-Werten überschrieben. Um dies zu verhindern und um neue mit vorherigen Werten
+string   last.StartConditions = "";                                  // vergleichen zu können, werden sie in deinit() in diesen Variablen zwischengespeichert und in
+                                                                     // init() wieder daraus restauriert.
+// --------------------------------
+bool     start.trend.condition;
+string   start.trend.condition.txt;
+double   start.trend.periods;
 int      start.trend.timeframe, start.trend.timeframeFlag;           // maximal PERIOD_H1
 string   start.trend.method;
 int      start.trend.lag;
 
+bool     start.level.condition;
+string   start.level.condition.txt;
+int      start.level.value;
+
+// --------------------------------
 int      sequence.id         [];
-bool     sequence.test       [];                                     // ob die Sequenz eine Testsequenz ist (entweder im Tester oder im Online-Chart)
+bool     sequence.test       [];                                     // ob die Sequenz eine Testsequenz ist (im Tester oder im Online-Chart)
 int      sequence.status     [];
-string   sequence.status.file[][2];                                  // [0] MQL-Verzeichnisname (unterhalb "...\files\"), [1] Dateiname der Statusdatei
+string   sequence.status.file[][2];                                  // [0] - Verzeichnis (relativ zu ".\files\"), [1] - Dateiname der Statusdatei
+int      sequence.startStop  [][3];                                  // [0] - from, [1] - to, [2] - size
+double   sequence.startEquity[];                                     // Equity bei Start der Sequenz
+
+// --------------------------------
+int      sequenceStart.event [];                                     // Start-Daten (Moment von Statuswechsel zu STATUS_PROGRESSING)
+datetime sequenceStart.time  [];
+double   sequenceStart.price [];
+double   sequenceStart.profit[];
+
+int      sequenceStop.event  [];                                     // Stop-Daten (Moment von Statuswechsel zu STATUS_STOPPED)
+datetime sequenceStop.time   [];
+double   sequenceStop.price  [];
+double   sequenceStop.profit [];
+
+// --------------------------------
+int      grid.direction [];
+int      grid.level     [];                                          // aktueller Grid-Level
+int      grid.maxLevel  [];                                          // maximal erreichter Grid-Level
+double   grid.commission[];                                          // Commission-Betrag je Level
 
 
 #include <SnowRoller/init.strategy.mqh>
@@ -64,7 +93,7 @@ int onTick() {
 /**
  * Erzeugt und startet eine neue Sequenz.
  *
- * @param  int direction - Sequenztyp: D_LONG | D_SHORT
+ * @param  int direction - D_LONG | D_SHORT
  *
  * @return int - ID der erzeugten Sequenz (>= SID_MIN) oder Sequenz-Management-Code (< SID_MIN);
  *               0, falls ein Fehler auftrat
@@ -76,17 +105,24 @@ int Strategy.CreateSequence(int direction) {
    // (1) Sequenz erzeugen
    int  sid    = CreateSequenceId();
    bool test   = IsTesting();
-   int  status = STATUS_WAITING;                            // TODO: Sequence-Management einbauen
+   int  status = STATUS_WAITING;
 
-   int six = Strategy.AddSequence(sid, test, status);
-   if (six == -1)
+
+   // TODO: Sequence-Management einbauen
+   if (sid < SID_MIN) {
+      if (sid == 0)
+         return(0);
+      return(_int(sid, debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence denied")));
+   }
+
+   int hSeq = Strategy.AddSequence(sid, test, direction, status);
+   if (hSeq < 0)
       return(0);
-   if      (sid >= SID_MIN) debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence created: "+ sid);
-   else if (sid != 0      ) debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence denied");
+   debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence created: "+ sid);
 
 
    // (2) Sequenz starten
-   if (!StartSequence(six))
+   if (!StartSequence(hSeq))
       return(0);
 
    return(sid);
@@ -94,30 +130,31 @@ int Strategy.CreateSequence(int direction) {
 
 
 /**
- * Startet eine neue Trade-Sequenz.
+ * Startet eine noch neue Trade-Sequenz.
  *
- * @param  int six - Verwaltungsindex der Sequenz
+ * @param  int hSeq - Sequenz-Handle (Verwaltungsindex der Sequenz)
  *
  * @return bool - Erfolgsstatus
  */
-bool StartSequence(int six) {
-   if (__STATUS_ERROR)                            return( false);
-   if (six < 0 || six > ArraySize(sequence.id)-1) return(_false(catch("StartSequence(1)   invalid parameter six = "+ six, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (sequence.status[six] != STATUS_WAITING)    return(_false(catch("StartSequence(2)   cannot start "+ StatusDescription(sequence.status[six]) +" sequence "+ sequence.id[six], ERR_RUNTIME_ERROR)));
+bool StartSequence(int hSeq) {
+   if (__STATUS_ERROR)                              return( false);
+   if (hSeq < 0 || hSeq > ArraySize(sequence.id)-1) return(_false(catch("StartSequence(1)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (sequence.status[hSeq] != STATUS_WAITING)     return(_false(catch("StartSequence(2)   cannot start "+ statusDescr[sequence.status[hSeq]] +" sequence "+ sequence.id[hSeq], ERR_RUNTIME_ERROR)));
 
-   if (Tick==1) /*&&*/ if (!ConfirmTick1Trade("StartSequence()", "Do you really want to start the new sequence "+ sequence.id[six] +" now?"))
+   if (Tick==1) /*&&*/ if (!ConfirmTick1Trade("StartSequence()", "Do you really want to start the new sequence "+ sequence.id[hSeq] +" now?"))
       return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StartSequence(3)")));
 
-   // Logfile umschalten
-   SetCustomLog(sequence.id[six], NULL);
-   if (__LOG) log("StartSequence()   starting sequence "+ sequence.id[six]);
+   if (__LOG) log("StartSequence()   starting sequence "+ sequence.id[hSeq]);
+   SetCustomLog(sequence.id[hSeq], NULL);                            // TODO: statt Sequenz-ID Log-Handle verwenden
+   if (__LOG) log("StartSequence()   starting sequence");
 
-   sequence.status[six] = STATUS_STARTING;
+
+   sequence.status[hSeq] = STATUS_STARTING;
 
 
    // (1) Startvariablen setzen
    datetime startTime  = TimeCurrent();
-   double   startPrice = ifDouble(grid.direction==D_SHORT, Bid, Ask);
+   double   startPrice = ifDouble(grid.direction[hSeq]==D_SHORT, Bid, Ask);
 
    ArrayPushInt   (sequenceStart.event,  CreateEventId());
    ArrayPushInt   (sequenceStart.time,   startTime      );
@@ -129,12 +166,12 @@ bool StartSequence(int six) {
    ArrayPushDouble(sequenceStop.price,  0);
    ArrayPushDouble(sequenceStop.profit, 0);
 
-   sequenceStartEquity = NormalizeDouble(AccountEquity()-AccountCredit(), 2);
+   sequence.startEquity[hSeq] = NormalizeDouble(AccountEquity()-AccountCredit(), 2);
 
 
-   // (2) Gridbasis setzen (zeitlich nach sequenceStart.event)
+   // (2) Gridbasis setzen (zeitlich nach sequenceStart.time)
    double gridBase = startPrice;
-   if (start.conditions) /*&&*/ if (start.level.condition) {
+   if (start.level.condition) {
       grid.level    = start.level.value;
       grid.maxLevel = grid.level;
       gridBase      = NormalizeDouble(startPrice - grid.level*GridSize*Pips, Digits);
@@ -142,7 +179,7 @@ bool StartSequence(int six) {
    Grid.BaseReset(startTime, gridBase);
 
 
-   // (3) ggf. Startpositionen in den Markt legen und Sequenzstart aktualisieren
+   // (3) ggf. Startpositionen in den Markt legen und Sequenzstart-Price aktualisieren
    if (grid.level != 0) {
       datetime iNull;
       if (!UpdateOpenPositions(iNull, startPrice))
@@ -151,20 +188,19 @@ bool StartSequence(int six) {
    }
 
 
-   status = STATUS_PROGRESSING;
+   sequence.status[hSeq] = STATUS_PROGRESSING;
 
 
-   // (4) StartConditions deaktivieren und Weekend-Stop aktualisieren
-   start.conditions = false; SS.StartStopConditions();
-   UpdateWeekendStop();
-
-
-   // (5) Stop-Orders in den Markt legen
+   // (4) Stop-Orders in den Markt legen
    if (!UpdatePendingOrders())
       return(false);
 
-   RedrawStartStop();
 
+   // (5) Weekend-Stop aktualisieren
+   UpdateWeekendStop();
+
+
+   RedrawStartStop();
    if (__LOG) log(StringConcatenate("StartSequence()   sequence started at ", NumberToStr(startPrice, PriceFormat), ifString(grid.level, " and level "+ grid.level, "")));
    return(!last_error|catch("StartSequence(4)"));
 }
@@ -173,26 +209,32 @@ bool StartSequence(int six) {
 /**
  * Erzeugt und startet eine neue Sequenz.
  *
- * @param  int  sid    - Sequenz-ID
- * @param  bool test   - Teststatus der Sequenz
- * @param  int  status - Laufzeit-Status der Sequenz
+ * @param  int  sid       - Sequenz-ID
+ * @param  bool test      - Teststatus der Sequenz
+ * @param  int  direction - D_LONG | D_SHORT
+ * @param  int  status    - Laufzeit-Status der Sequenz
  *
- * @return int - Verwaltungsindex der Sequenz oder -1, falls ein Fehler auftrat
+ * @return int - Sequenz-Handle (Verwaltungsindex, 0 ist ein gültiges Handle) oder -1, falls ein Fehler auftrat;
  */
-int Strategy.AddSequence(int sid, bool test, int status) {
-   if (__STATUS_ERROR)                    return(-1);
-   if (IntInArray(sequence.id, sid))      return(_int(-1, catch("Strategy.AddSequence(1)   sequence "+ sid +" already exists", ERR_RUNTIME_ERROR)));
-   if (BoolInArray(sequence.test, !test)) return(_int(-1, catch("Strategy.AddSequence(2)   illegal mix of test/non-test sequences: tried to add "+ sid +" (test="+ test +"), found "+ sequence.id[SearchBoolArray(sequence.test, !test)] +" (test="+ (!test) +")", ERR_RUNTIME_ERROR)));
-   if (!IsValidSequenceStatus(status))    return(_int(-1, catch("Strategy.AddSequence(3)   invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
+int Strategy.AddSequence(int sid, bool test, int direction, int status) {
+   if (__STATUS_ERROR)                                   return(-1);
+   if (sid < SID_MIN || sid > SID_MAX)                   return(_int(-1, catch("Strategy.AddSequence(1)   invalid parameter sid = "+ sid, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (IntInArray(sequence.id, sid))                     return(_int(-1, catch("Strategy.AddSequence(2)   sequence "+ sid +" already exists", ERR_RUNTIME_ERROR)));
+   if (BoolInArray(sequence.test, !test))                return(_int(-1, catch("Strategy.AddSequence(3)   illegal mix of test/non-test sequences: tried to add "+ sid +" (test="+ test +"), found "+ sequence.id[SearchBoolArray(sequence.test, !test)] +" (test="+ (!test) +")", ERR_RUNTIME_ERROR)));
+   if (direction!=D_LONG) /*&&*/ if (direction!=D_SHORT) return(_int(-1, catch("Strategy.AddSequence(4)   invalid parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (!IsValidSequenceStatus(status))                   return(_int(-1, catch("Strategy.AddSequence(5)   invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   int size=ArraySize(sequence.id), six=size;
+   int size=ArraySize(sequence.id), hSeq=size;
    Strategy.ResizeArrays(size+1);
 
-   sequence.id    [six] = sid;
-   sequence.test  [six] = test;
-   sequence.status[six] = status;
-   InitStatusLocation(six);
-   return(six);
+   sequence.id    [hSeq] = sid;
+   sequence.test  [hSeq] = test;
+   sequence.status[hSeq] = status;
+   grid.direction [hSeq] = direction;
+
+   InitStatusLocation(hSeq);
+
+   return(hSeq);
 }
 
 
@@ -232,6 +274,13 @@ int Strategy.ResizeArrays(int size) {
       ArrayResize(sequence.test,        size);
       ArrayResize(sequence.status,      size);
       ArrayResize(sequence.status.file, size);
+      ArrayResize(sequence.startStop,   size);
+      ArrayResize(sequence.startEquity, size);
+
+      ArrayResize(grid.direction,       size);
+      ArrayResize(grid.level,           size);
+      ArrayResize(grid.maxLevel,        size);
+      ArrayResize(grid.commission,      size);
    }
    return(size);
 }
@@ -341,10 +390,38 @@ bool ValidateConfiguration(bool interactive) {
       interactive = true;
 
 
-   // (5) StartConditions, AND-verknüpft: "(@trend(xxMA:7xD1[+2]"
+   // (3) GridSize
+   if (reasonParameters) {
+      if (GridSize != last.GridSize)
+         if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(8)", "Cannot change GridSize of "+ statusDescr[status] +" sequence", interactive)));
+      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
+   }
+   if (GridSize < 1)                             return(_false(ValidateConfig.HandleError("ValidateConfiguration(9)", "Invalid GridSize = "+ GridSize, interactive)));
+
+
+   // (4) LotSize
+   if (reasonParameters) {
+      if (NE(LotSize, last.LotSize))
+         if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(10)", "Cannot change LotSize of "+ statusDescr[status] +" sequence", interactive)));
+      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
+   }
+   if (LE(LotSize, 0))                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(11)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+"), interactive)));
+   double minLot  = MarketInfo(Symbol(), MODE_MINLOT );
+   double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT );
+   double lotStep = MarketInfo(Symbol(), MODE_LOTSTEP);
+   int error = GetLastError();
+   if (IsError(error))                           return(_false(catch("ValidateConfiguration(12)   symbol=\""+ Symbol() +"\"", error)));
+   if (LT(LotSize, minLot))                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(13)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", interactive)));
+   if (GT(LotSize, maxLot))                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(14)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", interactive)));
+   if (NE(MathModFix(LotSize, lotStep), 0))      return(_false(ValidateConfig.HandleError("ValidateConfiguration(15)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", interactive)));
+   SS.LotSize();
+
+
+   // (5) StartConditions, AND-verknüpft: "(@trend(xxMA:7xD1[+1] && @level(3)"
    // ----------------------------------------------------------------------------------------------------------------------
    if (!reasonParameters || StartConditions!=last.StartConditions) {
       start.trend.condition = false;
+      start.level.condition = false;
 
       // (5.1) StartConditions in einzelne Ausdrücke zerlegen
       string exprs[], expr, elems[], key, value;
@@ -410,6 +487,22 @@ bool ValidateConfiguration(bool interactive) {
             start.trend.condition     = true;
             start.trend.condition.txt = "@trend("+ start.trend.method +":"+ elems[0] +"x"+ elems[1] + ifString(!start.trend.lag, "", "+"+ start.trend.lag) +")";
             exprs[i]                  = start.trend.condition.txt;
+         }
+
+         else if (key == "@level") {
+            if (start.level.condition)                 return(_false(ValidateConfig.HandleError("ValidateConfiguration(41)", "Invalid StartConditions = \""+ StartConditions +"\" (multiple level conditions)", interactive)));
+            if (!StringIsInteger(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(42)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+            iValue = StrToInteger(value);
+            if (grid.direction == D_LONG) {
+               if (iValue < 0)                         return(_false(ValidateConfig.HandleError("ValidateConfiguration(43)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
+            }
+            else if (iValue > 0)
+               iValue = -iValue;
+            if (ArraySize(sequenceStart.event) != 0)   return(_false(ValidateConfig.HandleError("ValidateConfiguration(44)", "Invalid StartConditions = \""+ StartConditions +"\" (illegal level statement)", interactive)));
+            start.level.condition     = true;
+            start.level.value         = iValue;
+            start.level.condition.txt = key +"("+ iValue +")";
+            exprs[i]                  = start.level.condition.txt;
          }
          else                                          return(_false(ValidateConfig.HandleError("ValidateConfiguration(45)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
       }
