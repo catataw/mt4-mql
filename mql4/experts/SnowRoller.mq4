@@ -200,10 +200,10 @@ int      grid.level;                                                 // aktuelle
 int      grid.maxLevel;                                              // maximal erreichter Grid-Level
 double   grid.commission;                                            // Commission-Betrag je Level
 
-double   grid.base;                                                  // aktuelle Gridbasis
 int      grid.base.event[];                                          // Gridbasis-Daten
 datetime grid.base.time [];
 double   grid.base.value[];
+double   grid.base;                                                  // aktuelle Gridbasis
 
 int      grid.stops;                                                 // Anzahl der bisher getriggerten Stops
 double   grid.stopsPL;                                               // kumulierter P/L aller bisher ausgestoppten Positionen
@@ -407,7 +407,7 @@ bool StartSequence() {
    double gridBase = startPrice;
    if (start.conditions) /*&&*/ if (start.level.condition) {
       grid.level    = start.level.value;
-      grid.maxLevel = grid.level;
+      grid.maxLevel = start.level.value;
       gridBase      = NormalizeDouble(startPrice - grid.level*GridSize*Pips, Digits);
    }
    Grid.BaseReset(startTime, gridBase);
@@ -1797,7 +1797,7 @@ bool UpdateOpenPositions(datetime &lpOpenTime, double &lpOpenPrice) {
             if (!Grid.AddPosition(OP_SELL, level))
                return(false);
             if (!SaveStatus())                                                   // Status nach jeder Trade-Operation speichern, um das Ticket nicht zu verlieren,
-               return(false);                                                    // wenn in einer der folgenden Operationen ein Fehler auftritt.
+               return(false);                                                    // falls in einer der folgenden Operationen ein Fehler auftritt.
             i = ArraySize(orders.ticket) - 1;
          }
          openTime       = Max(openTime, orders.openTime[i]);
@@ -1828,9 +1828,12 @@ bool UpdateOpenPositions(datetime &lpOpenTime, double &lpOpenPrice) {
  * @param  datetime time  - Zeitpunkt
  * @param  double   value - neue Gridbasis
  *
- * @return double - die neue Gridbasis
+ * @return double - neue Gridbasis (for chaining) oder 0, falls ein Fehler auftrat
  */
 double Grid.BaseReset(datetime time, double value) {
+   if (__STATUS_ERROR)
+      return(0);
+
    ArrayResize(grid.base.event, 0);
    ArrayResize(grid.base.time,  0);
    ArrayResize(grid.base.value, 0);

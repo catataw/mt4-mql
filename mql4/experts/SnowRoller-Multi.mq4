@@ -49,10 +49,12 @@ int      sequence.id         [];
 bool     sequence.test       [];                                     // ob die Sequenz eine Testsequenz ist (im Tester oder im Online-Chart)
 int      sequence.status     [];
 string   sequence.status.file[][2];                                  // [0] - Verzeichnis (relativ zu ".\files\"), [1] - Dateiname der Statusdatei
-int      sequence.startStop  [][3];                                  // [0] - from, [1] - to, [2] - size
+double   sequence.lotSize    [];
 double   sequence.startEquity[];                                     // Equity bei Start der Sequenz
 
 // --------------------------------
+int      sequence.ss.events  [][3];                                  // [0]=>from_index, [1]=>to_index, [2]=>size (Start-/Stopdaten sind synchron)
+
 int      sequenceStart.event [];                                     // Start-Daten (Moment von Statuswechsel zu STATUS_PROGRESSING)
 datetime sequenceStart.time  [];
 double   sequenceStart.price [];
@@ -65,9 +67,17 @@ double   sequenceStop.profit [];
 
 // --------------------------------
 int      grid.direction [];
+int      grid.size      [];
 int      grid.level     [];                                          // aktueller Grid-Level
 int      grid.maxLevel  [];                                          // maximal erreichter Grid-Level
 double   grid.commission[];                                          // Commission-Betrag je Level
+
+// --------------------------------
+int      grid.base.events[][3];                                      // [0]=>from_index, [1]=>to_index, [2]=>size
+
+int      grid.base.event [];                                         // Gridbasis-Daten
+datetime grid.base.time  [];
+double   grid.base.value [];
 
 
 #include <SnowRoller/init.strategy.mqh>
@@ -103,9 +113,11 @@ int Strategy.CreateSequence(int direction) {
    if (direction!=D_LONG) /*&&*/ if (direction!=D_SHORT) return(_NULL(catch("Strategy.CreateSequence(1)   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    // (1) Sequenz erzeugen
-   int  sid    = CreateSequenceId();
-   bool test   = IsTesting();
-   int  status = STATUS_WAITING;
+   int    sid      = CreateSequenceId();
+   bool   test     = IsTesting();
+   int    gridSize = GridSize;
+   double lotSize  = LotSize;
+   int    status   = STATUS_WAITING;
 
 
    // TODO: Sequence-Management einbauen
@@ -115,7 +127,7 @@ int Strategy.CreateSequence(int direction) {
       return(_int(sid, debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence denied")));
    }
 
-   int hSeq = Strategy.AddSequence(sid, test, direction, status);
+   int hSeq = Strategy.AddSequence(sid, test, direction, gridSize, lotSize, status);
    if (hSeq < 0)
       return(0);
    debug("Strategy.CreateSequence()   "+ directionDescr[direction] +" sequence created: "+ sid);
@@ -172,15 +184,15 @@ bool StartSequence(int hSeq) {
    // (2) Gridbasis setzen (zeitlich nach sequenceStart.time)
    double gridBase = startPrice;
    if (start.level.condition) {
-      grid.level    = start.level.value;
-      grid.maxLevel = grid.level;
-      gridBase      = NormalizeDouble(startPrice - grid.level*GridSize*Pips, Digits);
+      grid.level   [hSeq] = start.level.value;
+      grid.maxLevel[hSeq] = start.level.value;
+      gridBase            = NormalizeDouble(startPrice - grid.level[hSeq]*grid.size[hSeq]*Pips, Digits);
    }
-   Grid.BaseReset(startTime, gridBase);
+   Grid.BaseReset(hSeq, startTime, gridBase);
 
 
    // (3) ggf. Startpositionen in den Markt legen und Sequenzstart-Price aktualisieren
-   if (grid.level != 0) {
+   if (grid.level[hSeq] != 0) {
       datetime iNull;
       if (!UpdateOpenPositions(iNull, startPrice))
          return(false);
@@ -207,34 +219,138 @@ bool StartSequence(int hSeq) {
 
 
 /**
+ * Öffnet neue bzw. vervollständigt fehlende der zuletzt offenen Positionen der Sequenz. Aufruf nur in ResumeSequence()
+ *
+ * @param  int       hSeq        - Sequenz-Handle (Verwaltungsindex)
+ * @param  datetime &lpOpenTime  - Zeiger auf Variable, die die OpenTime der zuletzt geöffneten Position aufnimmt
+ * @param  double   &lpOpenPrice - Zeiger auf Variable, die den durchschnittlichen OpenPrice aufnimmt
+ *
+ * @return bool - Erfolgsstatus
+ *
+ *
+ * NOTE: Im Level 0 (keine Positionen zu öffnen) werden die Variablen, auf die die übergebenen Pointer zeigen, nicht modifiziert.
+ */
+bool UpdateOpenPositions(int hSeq, datetime &lpOpenTime, double &lpOpenPrice) {
+   if (__STATUS_ERROR)                              return( false);
+   if (IsTest()) /*&&*/ if (!IsTesting())           return(_false(catch("UpdateOpenPositions(1)", ERR_ILLEGAL_STATE)));
+   if (hSeq < 0 || hSeq > ArraySize(sequence.id)-1) return(_false(catch("UpdateOpenPositions(2)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (sequence.status[hSeq] != STATUS_STARTING)    return(_false(catch("UpdateOpenPositions(3)   cannot update positions of "+ statusDescr[sequence.status[hSeq]] +" sequence", ERR_RUNTIME_ERROR)));
+
+   int i, level;
+   datetime openTime;
+   double   openPrice;
+
+   grid.openRisk = 0;                                                            // grid.openRisk jedes mal neuberechnen
+
+
+   // (1) Long
+   if (grid.level > 0) {
+      for (level=1; level <= grid.level; level++) {
+         i = Grid.FindOpenPosition(level);
+         if (i == -1) {
+            if (!Grid.AddPosition(OP_BUY, level))
+               return(false);
+            if (!SaveStatus())                                                   // Status nach jeder Trade-Operation speichern, um das Ticket nicht zu verlieren,
+               return(false);                                                    // falls in einer der folgenden Operationen ein Fehler auftritt.
+            i = ArraySize(orders.ticket) - 1;
+         }
+         openTime       = Max(openTime, orders.openTime[i]);
+         openPrice     += orders.openPrice[i];
+         grid.openRisk += orders.openRisk [i];
+      }
+      openPrice /= Abs(grid.level);                                              // avg(OpenPrice)
+   }
+
+
+   // (2) Short
+   else if (grid.level < 0) {
+      for (level=-1; level >= grid.level; level--) {
+         i = Grid.FindOpenPosition(level);
+         if (i == -1) {
+            if (!Grid.AddPosition(OP_SELL, level))
+               return(false);
+            if (!SaveStatus())                                                   // Status nach jeder Trade-Operation speichern, um das Ticket nicht zu verlieren,
+               return(false);                                                    // falls in einer der folgenden Operationen ein Fehler auftritt.
+            i = ArraySize(orders.ticket) - 1;
+         }
+         openTime       = Max(openTime, orders.openTime[i]);
+         openPrice     += orders.openPrice[i];
+         grid.openRisk += orders.openRisk [i];
+      }
+      openPrice /= Abs(grid.level);                                              // avg(OpenPrice)
+   }
+
+
+   // (3) grid.valueAtRisk neuberechnen
+   grid.valueAtRisk = NormalizeDouble(grid.stopsPL + grid.openRisk, 2); SS.Grid.ValueAtRisk();
+
+
+   // (4) Ergebnis setzen
+   if (openTime != 0) {                                                          // grid.level != 0
+      lpOpenTime  = openTime;
+      lpOpenPrice = NormalizeDouble(openPrice, Digits);
+   }
+
+   return(!last_error|catch("UpdateOpenPositions(4)"));
+}
+
+
+/**
  * Erzeugt und startet eine neue Sequenz.
  *
- * @param  int  sid       - Sequenz-ID
- * @param  bool test      - Teststatus der Sequenz
- * @param  int  direction - D_LONG | D_SHORT
- * @param  int  status    - Laufzeit-Status der Sequenz
+ * @param  int    sid       - Sequenz-ID
+ * @param  bool   test      - Teststatus der Sequenz
+ * @param  int    direction - D_LONG | D_SHORT
+ * @param  int    gridSize  - Gridsize der Sequenz
+ * @param  double lotSize   - Lotsize der Sequenz
+ * @param  int    status    - Laufzeit-Status der Sequenz
  *
- * @return int - Sequenz-Handle (Verwaltungsindex, 0 ist ein gültiges Handle) oder -1, falls ein Fehler auftrat;
+ * @return int - Sequenz-Handle (Verwaltungsindex) oder -1, falls ein Fehler auftrat;
  */
-int Strategy.AddSequence(int sid, bool test, int direction, int status) {
+int Strategy.AddSequence(int sid, bool test, int direction, int gridSize, double lotSize, int status) {
    if (__STATUS_ERROR)                                   return(-1);
    if (sid < SID_MIN || sid > SID_MAX)                   return(_int(-1, catch("Strategy.AddSequence(1)   invalid parameter sid = "+ sid, ERR_INVALID_FUNCTION_PARAMVALUE)));
    if (IntInArray(sequence.id, sid))                     return(_int(-1, catch("Strategy.AddSequence(2)   sequence "+ sid +" already exists", ERR_RUNTIME_ERROR)));
    if (BoolInArray(sequence.test, !test))                return(_int(-1, catch("Strategy.AddSequence(3)   illegal mix of test/non-test sequences: tried to add "+ sid +" (test="+ test +"), found "+ sequence.id[SearchBoolArray(sequence.test, !test)] +" (test="+ (!test) +")", ERR_RUNTIME_ERROR)));
    if (direction!=D_LONG) /*&&*/ if (direction!=D_SHORT) return(_int(-1, catch("Strategy.AddSequence(4)   invalid parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (!IsValidSequenceStatus(status))                   return(_int(-1, catch("Strategy.AddSequence(5)   invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (gridSize <= 0)                                    return(_int(-1, catch("Strategy.AddSequence(5)   invalid parameter gridSize = "+ gridSize, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (lotSize <= 0)                                     return(_int(-1, catch("Strategy.AddSequence(6)   invalid parameter lotSize = "+ NumberToStr(lotSize, ".+"), ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (!IsValidSequenceStatus(status))                   return(_int(-1, catch("Strategy.AddSequence(7)   invalid parameter status = "+ status, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
    int size=ArraySize(sequence.id), hSeq=size;
    Strategy.ResizeArrays(size+1);
 
-   sequence.id    [hSeq] = sid;
-   sequence.test  [hSeq] = test;
-   sequence.status[hSeq] = status;
-   grid.direction [hSeq] = direction;
+   sequence.id     [hSeq] = sid;
+   sequence.test   [hSeq] = test;
+   sequence.status [hSeq] = status;
+   sequence.lotSize[hSeq] = lotSize;
+   grid.direction  [hSeq] = direction;
+   grid.size       [hSeq] = gridSize;
 
    InitStatusLocation(hSeq);
 
    return(hSeq);
+}
+
+
+/**
+ * Löscht alle gespeicherten Änderungen der Gridbasis und initialisiert sie mit dem angegebenen Wert.
+ *
+ * @param  int      hSeq  - Sequenz-Handle
+ * @param  datetime time  - Zeitpunkt
+ * @param  double   value - neue Gridbasis
+ *
+ * @return double - neue Gridbasis (for chaining) oder 0, falls ein Fehler auftrat
+ */
+double Grid.BaseReset(int hSeq, datetime time, double value) {
+   if (__STATUS_ERROR)                              return(0);
+   if (hSeq < 0 || hSeq > ArraySize(sequence.id)-1) return(_ZERO(catch("Grid.BaseReset()   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   ArrayResize(grid.base.event, 0);
+   ArrayResize(grid.base.time,  0);
+   ArrayResize(grid.base.value, 0);
+
+   return(Grid.BaseChange(time, value));
 }
 
 
@@ -274,13 +390,16 @@ int Strategy.ResizeArrays(int size) {
       ArrayResize(sequence.test,        size);
       ArrayResize(sequence.status,      size);
       ArrayResize(sequence.status.file, size);
-      ArrayResize(sequence.startStop,   size);
+      ArrayResize(sequence.lotSize,     size);
       ArrayResize(sequence.startEquity, size);
+      ArrayResize(sequence.ss.events,   size);
 
       ArrayResize(grid.direction,       size);
+      ArrayResize(grid.size,            size);
       ArrayResize(grid.level,           size);
       ArrayResize(grid.maxLevel,        size);
       ArrayResize(grid.commission,      size);
+      ArrayResize(grid.base.events,     size);
    }
    return(size);
 }
@@ -391,20 +510,10 @@ bool ValidateConfiguration(bool interactive) {
 
 
    // (3) GridSize
-   if (reasonParameters) {
-      if (GridSize != last.GridSize)
-         if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(8)", "Cannot change GridSize of "+ statusDescr[status] +" sequence", interactive)));
-      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   }
    if (GridSize < 1)                             return(_false(ValidateConfig.HandleError("ValidateConfiguration(9)", "Invalid GridSize = "+ GridSize, interactive)));
 
 
    // (4) LotSize
-   if (reasonParameters) {
-      if (NE(LotSize, last.LotSize))
-         if (status != STATUS_UNINITIALIZED)     return(_false(ValidateConfig.HandleError("ValidateConfiguration(10)", "Cannot change LotSize of "+ statusDescr[status] +" sequence", interactive)));
-      // TODO: Modify ist erlaubt, solange nicht die erste Position eröffnet wurde
-   }
    if (LE(LotSize, 0))                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(11)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+"), interactive)));
    double minLot  = MarketInfo(Symbol(), MODE_MINLOT );
    double maxLot  = MarketInfo(Symbol(), MODE_MAXLOT );
