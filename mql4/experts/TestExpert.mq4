@@ -35,15 +35,10 @@ int onTick() {
    //LocalPrimitives(init);
 
    //GlobalArrays(sized, init);
-   LocalArrays(sized, init, _static);
+   //LocalArrays(sized, init, _static);
 
    return(last_error);
 }
-
-
-
-
-
 
 
 /**
