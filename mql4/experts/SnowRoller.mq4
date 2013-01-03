@@ -173,11 +173,11 @@ double   stop.profitPct.value;
 // ---------------------------------
 datetime weekend.stop.condition   = D'1970.01.01 23:05';             // StopSequence()-Zeitpunkt vor Wochenend-Pause (Freitags abend)
 datetime weekend.stop.time;
-bool     weekend.stop.triggered;
+bool     weekend.stop.active;                                        // Sequenz-Eigenschaft (unterscheidet zwischen vorübergehend und dauerhaft gestoppter Sequenz)
 
 datetime weekend.resume.condition = D'1970.01.01 01:10';             // spätester ResumeSequence()-Zeitpunkt nach Wochenend-Pause (Montags morgen)
 datetime weekend.resume.time;
-bool     weekend.resume.triggered;
+bool     weekend.resume.triggered;                                   // ???
 
 // ---------------------------------
 datetime instanceStartTime;                                          // Start des EA's
@@ -1315,7 +1315,7 @@ bool IsResumeSignal() {
 
 
 /**
- * Signalgeber für ResumeSequence(). Prüft, ob die Weekend-Stop-Bedingung erfüllt ist.
+ * Signalgeber für ResumeSequence(). Prüft, ob die Weekend-Resume-Bedingung erfüllt ist.
  *
  * @return bool
  */
@@ -1380,7 +1380,7 @@ bool IsWeekendResumeSignal() {
    if (weekend.resume.time <= now) {
       if (weekend.resume.time/DAYS == now/DAYS) {                                // stellt sicher, daß Signal nicht von altem Datum getriggert wird
          weekend.resume.triggered = true;
-         if (__LOG) log(StringConcatenate("IsWeekendResumeSignal()   time condition '", GetDayOfWeek(weekend.resume.time, false), ", ", TimeToStr(weekend.resume.time, TIME_FULL), "' met"));
+         if (__LOG) log(StringConcatenate("IsWeekendResumeSignal()   resume condition '", GetDayOfWeek(weekend.resume.time, false), ", ", TimeToStr(weekend.resume.time, TIME_FULL), "' met"));
          return(true);
       }
    }
@@ -1540,15 +1540,15 @@ bool IsWeekendStopSignal() {
    if (__STATUS_ERROR)                                                                                    return(false);
    if (status!=STATUS_PROGRESSING) /*&&*/ if (status!=STATUS_STOPPING) /*&&*/ if (status!=STATUS_STOPPED) return(false);
 
-   if (weekend.stop.triggered) return( true);
+   if (weekend.stop.active)    return( true);
    if (weekend.stop.time == 0) return(false);
 
    datetime now = TimeCurrent();
 
    if (weekend.stop.time <= now) {
       if (weekend.stop.time/DAYS == now/DAYS) {                               // stellt sicher, daß Signal nicht von altem Datum getriggert wird
-         weekend.stop.triggered = true;
-         if (__LOG) log(StringConcatenate("IsWeekendStopSignal()   time condition '", GetDayOfWeek(weekend.stop.time, false), ", ", TimeToStr(weekend.stop.time, TIME_FULL), "' met"));
+         weekend.stop.active = true;
+         if (__LOG) log(StringConcatenate("IsWeekendStopSignal()   stop condition '", GetDayOfWeek(weekend.stop.time, false), ", ", TimeToStr(weekend.stop.time, TIME_FULL), "' met"));
          return(true);
       }
    }
@@ -1557,10 +1557,10 @@ bool IsWeekendStopSignal() {
 
 
 /**
- * Aktualisiert die Bedingungen für StopSequence() vor der Wochenend-Pause.
+ * Aktualisiert die Stopbedingung für die nächste Wochenend-Pause.
  */
 void UpdateWeekendStop() {
-   weekend.stop.triggered = false;
+   weekend.stop.active = false;
 
    datetime friday, now=ServerToFXT(TimeCurrent());
 
@@ -1575,9 +1575,8 @@ void UpdateWeekendStop() {
    }
    weekend.stop.time = (friday/DAYS)*DAYS + weekend.stop.condition%DAY;
    if (weekend.stop.time < now)
-      weekend.stop.time = (friday/DAYS)*DAYS + D'1970.01.01 23:55'%DAY;    // wenn Aufruf nach regulärem Stop, erfolgt neuer Stop 5 Minuten vor Handelsschluß
+      weekend.stop.time = (friday/DAYS)*DAYS + D'1970.01.01 23:55'%DAY;    // wenn Aufruf nach Weekend-Stop, erfolgt neuer Stop 5 Minuten vor Handelsschluß
    weekend.stop.time = FXTToServerTime(weekend.stop.time);
-   //debug("UpdateWeekendStop()   '"+ TimeToStr(TimeCurrent(), TIME_FULL) +"': stop condition updated to '"+ GetDayOfWeek(weekend.stop.time, false) +", "+ TimeToStr(weekend.stop.time, TIME_FULL) +"'");
 }
 
 
@@ -1748,7 +1747,7 @@ bool UpdatePendingOrders() {
 
 
 /**
- * Öffnet neue bzw. vervollständigt fehlende der zuletzt offenen Positionen der Sequenz. Aufruf nur in ResumeSequence()
+ * Öffnet neue bzw. vervollständigt fehlende offene Positionen einer Sequenz. Aufruf nur in StartSequence() und ResumeSequence().
  *
  * @param  datetime &lpOpenTime  - Zeiger auf Variable, die die OpenTime der zuletzt geöffneten Position aufnimmt
  * @param  double   &lpOpenPrice - Zeiger auf Variable, die den durchschnittlichen OpenPrice aufnimmt
@@ -4149,7 +4148,7 @@ bool SaveStatus() {
    bool     start.*.condition;         // nein: wird aus StartConditions abgeleitet
    bool     stop.*.condition;          // nein: wird aus StopConditions abgeleitet
 
-   bool     weekend.stop.triggered;    // ja
+   bool     weekend.stop.active;       // ja
 
    int      ignorePendingOrders  [];   // optional (wenn belegt)
    int      ignoreOpenPositions  [];   // optional (wenn belegt)
@@ -4695,7 +4694,7 @@ bool RestoreStatus.Runtime(string file, string line, string key, string value, s
    }
    else if (key == "rt.weekendStop") {
       if (!StringIsDigit(value))                                            return(_false(catch("RestoreStatus.Runtime(30)   illegal weekendStop \""+ value +"\" in status file \""+ file +"\" (line \""+ line +"\")", ERR_RUNTIME_ERROR)));
-      weekend.stop.triggered = (StrToInteger(value));
+      weekend.stop.active = (StrToInteger(value));
    }
    else if (key == "rt.ignorePendingOrders") {
       // rt.ignorePendingOrders=66064890,66064891,66064892
@@ -5128,12 +5127,12 @@ bool SynchronizeStatus() {
 
 
    // (3) Daten für Wochenend-Pause aktualisieren
-   if (weekend.stop.triggered) /*&&*/ if (status!=STATUS_STOPPED)
-      return(_false(catch("SynchronizeStatus(10)   weekend.stop.triggered="+ weekend.stop.triggered +" / status="+ StatusToStr(status)+ " mis-match", ERR_RUNTIME_ERROR)));
+   if (weekend.stop.active) /*&&*/ if (status!=STATUS_STOPPED)
+      return(_false(catch("SynchronizeStatus(10)   weekend.stop.active="+ weekend.stop.active +" / status="+ StatusToStr(status)+ " mis-match", ERR_RUNTIME_ERROR)));
 
    if      (status == STATUS_PROGRESSING) UpdateWeekendStop();
    else if (status == STATUS_STOPPED)
-      if (IsWeekendStopSignal())          UpdateWeekendResume();
+      if (weekend.stop.active)            UpdateWeekendResume();
 
 
    // (4) permanente Statusänderungen speichern

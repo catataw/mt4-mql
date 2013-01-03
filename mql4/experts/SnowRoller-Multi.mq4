@@ -32,7 +32,7 @@ int      last.GridSize;                                              // Input-Pa
 double   last.LotSize;                                               // mit den Default-Werten überschrieben. Um dies zu verhindern und um neue mit vorherigen Werten
 string   last.StartConditions = "";                                  // vergleichen zu können, werden sie in deinit() in diesen Variablen zwischengespeichert und in
                                                                      // init() wieder daraus restauriert.
-// --------------------------------
+// ----------------------------------
 bool     start.trend.condition;
 string   start.trend.condition.txt;
 double   start.trend.periods;
@@ -44,15 +44,20 @@ bool     start.level.condition;
 string   start.level.condition.txt;
 int      start.level.value;
 
-// --------------------------------
-int      sequence.id         [];
-bool     sequence.test       [];                                     // ob die Sequenz eine Testsequenz ist (im Tester oder im Online-Chart)
-int      sequence.status     [];
-string   sequence.status.file[][2];                                  // [0] - Verzeichnis (relativ zu ".\files\"), [1] - Dateiname der Statusdatei
-double   sequence.lotSize    [];
-double   sequence.startEquity[];                                     // Equity bei Start der Sequenz
+// ----------------------------------
+datetime weekend.stop.condition = D'1970.01.01 23:05';               // StopSequence()-Zeitpunkt vor Wochenend-Pause (Freitags abend)
+datetime weekend.stop.time;
 
-// --------------------------------
+// ----------------------------------
+int      sequence.id           [];
+bool     sequence.test         [];                                   // ob die Sequenz eine Testsequenz ist (im Tester oder im Online-Chart)
+int      sequence.status       [];
+string   sequence.status.file  [][2];                                // [0] - Verzeichnis (relativ zu ".\files\"), [1] - Dateiname der Statusdatei
+double   sequence.lotSize      [];
+double   sequence.startEquity  [];                                   // Equity bei Start der Sequenz
+bool     sequence.weStop.active[];                                   // Weekend-Stop aktiv (unterscheidet zwischen vorübergehend und dauerhaft gestoppten Sequenzen)
+
+// ----------------------------------
 int      sequence.ss.events  [][3];                                  // [0]=>from_index, [1]=>to_index, [2]=>size (Start-/Stopdaten sind synchron)
 
 int      sequenceStart.event [];                                     // Start-Daten (Moment von Statuswechsel zu STATUS_PROGRESSING)
@@ -65,14 +70,14 @@ datetime sequenceStop.time   [];
 double   sequenceStop.price  [];
 double   sequenceStop.profit [];
 
-// --------------------------------
+// ----------------------------------
 int      grid.direction [];
 int      grid.size      [];
 int      grid.level     [];                                          // aktueller Grid-Level
 int      grid.maxLevel  [];                                          // maximal erreichter Grid-Level
 double   grid.commission[];                                          // Commission-Betrag je Level
 
-// --------------------------------
+// ----------------------------------
 int      grid.base.events[][3];                                      // [0]=>from_index, [1]=>to_index, [2]=>size
 
 int      grid.base.event [];                                         // Gridbasis-Daten
@@ -149,9 +154,9 @@ int Strategy.CreateSequence(int direction) {
  * @return bool - Erfolgsstatus
  */
 bool StartSequence(int hSeq) {
-   if (__STATUS_ERROR)                              return( false);
-   if (hSeq < 0 || hSeq > ArraySize(sequence.id)-1) return(_false(catch("StartSequence(1)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (sequence.status[hSeq] != STATUS_WAITING)     return(_false(catch("StartSequence(2)   cannot start "+ statusDescr[sequence.status[hSeq]] +" sequence "+ sequence.id[hSeq], ERR_RUNTIME_ERROR)));
+   if (__STATUS_ERROR)                             return( false);
+   if (hSeq < 0 || hSeq >= ArraySize(sequence.id)) return(_false(catch("StartSequence(1)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (sequence.status[hSeq] != STATUS_WAITING)    return(_false(catch("StartSequence(2)   cannot start "+ statusDescr[sequence.status[hSeq]] +" sequence "+ sequence.id[hSeq], ERR_RUNTIME_ERROR)));
 
    if (Tick==1) /*&&*/ if (!ConfirmTick1Trade("StartSequence()", "Do you really want to start the new sequence "+ sequence.id[hSeq] +" now?"))
       return(_false(SetLastError(ERR_CANCELLED_BY_USER), catch("StartSequence(3)")));
@@ -184,8 +189,8 @@ bool StartSequence(int hSeq) {
    // (2) Gridbasis setzen (zeitlich nach sequenceStart.time)
    double gridBase = startPrice;
    if (start.level.condition) {
-      grid.level   [hSeq] = start.level.value;
-      grid.maxLevel[hSeq] = start.level.value;
+      grid.level   [hSeq] = ifInt(grid.direction[hSeq]==D_LONG, start.level.value, -start.level.value);
+      grid.maxLevel[hSeq] = grid.level[hSeq];
       gridBase            = NormalizeDouble(startPrice - grid.level[hSeq]*grid.size[hSeq]*Pips, Digits);
    }
    Grid.BaseReset(hSeq, startTime, gridBase);
@@ -194,8 +199,9 @@ bool StartSequence(int hSeq) {
    // (3) ggf. Startpositionen in den Markt legen und Sequenzstart-Price aktualisieren
    if (grid.level[hSeq] != 0) {
       datetime iNull;
-      if (!UpdateOpenPositions(iNull, startPrice))
+      if (!UpdateOpenPositions(hSeq, iNull, startPrice))
          return(false);
+      return(_false(catch("StartSequence(4.1)", ERR_FUNCTION_NOT_IMPLEMENTED)));
       sequenceStart.price[ArraySize(sequenceStart.price)-1] = startPrice;
    }
 
@@ -204,94 +210,58 @@ bool StartSequence(int hSeq) {
 
 
    // (4) Stop-Orders in den Markt legen
-   if (!UpdatePendingOrders())
+   if (!UpdatePendingOrders(hSeq))
       return(false);
 
 
    // (5) Weekend-Stop aktualisieren
    UpdateWeekendStop();
+   sequence.weStop.active[hSeq] = false;
 
 
-   RedrawStartStop();
-   if (__LOG) log(StringConcatenate("StartSequence()   sequence started at ", NumberToStr(startPrice, PriceFormat), ifString(grid.level, " and level "+ grid.level, "")));
+   RedrawStartStop(hSeq);
+   if (__LOG) log(StringConcatenate("StartSequence()   sequence started at ", NumberToStr(startPrice, PriceFormat), ifString(grid.level[hSeq], " and level "+ grid.level[hSeq], "")));
    return(!last_error|catch("StartSequence(4)"));
 }
 
 
 /**
- * Öffnet neue bzw. vervollständigt fehlende der zuletzt offenen Positionen der Sequenz. Aufruf nur in ResumeSequence()
+ * Zeichnet die Start-/Stop-Marker der Sequenz neu.
  *
- * @param  int       hSeq        - Sequenz-Handle (Verwaltungsindex)
- * @param  datetime &lpOpenTime  - Zeiger auf Variable, die die OpenTime der zuletzt geöffneten Position aufnimmt
- * @param  double   &lpOpenPrice - Zeiger auf Variable, die den durchschnittlichen OpenPrice aufnimmt
+ * @param  int hSeq - Sequenz-Handle
+ */
+void RedrawStartStop(int hSeq) {
+   if (__STATUS_ERROR)                             return;
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())    return;
+   if (hSeq < 0 || hSeq >= ArraySize(sequence.id)) return(_NULL(catch("RedrawStartStop(1)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+   return(_NULL(catch("RedrawStartStop(2)", ERR_FUNCTION_NOT_IMPLEMENTED)));
+}
+
+
+/**
+ * Aktualisiert die Stopbedingung für die nächste Wochenend-Pause.
  *
  * @return bool - Erfolgsstatus
- *
- *
- * NOTE: Im Level 0 (keine Positionen zu öffnen) werden die Variablen, auf die die übergebenen Pointer zeigen, nicht modifiziert.
  */
-bool UpdateOpenPositions(int hSeq, datetime &lpOpenTime, double &lpOpenPrice) {
-   if (__STATUS_ERROR)                              return( false);
-   if (IsTest()) /*&&*/ if (!IsTesting())           return(_false(catch("UpdateOpenPositions(1)", ERR_ILLEGAL_STATE)));
-   if (hSeq < 0 || hSeq > ArraySize(sequence.id)-1) return(_false(catch("UpdateOpenPositions(2)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
-   if (sequence.status[hSeq] != STATUS_STARTING)    return(_false(catch("UpdateOpenPositions(3)   cannot update positions of "+ statusDescr[sequence.status[hSeq]] +" sequence", ERR_RUNTIME_ERROR)));
+bool UpdateWeekendStop() {
+   if (__STATUS_ERROR)
+      return(false);
 
-   int i, level;
-   datetime openTime;
-   double   openPrice;
+   datetime friday, now=ServerToFXT(TimeCurrent());
 
-   grid.openRisk = 0;                                                            // grid.openRisk jedes mal neuberechnen
-
-
-   // (1) Long
-   if (grid.level > 0) {
-      for (level=1; level <= grid.level; level++) {
-         i = Grid.FindOpenPosition(level);
-         if (i == -1) {
-            if (!Grid.AddPosition(OP_BUY, level))
-               return(false);
-            if (!SaveStatus())                                                   // Status nach jeder Trade-Operation speichern, um das Ticket nicht zu verlieren,
-               return(false);                                                    // falls in einer der folgenden Operationen ein Fehler auftritt.
-            i = ArraySize(orders.ticket) - 1;
-         }
-         openTime       = Max(openTime, orders.openTime[i]);
-         openPrice     += orders.openPrice[i];
-         grid.openRisk += orders.openRisk [i];
-      }
-      openPrice /= Abs(grid.level);                                              // avg(OpenPrice)
+   switch (TimeDayOfWeek(now)) {
+      case SUNDAY   : friday = now + 5*DAYS; break;
+      case MONDAY   : friday = now + 4*DAYS; break;
+      case TUESDAY  : friday = now + 3*DAYS; break;
+      case WEDNESDAY: friday = now + 2*DAYS; break;
+      case THURSDAY : friday = now + 1*DAY ; break;
+      case FRIDAY   : friday = now + 0*DAYS; break;
+      case SATURDAY : friday = now + 6*DAYS; break;
    }
+   weekend.stop.time = FXTToServerTime((friday/DAYS)*DAYS + weekend.stop.condition%DAY);
 
-
-   // (2) Short
-   else if (grid.level < 0) {
-      for (level=-1; level >= grid.level; level--) {
-         i = Grid.FindOpenPosition(level);
-         if (i == -1) {
-            if (!Grid.AddPosition(OP_SELL, level))
-               return(false);
-            if (!SaveStatus())                                                   // Status nach jeder Trade-Operation speichern, um das Ticket nicht zu verlieren,
-               return(false);                                                    // falls in einer der folgenden Operationen ein Fehler auftritt.
-            i = ArraySize(orders.ticket) - 1;
-         }
-         openTime       = Max(openTime, orders.openTime[i]);
-         openPrice     += orders.openPrice[i];
-         grid.openRisk += orders.openRisk [i];
-      }
-      openPrice /= Abs(grid.level);                                              // avg(OpenPrice)
-   }
-
-
-   // (3) grid.valueAtRisk neuberechnen
-   grid.valueAtRisk = NormalizeDouble(grid.stopsPL + grid.openRisk, 2); SS.Grid.ValueAtRisk();
-
-
-   // (4) Ergebnis setzen
-   if (openTime != 0) {                                                          // grid.level != 0
-      lpOpenTime  = openTime;
-      lpOpenPrice = NormalizeDouble(openPrice, Digits);
-   }
-
-   return(!last_error|catch("UpdateOpenPositions(4)"));
+   return(!last_error|catch("UpdateWeekendStop()"));
 }
 
 
@@ -343,33 +313,68 @@ int Strategy.AddSequence(int sid, bool test, int direction, int gridSize, double
  * @return double - neue Gridbasis (for chaining) oder 0, falls ein Fehler auftrat
  */
 double Grid.BaseReset(int hSeq, datetime time, double value) {
-   if (__STATUS_ERROR)                              return(0);
-   if (hSeq < 0 || hSeq > ArraySize(sequence.id)-1) return(_ZERO(catch("Grid.BaseReset()   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (__STATUS_ERROR)                             return(0);
+   if (hSeq < 0 || hSeq >= ArraySize(sequence.id)) return(_ZERO(catch("Grid.BaseReset(1)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   ArrayResize(grid.base.event, 0);
-   ArrayResize(grid.base.time,  0);
-   ArrayResize(grid.base.value, 0);
+   return(_ZERO(catch("Grid.BaseReset(2)", ERR_FUNCTION_NOT_IMPLEMENTED)));
+}
 
-   return(Grid.BaseChange(time, value));
+
+/**
+ * Öffnet neue bzw. vervollständigt fehlende offene Positionen einer Sequenz. Aufruf nur in StartSequence() und ResumeSequence().
+ *
+ * @param  int       hSeq        - Sequenz-Handle (Verwaltungsindex)
+ * @param  datetime &lpOpenTime  - Zeiger auf Variable, die die OpenTime der zuletzt geöffneten Position aufnimmt
+ * @param  double   &lpOpenPrice - Zeiger auf Variable, die den durchschnittlichen OpenPrice aufnimmt
+ *
+ * @return bool - Erfolgsstatus
+ *
+ *
+ * NOTE: Im Level 0 (keine Positionen zu öffnen) werden die Variablen, auf die die übergebenen Pointer zeigen, nicht modifiziert.
+ */
+bool UpdateOpenPositions(int hSeq, datetime &lpOpenTime, double &lpOpenPrice) {
+   if (__STATUS_ERROR)                               return( false);
+   if (hSeq < 0 || hSeq >= ArraySize(sequence.id))   return(_false(catch("UpdateOpenPositions(1)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (sequence.status[hSeq] != STATUS_STARTING)     return(_false(catch("UpdateOpenPositions(2)   cannot update positions of "+ statusDescr[sequence.status[hSeq]] +" sequence", ERR_RUNTIME_ERROR)));
+   if (sequence.test[hSeq]) /*&&*/ if (!IsTesting()) return(_false(catch("UpdateOpenPositions(3)", ERR_ILLEGAL_STATE)));
+
+   return(_false(catch("UpdateOpenPositions(4)", ERR_FUNCTION_NOT_IMPLEMENTED)));
+}
+
+
+/**
+ * Aktualisiert vorhandene, setzt fehlende und löscht unnötige PendingOrders.
+ *
+ * @param  int hSeq - Sequenz-Handle (Verwaltungsindex)
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool UpdatePendingOrders(int hSeq) {
+   if (__STATUS_ERROR)                               return( false);
+   if (hSeq < 0 || hSeq >= ArraySize(sequence.id))   return(_false(catch("UpdatePendingOrders(1)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (sequence.status[hSeq] != STATUS_PROGRESSING)  return(_false(catch("UpdatePendingOrders(2)   cannot update orders of "+ statusDescr[sequence.status[hSeq]] +" sequence", ERR_RUNTIME_ERROR)));
+   if (sequence.test[hSeq]) /*&&*/ if (!IsTesting()) return(_false(catch("UpdatePendingOrders(3)", ERR_ILLEGAL_STATE)));
+
+   return(_false(catch("UpdatePendingOrders(4)", ERR_FUNCTION_NOT_IMPLEMENTED)));
 }
 
 
 /**
  * Initialisiert die Dateinamensvariablen der Statusdatei mit den Ausgangswerten einer neuen Sequenz.
  *
- * @param  int six - Verwaltungsindex der Sequenz
+ * @param  int hSeq - Sequenz-Handle
  *
  * @return bool - Erfolgsstatus
  */
-bool InitStatusLocation(int six) {
-   if (__STATUS_ERROR)                            return( false);
-   if (six < 0 || six > ArraySize(sequence.id)-1) return(_false(catch("InitStatusLocation(1)   invalid parameter six = "+ six, ERR_INVALID_FUNCTION_PARAMVALUE)));
+bool InitStatusLocation(int hSeq) {
+   if (__STATUS_ERROR)                             return( false);
+   if (hSeq < 0 || hSeq >= ArraySize(sequence.id)) return(_false(catch("InitStatusLocation(1)   invalid parameter hSeq = "+ hSeq, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-   if      (IsTesting())        sequence.status.file[six][0] = "presets\\";
-   else if (sequence.test[six]) sequence.status.file[six][0] = "presets\\tester\\";
-   else                         sequence.status.file[six][0] = "presets\\"+ ShortAccountCompany() +"\\";
+   if      (IsTesting())         sequence.status.file[hSeq][0] = "presets\\";
+   else if (sequence.test[hSeq]) sequence.status.file[hSeq][0] = "presets\\tester\\";
+   else                          sequence.status.file[hSeq][0] = "presets\\"+ ShortAccountCompany() +"\\";
 
-   sequence.status.file[six][1] = StringConcatenate(StringToLower(StdSymbol()), ".SR.", sequence.id[six], ".set");
+   sequence.status.file[hSeq][1] = StringConcatenate(StringToLower(StdSymbol()), ".SR.", sequence.id[hSeq], ".set");
 
    return(!catch("InitStatusLocation(2)"));
 }
@@ -386,20 +391,21 @@ int Strategy.ResizeArrays(int size) {
    int oldSize = ArraySize(sequence.id);
 
    if (size != oldSize) {
-      ArrayResize(sequence.id,          size);
-      ArrayResize(sequence.test,        size);
-      ArrayResize(sequence.status,      size);
-      ArrayResize(sequence.status.file, size);
-      ArrayResize(sequence.lotSize,     size);
-      ArrayResize(sequence.startEquity, size);
-      ArrayResize(sequence.ss.events,   size);
+      ArrayResize(sequence.id,            size);
+      ArrayResize(sequence.test,          size);
+      ArrayResize(sequence.status,        size);
+      ArrayResize(sequence.status.file,   size);
+      ArrayResize(sequence.lotSize,       size);
+      ArrayResize(sequence.startEquity,   size);
+      ArrayResize(sequence.ss.events,     size);
+      ArrayResize(sequence.weStop.active, size);
 
-      ArrayResize(grid.direction,       size);
-      ArrayResize(grid.size,            size);
-      ArrayResize(grid.level,           size);
-      ArrayResize(grid.maxLevel,        size);
-      ArrayResize(grid.commission,      size);
-      ArrayResize(grid.base.events,     size);
+      ArrayResize(grid.direction,         size);
+      ArrayResize(grid.size,              size);
+      ArrayResize(grid.level,             size);
+      ArrayResize(grid.maxLevel,          size);
+      ArrayResize(grid.commission,        size);
+      ArrayResize(grid.base.events,       size);
    }
    return(size);
 }
@@ -448,6 +454,8 @@ bool IsStartSignal(int &lpSignal) {
  * @return void
  */
 void StoreConfiguration(bool save=true) {
+   static int    _GridSize;
+   static double _LotSize;
    static string _StartConditions;
 
    static bool   _start.trend.condition;
@@ -458,7 +466,13 @@ void StoreConfiguration(bool save=true) {
    static string _start.trend.method;
    static int    _start.trend.lag;
 
+   static bool   _start.level.condition;
+   static string _start.level.condition.txt;
+   static int    _start.level.value;
+
    if (save) {
+      _GridSize                  = GridSize;
+      _LotSize                   = LotSize;
       _StartConditions           = StringConcatenate(StartConditions, "");  // Pointer-Bug bei String-Inputvariablen (siehe MQL.doc)
 
       _start.trend.condition     = start.trend.condition;
@@ -468,8 +482,14 @@ void StoreConfiguration(bool save=true) {
       _start.trend.timeframeFlag = start.trend.timeframeFlag;
       _start.trend.method        = start.trend.method;
       _start.trend.lag           = start.trend.lag;
+
+      _start.level.condition     = start.level.condition;
+      _start.level.condition.txt = start.level.condition.txt;
+      _start.level.value         = start.level.value;
    }
    else {
+      GridSize                   = _GridSize;
+      LotSize                    = _LotSize;
       StartConditions            = _StartConditions;
 
       start.trend.condition      = _start.trend.condition;
@@ -479,6 +499,10 @@ void StoreConfiguration(bool save=true) {
       start.trend.timeframeFlag  = _start.trend.timeframeFlag;
       start.trend.method         = _start.trend.method;
       start.trend.lag            = _start.trend.lag;
+
+      start.level.condition      = _start.level.condition;
+      start.level.condition.txt  = _start.level.condition.txt;
+      start.level.value          = _start.level.value;
    }
 }
 
@@ -523,7 +547,6 @@ bool ValidateConfiguration(bool interactive) {
    if (LT(LotSize, minLot))                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(13)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (MinLot="+  NumberToStr(minLot, ".+" ) +")", interactive)));
    if (GT(LotSize, maxLot))                      return(_false(ValidateConfig.HandleError("ValidateConfiguration(14)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (MaxLot="+  NumberToStr(maxLot, ".+" ) +")", interactive)));
    if (NE(MathModFix(LotSize, lotStep), 0))      return(_false(ValidateConfig.HandleError("ValidateConfiguration(15)", "Invalid LotSize = "+ NumberToStr(LotSize, ".+") +" (LotStep="+ NumberToStr(lotStep, ".+") +")", interactive)));
-   SS.LotSize();
 
 
    // (5) StartConditions, AND-verknüpft: "(@trend(xxMA:7xD1[+1] && @level(3)"
@@ -602,11 +625,7 @@ bool ValidateConfiguration(bool interactive) {
             if (start.level.condition)                 return(_false(ValidateConfig.HandleError("ValidateConfiguration(41)", "Invalid StartConditions = \""+ StartConditions +"\" (multiple level conditions)", interactive)));
             if (!StringIsInteger(value))               return(_false(ValidateConfig.HandleError("ValidateConfiguration(42)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             iValue = StrToInteger(value);
-            if (grid.direction == D_LONG) {
-               if (iValue < 0)                         return(_false(ValidateConfig.HandleError("ValidateConfiguration(43)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
-            }
-            else if (iValue > 0)
-               iValue = -iValue;
+            if (iValue <= 0)                           return(_false(ValidateConfig.HandleError("ValidateConfiguration(43)", "Invalid StartConditions = \""+ StartConditions +"\"", interactive)));
             if (ArraySize(sequenceStart.event) != 0)   return(_false(ValidateConfig.HandleError("ValidateConfiguration(44)", "Invalid StartConditions = \""+ StartConditions +"\" (illegal level statement)", interactive)));
             start.level.condition     = true;
             start.level.value         = iValue;
