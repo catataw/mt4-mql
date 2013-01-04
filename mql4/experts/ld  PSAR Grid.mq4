@@ -17,7 +17,6 @@ extern int    magic                   = 110412;
 
 // Configuration
 extern string CommonSettings          = "---------------------------------------------";
-extern int    user_slippage           =  2;
 extern int    grid_size               = 40;
 extern double profit_lock             =  0.90;
 
@@ -58,7 +57,6 @@ double buy_max_profit,   buy_close_profit;
 double sell_max_profit,  sell_close_profit;
 
 double balance, equity;
-int    slippage;
 
 int    retry_attempts       = 10;                                    // OrderReliable
 double sleep_time           =  4.0;
@@ -72,13 +70,6 @@ int    _OR_err;
  *
  */
 int onTick() {
-   if (MarketInfo(Symbol(), MODE_DIGITS)==4 || MarketInfo(Symbol(), MODE_DIGITS)==2) {
-      slippage = user_slippage;
-   }
-   else if (MarketInfo(Symbol(), MODE_DIGITS)==5 || MarketInfo(Symbol(), MODE_DIGITS)==3) {
-      slippage = 10 * user_slippage;
-   }
-
    if (!IsTradeAllowed()) {
       Comment("Copyright © 2011, www.lifesdream.org\nTrading not allowed.");
       return(catch("onTick(1)"));
@@ -269,11 +260,7 @@ void ShowLines() {
    double buy_b, sell_b;
    double buy_pip, sell_pip;
    double buy_v[50], sell_v[50];
-   double point = MarketInfo(Symbol(), MODE_POINT);
    int i, factor=1;
-
-   if (slippage > user_slippage)
-      point *= 10;
 
    if (buys >= 1) {
       aux_tp_buy = CalculateTP(buy_lots[0]);
@@ -297,13 +284,13 @@ void ShowLines() {
          buy_b = buy_b + buy_v[i] * buy_price[i];
       }
 
-      buy_tar = aux_tp_buy/(buy_pip/point);
+      buy_tar = aux_tp_buy/(buy_pip/Pip);
       buy_tar = buy_tar + buy_b;
       buy_tar = buy_tar / buy_a;
       HorizontalLine(buy_tar, "line_buy", DodgerBlue, STYLE_SOLID, 2);
 
       if (buy_close_profit > 0) {
-         buy_tar = buy_close_profit/(buy_pip/point);
+         buy_tar = buy_close_profit/(buy_pip/Pip);
          buy_tar = buy_tar + buy_b;
          buy_tar = buy_tar / buy_a;
          HorizontalLine(buy_tar, "line_buy_ts", DodgerBlue, STYLE_DASH, 1);
@@ -324,13 +311,13 @@ void ShowLines() {
          sell_b = sell_b + sell_v[i] * sell_price[i];
       }
 
-      sell_tar = -1*(aux_tp_sell/(sell_pip/point));
+      sell_tar = -1*(aux_tp_sell/(sell_pip/Pip));
       sell_tar = sell_tar + sell_b;
       sell_tar = sell_tar / sell_a;
       HorizontalLine(sell_tar, "line_sell", Tomato, STYLE_SOLID, 2);
 
       if (sell_close_profit > 0) {
-         sell_tar = -1*(sell_close_profit/(sell_pip/point));
+         sell_tar = -1*(sell_close_profit/(sell_pip/Pip));
          sell_tar = sell_tar + sell_b;
          sell_tar = sell_tar / sell_a;
          HorizontalLine(sell_tar, "line_sell_ts", Tomato, STYLE_DASH, 1);
@@ -529,17 +516,19 @@ void Robot() {
    price1 = iClose(Symbol(), 0, shift  );
    price2 = iClose(Symbol(), 0, shift+1);
 
+   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
+
    // *************************
    // ACCOUNT RISK CONTROL
    // *************************
    if ((100-account_risk)/100 * AccountBalance() > AccountEquity()) {
       // Closing buy orders
       for (i=0; i<=buys-1; i++) {
-         closed = OrderCloseReliable(buy_tickets[i], buy_lots[i], MarketInfo(Symbol(), MODE_BID), slippage, Blue);
+         closed = OrderCloseEx(buy_tickets[i], buy_lots[i], MarketInfo(Symbol(), MODE_BID), 0.2, Blue, oeFlags, oe);
       }
       // Closing sell orders
       for (i=0; i<=sells-1; i++) {
-         closed = OrderCloseReliable(sell_tickets[i], sell_lots[i], MarketInfo(Symbol(), MODE_ASK), slippage, Red);
+         closed = OrderCloseEx(sell_tickets[i], sell_lots[i], MarketInfo(Symbol(), MODE_ASK), 0.2, Red, oeFlags, oe);
       }
       BuyResetAfterClose();
       SellResetAfterClose();
@@ -550,7 +539,7 @@ void Robot() {
    // **************************************************
    if (buys == 0) {
       if (psar1<price1 && psar2>price2)
-         ticket = OrderSendReliable(Symbol(), OP_BUY, CalculateStartingVolume(), MarketInfo(Symbol(), MODE_ASK), slippage, 0, 0, key, magic, 0, Blue);
+         ticket = OrderSendEx(Symbol(), OP_BUY, CalculateStartingVolume(), MarketInfo(Symbol(), MODE_ASK), 0.2, 0, 0, key, magic, 0, Blue, oeFlags, oe);
    }
 
    // **************************************************
@@ -560,7 +549,7 @@ void Robot() {
       // CASE 1 >>> We reach Stop Loss (grid size)
       if (total_buy_profit < CalculateSL(total_buy_lots)) {
          if (buys<50 && psar1<price1 && psar2>price2) {
-            ticket = OrderSendReliable(Symbol(), OP_BUY, MartingaleVolume(total_buy_profit), MarketInfo(Symbol(), MODE_ASK), slippage, 0, 0, key, magic, 0, Blue);
+            ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(total_buy_profit), MarketInfo(Symbol(), MODE_ASK), 0.2, 0, 0, key, magic, 0, Blue, oeFlags, oe);
          }
       }
 
@@ -581,7 +570,7 @@ void Robot() {
       // CASE 2.3 >>> If profit falls below profit locked we close all orders
       if (buy_max_profit>0 && buy_close_profit>0 && buy_max_profit>buy_close_profit && total_buy_profit<buy_close_profit) {
          for (i=0; i<=buys-1; i++) {
-            closed = OrderCloseReliable(buy_tickets[i], buy_lots[i], MarketInfo(Symbol(), MODE_BID), slippage, Blue);
+            closed = OrderCloseEx(buy_tickets[i], buy_lots[i], MarketInfo(Symbol(), MODE_BID), 0.2, Blue, oeFlags, oe);
          }
          // At this point all orders are closed. Global vars will be updated thanks to UpdateVars() on next start() execution
          BuyResetAfterClose();
@@ -593,7 +582,7 @@ void Robot() {
    // **************************************************
    if (sells == 0) {
       if (psar1>price1 && psar2<price2)
-         ticket = OrderSendReliable(Symbol(), OP_SELL, CalculateStartingVolume(), MarketInfo(Symbol(), MODE_BID), slippage, 0, 0, key, magic, 0, Red);
+         ticket = OrderSendEx(Symbol(), OP_SELL, CalculateStartingVolume(), MarketInfo(Symbol(), MODE_BID), 0.2, 0, 0, key, magic, 0, Red, oeFlags, oe);
    }
 
    // **************************************************
@@ -603,7 +592,7 @@ void Robot() {
       // CASE 1 >>> We reach Stop Loss (grid size)
       if (total_sell_profit < CalculateSL(total_sell_lots)) {
          if (sells<50 && psar1>price1 && psar2<price2) {
-            ticket = OrderSendReliable(Symbol(), OP_SELL, MartingaleVolume(total_sell_profit), MarketInfo(Symbol(), MODE_BID), slippage, 0, 0, key, magic, 0, Red);
+            ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(total_sell_profit), MarketInfo(Symbol(), MODE_BID), 0.2, 0, 0, key, magic, 0, Red, oeFlags, oe);
          }
       }
 
@@ -624,604 +613,11 @@ void Robot() {
       // CASE 2.3 >>> If profit falls below profit locked we close all orders
       if (sell_max_profit>0 && sell_close_profit>0 && sell_max_profit>sell_close_profit && total_sell_profit<sell_close_profit) {
          for (i=0; i<=sells-1; i++) {
-            closed = OrderCloseReliable(sell_tickets[i], sell_lots[i], MarketInfo(Symbol(), MODE_ASK), slippage, Red);
+            closed = OrderCloseEx(sell_tickets[i], sell_lots[i], MarketInfo(Symbol(), MODE_ASK), 0.2, Red, oeFlags, oe);
          }
          // At this point all orders are closed. Global vars will be updated thanks to UpdateVars() on next start() execution
          SellResetAfterClose();
       }
    }
    catch("Robot()");
-}
-
-
-//=============================================================================
-//                    OrderSendReliable()
-//
-// This is intended to be a drop-in replacement for OrderSend() which,
-// one hopes, is more resistant to various forms of errors prevalent
-// with MetaTrader.
-//
-// RETURN VALUE:
-//
-// Ticket number or -1 under some error conditions.  Check
-// final error returned by Metatrader with OrderReliableLastErr().
-// This will reset the value from GetLastError(), so in that sense it cannot
-// be a total drop-in replacement due to Metatrader flaw.
-//
-// FEATURES:
-//
-//     * Re-trying under some error conditions, sleeping a random
-//       time defined by an exponential probability distribution.
-//
-//     * Automatic normalization of Digits
-//
-//     * Automatically makes sure that stop levels are more than
-//       the minimum stop distance, as given by the server. If they
-//       are too close, they are adjusted.
-//
-//     * Automatically converts stop orders to market orders
-//       when the stop orders are rejected by the server for
-//       being to close to market.  NOTE: This intentionally
-//       applies only to OP_BUYSTOP and OP_SELLSTOP,
-//       OP_BUYLIMIT and OP_SELLLIMIT are not converted to market
-//       orders and so for prices which are too close to current
-//       this function is likely to loop a few times and return
-//       with the "invalid stops" error message.
-//       Note, the commentary in previous versions erroneously said
-//       that limit orders would be converted.  Note also
-//       that entering a BUYSTOP or SELLSTOP new order is distinct
-//       from setting a stoploss on an outstanding order; use
-//       OrderModifyReliable() for that.
-//
-//     * Displays various error messages on the log for debugging.
-//
-//
-// Matt Kennel, 2006-05-28 and following
-//
-//=============================================================================
-int OrderSendReliable(string symbol, int cmd, double volume, double price, int slippage, double stoploss, double takeprofit, string comment, int magic, datetime expiration = 0, color arrow_color = CLR_NONE) {
-
-   // ------------------------------------------------
-   // Check basic conditions see if trade is possible.
-   // ------------------------------------------------
-   OrderReliable_Fname = "OrderSendReliable";
-   OrderReliablePrint(" attempted " + OrderReliable_CommandString(cmd) + " " + volume +
-                  " lots @" + price + " sl:" + stoploss + " tp:" + takeprofit);
-
-   //if (!IsConnected())
-   //{
-   // OrderReliablePrint("error: IsConnected() == false");
-   // _OR_err = ERR_NO_CONNECTION;
-   // return(-1);
-   //}
-
-   if (IsStopped())
-   {
-      OrderReliablePrint("error: IsStopped() == true");
-      _OR_err = ERR_COMMON_ERROR;
-      return(_int(-1, catch("OrderSendReliable(1)")));
-   }
-
-   int cnt = 0;
-   while(!IsTradeAllowed() && cnt < retry_attempts)
-   {
-      OrderReliable_SleepRandomTime(sleep_time, sleep_maximum);
-      cnt++;
-   }
-
-   if (!IsTradeAllowed())
-   {
-      OrderReliablePrint("error: no operation possible because IsTradeAllowed()==false, even after retries.");
-      _OR_err = ERR_TRADE_CONTEXT_BUSY;
-      return(_int(-1, catch("OrderSendReliable(2)")));
-   }
-
-   // Normalize all price / stoploss / takeprofit to the proper # of digits.
-   int digits = MarketInfo(symbol, MODE_DIGITS);
-   if (digits > 0)
-   {
-      price = NormalizeDouble(price, digits);
-      stoploss = NormalizeDouble(stoploss, digits);
-      takeprofit = NormalizeDouble(takeprofit, digits);
-   }
-
-   if (stoploss != 0)
-      OrderReliable_EnsureValidStop(symbol, price, stoploss);
-
-   int err = GetLastError(); // clear the global variable.
-   err = 0;
-   _OR_err = 0;
-   bool exit_loop = false;
-   bool limit_to_market = false;
-
-   // limit/stop order.
-   int ticket=-1;
-
-   if ((cmd == OP_BUYSTOP) || (cmd == OP_SELLSTOP) || (cmd == OP_BUYLIMIT) || (cmd == OP_SELLLIMIT))
-   {
-      cnt = 0;
-      while (!exit_loop)
-      {
-         if (IsTradeAllowed())
-         {
-            ticket = OrderSend(symbol, cmd, volume, price, slippage, stoploss,
-                           takeprofit, comment, magic, expiration, arrow_color);
-            err = GetLastError();
-            _OR_err = err;
-         }
-         else
-         {
-            cnt++;
-         }
-
-         switch (err)
-         {
-            case ERR_NO_ERROR:
-               exit_loop = true;
-               break;
-
-            // retryable errors
-            case ERR_SERVER_BUSY:
-            case ERR_NO_CONNECTION:
-            case ERR_INVALID_PRICE:
-            case ERR_OFF_QUOTES:
-            case ERR_BROKER_BUSY:
-            case ERR_TRADE_CONTEXT_BUSY:
-               cnt++;
-               break;
-
-            case ERR_PRICE_CHANGED:
-            case ERR_REQUOTE:
-               RefreshRates();
-               continue;   // we can apparently retry immediately according to MT docs.
-
-            case ERR_INVALID_STOPS:
-               double servers_min_stop = MarketInfo(symbol, MODE_STOPLEVEL) * MarketInfo(symbol, MODE_POINT);
-               if (cmd == OP_BUYSTOP)
-               {
-                  // If we are too close to put in a limit/stop order so go to market.
-                  if (MathAbs(MarketInfo(symbol,MODE_ASK) - price) <= servers_min_stop)
-                     limit_to_market = true;
-
-               }
-               else if (cmd == OP_SELLSTOP)
-               {
-                  // If we are too close to put in a limit/stop order so go to market.
-                  if (MathAbs(MarketInfo(symbol,MODE_BID) - price) <= servers_min_stop)
-                     limit_to_market = true;
-               }
-               exit_loop = true;
-               break;
-
-            default:
-               // an apparently serious error.
-               exit_loop = true;
-               break;
-
-         }  // end switch
-
-         if (cnt > retry_attempts)
-            exit_loop = true;
-
-         if (exit_loop)
-         {
-            if (err != ERR_NO_ERROR)
-            {
-               OrderReliablePrint("non-retryable error: " + OrderReliableErrTxt(err));
-            }
-            if (cnt > retry_attempts)
-            {
-               OrderReliablePrint("retry attempts maxed at " + retry_attempts);
-            }
-         }
-
-         if (!exit_loop)
-         {
-            OrderReliablePrint("retryable error (" + cnt + "/" + retry_attempts +
-                           "): " + OrderReliableErrTxt(err));
-            OrderReliable_SleepRandomTime(sleep_time, sleep_maximum);
-            RefreshRates();
-         }
-      }
-
-      // We have now exited from loop.
-      if (err == ERR_NO_ERROR)
-      {
-         OrderReliablePrint("apparently successful OP_BUYSTOP or OP_SELLSTOP order placed, details follow.");
-         OrderSelect(ticket, SELECT_BY_TICKET, MODE_TRADES);
-         OrderPrint();
-         return(_int(ticket, catch("OrderSendReliable(3)"))); // SUCCESS!
-      }
-      if (!limit_to_market)
-      {
-         OrderReliablePrint("failed to execute stop or limit order after " + cnt + " retries");
-         OrderReliablePrint("failed trade: " + OrderReliable_CommandString(cmd) + " " + symbol +
-                        "@" + price + " tp@" + takeprofit + " sl@" + stoploss);
-         OrderReliablePrint("last error: " + OrderReliableErrTxt(err));
-         return(_int(-1, catch("OrderSendReliable(4)")));
-      }
-   }  // end
-
-   if (limit_to_market)
-   {
-      OrderReliablePrint("going from limit order to market order because market is too close.");
-      if ((cmd == OP_BUYSTOP) || (cmd == OP_BUYLIMIT))
-      {
-         cmd = OP_BUY;
-         price = MarketInfo(symbol,MODE_ASK);
-      }
-      else if ((cmd == OP_SELLSTOP) || (cmd == OP_SELLLIMIT))
-      {
-         cmd = OP_SELL;
-         price = MarketInfo(symbol,MODE_BID);
-      }
-   }
-
-   // we now have a market order.
-   err = GetLastError(); // so we clear the global variable.
-   err = 0;
-   _OR_err = 0;
-   ticket = -1;
-
-   if ((cmd == OP_BUY) || (cmd == OP_SELL))
-   {
-      cnt = 0;
-      while (!exit_loop)
-      {
-         if (IsTradeAllowed())
-         {
-            ticket = OrderSend(symbol, cmd, volume, price, slippage,
-                           stoploss, takeprofit, comment, magic,
-                           expiration, arrow_color);
-            err = GetLastError();
-            _OR_err = err;
-         }
-         else
-         {
-            cnt++;
-         }
-         switch (err)
-         {
-            case ERR_NO_ERROR:
-               exit_loop = true;
-               break;
-
-            case ERR_SERVER_BUSY:
-            case ERR_NO_CONNECTION:
-            case ERR_INVALID_PRICE:
-            case ERR_OFF_QUOTES:
-            case ERR_BROKER_BUSY:
-            case ERR_TRADE_CONTEXT_BUSY:
-               cnt++; // a retryable error
-               break;
-
-            case ERR_PRICE_CHANGED:
-            case ERR_REQUOTE:
-               RefreshRates();
-               continue; // we can apparently retry immediately according to MT docs.
-
-            default:
-               // an apparently serious, unretryable error.
-               exit_loop = true;
-               break;
-
-         }  // end switch
-
-         if (cnt > retry_attempts)
-            exit_loop = true;
-
-         if (!exit_loop)
-         {
-            OrderReliablePrint("retryable error (" + cnt + "/" +
-                           retry_attempts + "): " + OrderReliableErrTxt(err));
-            OrderReliable_SleepRandomTime(sleep_time,sleep_maximum);
-            RefreshRates();
-         }
-
-         if (exit_loop)
-         {
-            if (err != ERR_NO_ERROR)
-            {
-               OrderReliablePrint("non-retryable error: " + OrderReliableErrTxt(err));
-            }
-            if (cnt > retry_attempts)
-            {
-               OrderReliablePrint("retry attempts maxed at " + retry_attempts);
-            }
-         }
-      }
-
-      // we have now exited from loop.
-      if (err == ERR_NO_ERROR)
-      {
-         OrderReliablePrint("apparently successful OP_BUY or OP_SELL order placed, details follow.");
-         OrderSelect(ticket, SELECT_BY_TICKET, MODE_TRADES);
-         OrderPrint();
-         return(_int(ticket, catch("OrderSendReliable(5)"))); // SUCCESS!
-      }
-      OrderReliablePrint("failed to execute OP_BUY/OP_SELL, after " + cnt + " retries");
-      OrderReliablePrint("failed trade: " + OrderReliable_CommandString(cmd) + " " + symbol +
-                     "@" + price + " tp@" + takeprofit + " sl@" + stoploss);
-      OrderReliablePrint("last error: " + OrderReliableErrTxt(err));
-      return(_int(-1, catch("OrderSendReliable(6)")));
-   }
-}
-
-
-//=============================================================================
-//                    OrderCloseReliable()
-//
-// This is intended to be a drop-in replacement for OrderClose() which,
-// one hopes, is more resistant to various forms of errors prevalent
-// with MetaTrader.
-//
-// RETURN VALUE:
-//
-//    TRUE if successful, FALSE otherwise
-//
-//
-// FEATURES:
-//
-//     * Re-trying under some error conditions, sleeping a random
-//       time defined by an exponential probability distribution.
-//
-//     * Displays various error messages on the log for debugging.
-//
-//
-// Derk Wehler, ashwoods155@yahoo.com     2006-07-19
-//
-//=============================================================================
-bool OrderCloseReliable(int ticket, double lots, double price, int slippage, color arrow_color = CLR_NONE) {
-   int nOrderType;
-   string strSymbol;
-   OrderReliable_Fname = "OrderCloseReliable";
-
-   OrderReliablePrint(" attempted close of #" + ticket + " price:" + price +
-                  " lots:" + lots + " slippage:" + slippage);
-
-// collect details of order so that we can use GetMarketInfo later if needed
-   if (!OrderSelect(ticket,SELECT_BY_TICKET))
-   {
-      _OR_err = GetLastError();
-      OrderReliablePrint("error: " + ErrorDescription(_OR_err));
-      return(_false(catch("OrderCloseReliable(1)")));
-   }
-   else
-   {
-      nOrderType = OrderType();
-      strSymbol = OrderSymbol();
-   }
-
-   if (nOrderType != OP_BUY && nOrderType != OP_SELL)
-   {
-      _OR_err = ERR_INVALID_TICKET;
-      OrderReliablePrint("error: trying to close ticket #" + ticket + ", which is " + OrderReliable_CommandString(nOrderType) + ", not OP_BUY or OP_SELL");
-      return(_false(catch("OrderCloseReliable(2)")));
-   }
-
-   //if (!IsConnected())
-   //{
-   // OrderReliablePrint("error: IsConnected() == false");
-   // _OR_err = ERR_NO_CONNECTION;
-   // return(false);
-   //}
-
-   if (IsStopped())
-   {
-      OrderReliablePrint("error: IsStopped() == true");
-      return(_false(catch("OrderCloseReliable(3)")));
-   }
-
-
-   int cnt = 0;
-/*
-   Commented out by Paul Hampton-Smith due to a bug in MT4 that sometimes incorrectly returns IsTradeAllowed() = false
-   while(!IsTradeAllowed() && cnt < retry_attempts)
-   {
-      OrderReliable_SleepRandomTime(sleep_time,sleep_maximum);
-      cnt++;
-   }
-   if (!IsTradeAllowed())
-   {
-      OrderReliablePrint("error: no operation possible because IsTradeAllowed()==false, even after retries.");
-      _OR_err = ERR_TRADE_CONTEXT_BUSY;
-      return(false);
-   }
-*/
-
-   int err = GetLastError(); // so we clear the global variable.
-   err = 0;
-   _OR_err = 0;
-   bool exit_loop = false;
-   cnt = 0;
-   bool result = false;
-
-   while (!exit_loop)
-   {
-      if (IsTradeAllowed())
-      {
-         result = OrderClose(ticket, lots, price, slippage, arrow_color);
-         err = GetLastError();
-         _OR_err = err;
-      }
-      else
-         cnt++;
-
-      if (result == true)
-         exit_loop = true;
-
-      switch (err)
-      {
-         case ERR_NO_ERROR:
-            exit_loop = true;
-            break;
-
-         case ERR_SERVER_BUSY:
-         case ERR_NO_CONNECTION:
-         case ERR_INVALID_PRICE:
-         case ERR_OFF_QUOTES:
-         case ERR_BROKER_BUSY:
-         case ERR_TRADE_CONTEXT_BUSY:
-         case ERR_TRADE_TIMEOUT:    // for modify this is a retryable error, I hope.
-            cnt++;   // a retryable error
-            break;
-
-         case ERR_PRICE_CHANGED:
-         case ERR_REQUOTE:
-            continue;   // we can apparently retry immediately according to MT docs.
-
-         default:
-            // an apparently serious, unretryable error.
-            exit_loop = true;
-            break;
-
-      }  // end switch
-
-      if (cnt > retry_attempts)
-         exit_loop = true;
-
-      if (!exit_loop)
-      {
-         OrderReliablePrint("retryable error (" + cnt + "/" + retry_attempts +
-                        "): "  +  OrderReliableErrTxt(err));
-         OrderReliable_SleepRandomTime(sleep_time,sleep_maximum);
-         // Added by Paul Hampton-Smith to ensure that price is updated for each retry
-         if (nOrderType == OP_BUY)  price = NormalizeDouble(MarketInfo(strSymbol,MODE_BID),MarketInfo(strSymbol,MODE_DIGITS));
-         if (nOrderType == OP_SELL) price = NormalizeDouble(MarketInfo(strSymbol,MODE_ASK),MarketInfo(strSymbol,MODE_DIGITS));
-      }
-
-      if (exit_loop)
-      {
-         if ((err != ERR_NO_ERROR) && (err != ERR_NO_RESULT))
-            OrderReliablePrint("non-retryable error: "  + OrderReliableErrTxt(err));
-
-         if (cnt > retry_attempts)
-            OrderReliablePrint("retry attempts maxed at " + retry_attempts);
-      }
-   }
-
-   // we have now exited from loop.
-   if ((result == true) || (err == ERR_NO_ERROR))
-   {
-      OrderReliablePrint("apparently successful close order, updated trade details follow.");
-      OrderSelect(ticket, SELECT_BY_TICKET, MODE_TRADES);
-      OrderPrint();
-      return(_true(catch("OrderCloseReliable(4)"))); // SUCCESS!
-   }
-
-   OrderReliablePrint("failed to execute close after " + cnt + " retries");
-   OrderReliablePrint("failed close: Ticket #" + ticket + ", Price: " +
-                  price + ", Slippage: " + slippage);
-   OrderReliablePrint("last error: " + OrderReliableErrTxt(err));
-
-   return(_false(catch("OrderCloseReliable(5)")));
-}
-
-
-/**
- *
- */
-string OrderReliableErrTxt(int err) {
-   return ("" + err + ":" + ErrorDescription(err));
-}
-
-
-/**
- *
- */
-void OrderReliablePrint(string s) {
-   // Print to log prepended with stuff;
-   if (!(IsTesting() || IsOptimization())) Print(OrderReliable_Fname + " " + OrderReliableVersion + ":" + s);
-}
-
-
-/**
- *
- */
-string OrderReliable_CommandString(int cmd) {
-   if (cmd == OP_BUY)
-      return("OP_BUY");
-
-   if (cmd == OP_SELL)
-      return("OP_SELL");
-
-   if (cmd == OP_BUYSTOP)
-      return("OP_BUYSTOP");
-
-   if (cmd == OP_SELLSTOP)
-      return("OP_SELLSTOP");
-
-   if (cmd == OP_BUYLIMIT)
-      return("OP_BUYLIMIT");
-
-   if (cmd == OP_SELLLIMIT)
-      return("OP_SELLLIMIT");
-
-   return("(CMD==" + cmd + ")");
-}
-
-
-/**
- * Adjust stop loss so that it is legal.
- *
- * @author  Matt Kennel
- */
-void OrderReliable_EnsureValidStop(string symbol, double price, double &sl) {
-   // Return if no S/L
-   if (sl == 0)
-      return(_NULL(catch("OrderReliable_EnsureValidStop(1)")));
-
-   double servers_min_stop = MarketInfo(symbol, MODE_STOPLEVEL) * MarketInfo(symbol, MODE_POINT);
-
-   if (MathAbs(price - sl) <= servers_min_stop)
-   {
-      // we have to adjust the stop.
-      if (price > sl)
-         sl = price - servers_min_stop;   // we are long
-
-      else if (price < sl)
-         sl = price + servers_min_stop;   // we are short
-
-      else
-         OrderReliablePrint("EnsureValidStop: error, passed in price == sl, cannot adjust");
-
-      sl = NormalizeDouble(sl, MarketInfo(symbol, MODE_DIGITS));
-   }
-   return(_NULL(catch("OrderReliable_EnsureValidStop(2)")));
-}
-
-
-/**
- * This sleeps a random amount of time defined by an exponential
- * probability distribution. The mean time, in Seconds is given
- * in 'mean_time'.
- *
- * This is the back-off strategy used by Ethernet.  This will
- * quantize in tenths of seconds, so don't call this with a too
- * small a number.  This returns immediately if we are backtesting
- * and does not sleep.
- *
- * @author  Matt Kennel
- */
-void OrderReliable_SleepRandomTime(double mean_time, double max_time) {
-   if (IsTesting())
-      return;  // return immediately if backtesting.
-
-   double tenths = MathCeil(mean_time / 0.1);
-   if (tenths <= 0)
-      return;
-
-   int maxtenths = MathRound(max_time/0.1);
-   double p = 1.0 - 1.0 / tenths;
-
-   Sleep(100);    // one tenth of a second PREVIOUS VERSIONS WERE STUPID HERE.
-
-   for(int i=0; i < maxtenths; i++)
-   {
-      if (MathRand() > p*32768)
-         break;
-
-      // MathRand() returns in 0..32767
-      Sleep(100);
-   }
 }
