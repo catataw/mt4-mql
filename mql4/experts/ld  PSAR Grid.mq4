@@ -13,24 +13,20 @@ int __DEINIT_FLAGS__[];
 
 ///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////
 
-extern int    magic                   = 110412;
+extern int    magic                           = 110412;
 
-// Configuration
-extern string CommonSettings          = "---------------------------------------------";
-extern int    grid_size               = 40;
-extern double profit_lock             =  0.90;
+extern string ____________Common_____________ = "___________________________________";
+extern int    grid_size                       = 40;
+extern double profit_lock                     = 0.90;
 
-// Money Management
-extern string MoneyManagementSettings = "---------------------------------------------";
-extern double min_lots                =   0.1;
-extern double min_lots_increment      =   0.1;
-extern double account_risk            = 100;
+extern string ________MoneyManagement________ = "___________________________________";
+extern double min_lots                        = 0.1;
+extern double min_lots_increment              = 0.1;
+extern double account_risk                    = 100;
 
-// Indicator
-extern string IndicatorSettings       = "---------------------------------------------";
-extern double psar_step               = 0.02;
-extern double psar_maximum            = 0.2;
-extern int    shift                   = 1;
+extern string ___________Indicator___________ = "___________________________________";
+extern double psar_step                       = 0.02;
+extern double psar_maximum                    = 0.2;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -45,8 +41,6 @@ double sell_lots   [50];
 double sell_price  [50];
 double sell_profit [50];
 
-double psar1, psar2, price1, price2;                                 // Indicator
-
 int    buys;                                                         // Number of orders
 int    sells;
 double total_buy_profit, total_sell_profit;
@@ -57,7 +51,7 @@ double sell_max_profit,  sell_locked_profit;
 double balance, equity;
 
 double slippage = 0.1;                                               // order slippage
-string comment  = "PSAR Grid";                                       // order comment
+string comment  = "ld04 PSAR";                                       // order comment
 
 
 /**
@@ -264,45 +258,32 @@ void ShowLines() {
  *
  */
 int ShowStatus() {
-   string txt;
-   double aux_tp_buy, aux_tp_sell;
-
-   if (buys > 0) {
-      aux_tp_buy = GridValue(min_lots);
-   }
-
-   if (sells > 0) {
-      aux_tp_sell = GridValue(min_lots);
-   }
-
-   txt = NL +
-         "\nPSAR Martingale Grid"    +
-         "\n"                        +
-         "\nSETTINGS: "              +
-         "\nGrid size: "             + grid_size +
-         "\nProfit locked: "         + DoubleToStr(100*profit_lock, 2) + "%"+
-         "\nMinimum lots: "          + DoubleToStr(min_lots, 2) +
-         "\nAccount risk: "          + DoubleToStr(account_risk, 0) + "%"+
-         "\nPSAR step: "             + DoubleToStr(psar_step, 0) +
-         "\nPSAR maximum: "          + DoubleToStr(psar_maximum, 0) +
-         "\nPSAR shift: "            + DoubleToStr(shift, 0) +
-         "\n"                        +
-         "\nBUY ORDERS"              +
-         "\nNumber of orders: "      + buys +
-         "\nTotal lots: "            + DoubleToStr(total_buy_lots, 2) +
-         "\nCurrent profit: "        + DoubleToStr(total_buy_profit, 2) +
-         "\nProfit target: "         + DoubleToStr(aux_tp_buy, 2) +
-         "\nMaximum profit reached: "+ DoubleToStr(buy_max_profit, 2) +
-         "\nProfit locked: "         + DoubleToStr(buy_locked_profit, 2) +
-         "\n"                        +
-         "\nSELL ORDERS"             +
-         "\nNumber of orders: "      + sells +
-         "\nTotal lots: "            + DoubleToStr(total_sell_lots, 2) +
-         "\nCurrent profit: "        + DoubleToStr(total_sell_profit, 2) +
-         "\nProfit target: "         + DoubleToStr(aux_tp_sell, 2) +
-         "\nMaximum profit reached: "+ DoubleToStr(sell_max_profit, 2) +
-         "\nProfit locked: "         + DoubleToStr(sell_locked_profit, 2);
-   Comment(txt);
+   string message = NL +
+                   "\nPSAR Martingale Grid"+
+                   "\n"                    +
+                   "\nSETTINGS: "          +
+                   "\nGrid size: "         + grid_size +
+                   "\nLot size: "          + DoubleToStr(min_lots, 2) +
+                   "\nProfit target: "     + DoubleToStr(GridValue(min_lots), 2) +
+                   "\nTrailing stop: "     + Round(100*profit_lock) + "%"+
+                   "\nAccount risk: "      + Round(account_risk) + "%"+
+                   "\nPSAR step: "         + DoubleToStr(psar_step, 0) +
+                   "\nPSAR maximum: "      + DoubleToStr(psar_maximum, 0) +
+                   "\n"                    +
+                   "\nLONG"                +
+                   "\nOpen orders: "       + buys +
+                   "\nOpen lots: "         + DoubleToStr(total_buy_lots, 2) +
+                   "\nCurrent profit: "    + DoubleToStr(total_buy_profit, 2) +
+                   "\nMaximum profit: "    + DoubleToStr(buy_max_profit, 2) +
+                   "\nLocked profit: "     + DoubleToStr(buy_locked_profit, 2) +
+                   "\n"                    +
+                   "\nSHORT"               +
+                   "\nOpen orders: "       + sells +
+                   "\nOpen lots: "         + DoubleToStr(total_sell_lots, 2) +
+                   "\nCurrent profit: "    + DoubleToStr(total_sell_profit, 2) +
+                   "\nMaximum profit: "    + DoubleToStr(sell_max_profit, 2) +
+                   "\nLocked profit: "     + DoubleToStr(sell_locked_profit, 2);
+   Comment(message);
 
    catch("ShowData()");
 }
@@ -348,8 +329,8 @@ double MartingaleVolume(double losses) {
 /**
  *
  */
-double GridValue(double volume) {
-   return(grid_size * PipValue(volume));
+double GridValue(double lots) {
+   return(grid_size * PipValue(lots));
 }
 
 
@@ -357,21 +338,18 @@ double GridValue(double volume) {
  *
  */
 void Robot() {
-   int i, ticket=-1;
-
-   psar1  =   iSAR(Symbol(), 0, psar_step, psar_maximum, shift  );
-   psar2  =   iSAR(Symbol(), 0, psar_step, psar_maximum, shift+1);
-   price1 = iClose(Symbol(), 0, shift  );
-   price2 = iClose(Symbol(), 0, shift+1);
+   double psar1 = iSAR(Symbol(), 0, psar_step, psar_maximum, 1);     // Bar 1 (closed bar)
+   double psar2 = iSAR(Symbol(), 0, psar_step, psar_maximum, 2);     // Bar 2 (previous bar)
 
    int oeFlags=NULL, /*ORDER_EXECUTION*/oe[]; InitializeBuffer(oe, ORDER_EXECUTION.size);
+   int ticket;
 
    // *************************
    // ACCOUNT RISK CONTROL
    // *************************
    if ((100-account_risk)/100 * AccountBalance() > AccountEquity()) {
       // Closing buy orders
-      for (i=0; i<=buys-1; i++) {
+      for (int i=0; i<=buys-1; i++) {
          if (!OrderCloseEx(buy_tickets[i], buy_lots[i], Bid, slippage, Blue, oeFlags, oe))
             return(_NULL(SetLastError(oe.Error(oe))));
       }
@@ -388,7 +366,7 @@ void Robot() {
    // BUYS == 0
    // **************************************************
    if (buys == 0) {
-      if (psar1 < price1) /*&&*/ if (psar2 > price2) {
+      if (psar1 < Close[1]) /*&&*/ if (psar2 > Close[2]) {
          ticket = OrderSendEx(Symbol(), OP_BUY, min_lots, Ask, slippage, 0, 0, comment, magic, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
             return(_NULL(SetLastError(oe.Error(oe))));
@@ -401,7 +379,7 @@ void Robot() {
    if (buys > 0) {
       // CASE 1 >>> We reach Stop Loss (grid size)
       if (total_buy_profit < -GridValue(total_buy_lots)) {
-         if (buys < 50 && psar1 < price1 && psar2 > price2) {
+         if (buys < 50 && psar1 < Close[1] && psar2 > Close[2]) {
             ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(total_buy_profit), Ask, slippage, 0, 0, comment, magic, 0, Blue, oeFlags, oe);
             if (ticket <= 0)
                return(_NULL(SetLastError(oe.Error(oe))));
@@ -437,7 +415,7 @@ void Robot() {
    // SELLS == 0
    // **************************************************
    if (sells == 0) {
-      if (psar1 > price1) /*&&*/ if (psar2 < price2) {
+      if (psar1 > Close[1]) /*&&*/ if (psar2 < Close[2]) {
          ticket = OrderSendEx(Symbol(), OP_SELL, min_lots, Bid, slippage, 0, 0, comment, magic, 0, Red, oeFlags, oe);
          if (ticket <= 0)
             return(_NULL(SetLastError(oe.Error(oe))));
@@ -450,7 +428,7 @@ void Robot() {
    if (sells > 0) {
       // CASE 1 >>> We reach Stop Loss (grid size)
       if (total_sell_profit < -GridValue(total_sell_lots)) {
-         if (sells<50 && psar1>price1 && psar2<price2) {
+         if (sells < 50 && psar1 > Close[1] && psar2 < Close[2]) {
             ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(total_sell_profit), Bid, slippage, 0, 0, comment, magic, 0, Red, oeFlags, oe);
             if (ticket <= 0)
                return(_NULL(SetLastError(oe.Error(oe))));
