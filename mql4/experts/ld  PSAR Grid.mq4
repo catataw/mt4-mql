@@ -51,8 +51,8 @@ int    buys;                                                         // Number o
 int    sells;
 double total_buy_profit, total_sell_profit;
 double total_buy_lots,   total_sell_lots;
-double buy_max_profit,   buy_close_profit;
-double sell_max_profit,  sell_close_profit;
+double buy_max_profit,   buy_locked_profit;
+double sell_max_profit,  sell_locked_profit;
 
 double balance, equity;
 
@@ -64,10 +64,9 @@ string comment  = "PSAR Grid";                                       // order co
  *
  */
 int onTick() {
-   // Updating current status
    UpdateVars();
-   ShowStatus();
    ShowLines();
+   ShowStatus();
 
    Robot();
 
@@ -79,9 +78,9 @@ int onTick() {
  *
  */
 void BuyResetAfterClose() {
-   buy_max_profit   = 0;
-   buy_close_profit = 0;
-   ObjectDelete("line_buy"   );
+   buy_max_profit    = 0;
+   buy_locked_profit = 0;
+   ObjectDelete("line_buy_tp");
    ObjectDelete("line_buy_ts");
 
    catch("BuyResetAfterClose()");
@@ -92,9 +91,9 @@ void BuyResetAfterClose() {
  *
  */
 void SellResetAfterClose() {
-   sell_max_profit   = 0;
-   sell_close_profit = 0;
-   ObjectDelete("line_sell"   );
+   sell_max_profit    = 0;
+   sell_locked_profit = 0;
+   ObjectDelete("line_sell_tp");
    ObjectDelete("line_sell_ts");
 
    catch("SellResetAfterClose()");
@@ -221,73 +220,40 @@ void SortByLots() {
  *
  */
 void ShowLines() {
-   double aux_tp_buy, aux_tp_sell;
-   double buy_tar, sell_tar;
-   double buy_a, sell_a;
-   double buy_b, sell_b;
-   double buy_pip, sell_pip;
-   double buy_v[50], sell_v[50];
-   int i, factor=1;
+   int units, sumUnits;
+   double sumOpenPrice, takeProfit, trailingStop;
 
    if (buys > 0) {
-      aux_tp_buy = CalculateTPValue(buy_lots[0]);
+      sumUnits     = 0;
+      sumOpenPrice = 0;
+      for (int i=0; i<buys; i++) {
+         units         = Round(buy_lots[i] / min_lots);
+         sumUnits     +=  units;
+         sumOpenPrice += (units * buy_price[i]);
+      }
+      takeProfit = (sumOpenPrice + grid_size*Pip) / sumUnits;
+      HorizontalLine(takeProfit, "line_buy_tp", DodgerBlue, STYLE_SOLID, 2);
+
+      if (buy_locked_profit > 0) {
+         trailingStop = (sumOpenPrice + buy_locked_profit/PipValue(min_lots)*Pip) / sumUnits;
+         HorizontalLine(trailingStop, "line_buy_ts", DodgerBlue, STYLE_DASH, 1);
+      }
    }
 
    if (sells > 0) {
-      aux_tp_sell = CalculateTPValue(sell_lots[0]);
-   }
-
-   if (buys > 1) {
-      buy_pip = PipValue(buy_lots[0]);
-      for (i=0; i<50; i++)
-         buy_v[i] = 0;
-
-      for (i=0; i<buys; i++) {
-         buy_v[i] = MathRound(buy_lots[i]/buy_lots[0]);
-      }
-
-      for (i=0; i<buys; i++) {
-         buy_a = buy_a + buy_v[i];
-         buy_b = buy_b + buy_v[i] * buy_price[i];
-      }
-
-      buy_tar = aux_tp_buy/(buy_pip/Pip);
-      buy_tar = buy_tar + buy_b;
-      buy_tar = buy_tar / buy_a;
-      HorizontalLine(buy_tar, "line_buy", DodgerBlue, STYLE_SOLID, 2);
-
-      if (buy_close_profit > 0) {
-         buy_tar = buy_close_profit/(buy_pip/Pip);
-         buy_tar = buy_tar + buy_b;
-         buy_tar = buy_tar / buy_a;
-         HorizontalLine(buy_tar, "line_buy_ts", DodgerBlue, STYLE_DASH, 1);
-      }
-   }
-
-   if (sells > 1) {
-      sell_pip = PipValue(sell_lots[0]);
-      for (i=0; i<50; i++)
-         sell_v[i] = 0;
-
+      sumUnits     = 0;
+      sumOpenPrice = 0;
       for (i=0; i<sells; i++) {
-         sell_v[i] = MathRound(sell_lots[i]/sell_lots[0]);
+         units         =  Round(sell_lots[i] / min_lots);
+         sumUnits     +=  units;
+         sumOpenPrice += (units * sell_price[i]);
       }
+      takeProfit = (sumOpenPrice - grid_size*Pip) / sumUnits;
+      HorizontalLine(takeProfit, "line_sell_tp", Tomato, STYLE_SOLID, 2);
 
-      for (i=0; i<sells; i++) {
-         sell_a = sell_a + sell_v[i];
-         sell_b = sell_b + sell_v[i] * sell_price[i];
-      }
-
-      sell_tar = -1*(aux_tp_sell/(sell_pip/Pip));
-      sell_tar = sell_tar + sell_b;
-      sell_tar = sell_tar / sell_a;
-      HorizontalLine(sell_tar, "line_sell", Tomato, STYLE_SOLID, 2);
-
-      if (sell_close_profit > 0) {
-         sell_tar = -1*(sell_close_profit/(sell_pip/Pip));
-         sell_tar = sell_tar + sell_b;
-         sell_tar = sell_tar / sell_a;
-         HorizontalLine(sell_tar, "line_sell_ts", Tomato, STYLE_DASH, 1);
+      if (sell_locked_profit > 0) {
+         trailingStop = (sumOpenPrice - sell_locked_profit/PipValue(min_lots)*Pip) / sumUnits;
+         HorizontalLine(trailingStop, "line_sell_ts", Tomato, STYLE_DASH, 1);
       }
    }
    catch("ShowLines()");
@@ -302,11 +268,11 @@ int ShowStatus() {
    double aux_tp_buy, aux_tp_sell;
 
    if (buys > 0) {
-      aux_tp_buy = CalculateTPValue(buy_lots[0]);
+      aux_tp_buy = GridValue(min_lots);
    }
 
    if (sells > 0) {
-      aux_tp_sell = CalculateTPValue(sell_lots[0]);
+      aux_tp_sell = GridValue(min_lots);
    }
 
    txt = NL +
@@ -327,7 +293,7 @@ int ShowStatus() {
          "\nCurrent profit: "        + DoubleToStr(total_buy_profit, 2) +
          "\nProfit target: "         + DoubleToStr(aux_tp_buy, 2) +
          "\nMaximum profit reached: "+ DoubleToStr(buy_max_profit, 2) +
-         "\nProfit locked: "         + DoubleToStr(buy_close_profit, 2) +
+         "\nProfit locked: "         + DoubleToStr(buy_locked_profit, 2) +
          "\n"                        +
          "\nSELL ORDERS"             +
          "\nNumber of orders: "      + sells +
@@ -335,7 +301,7 @@ int ShowStatus() {
          "\nCurrent profit: "        + DoubleToStr(total_sell_profit, 2) +
          "\nProfit target: "         + DoubleToStr(aux_tp_sell, 2) +
          "\nMaximum profit reached: "+ DoubleToStr(sell_max_profit, 2) +
-         "\nProfit locked: "         + DoubleToStr(sell_close_profit, 2);
+         "\nProfit locked: "         + DoubleToStr(sell_locked_profit, 2);
    Comment(txt);
 
    catch("ShowData()");
@@ -365,56 +331,25 @@ void HorizontalLine(double value, string name, color lineColor, int style, int t
 /**
  *
  */
-double CalculateDecimals(double volume) {
-   double aux;
-   int decimals;
-
-   if (min_lots_increment >= 1) {
-      decimals = 0;
-   }
-   else {
-      decimals = 0;
-      aux = volume;
-      while (aux < 1) {
-         decimals++;
-         aux *= 10;
-      }
-   }
-   catch("CalculateDecimals()");
-   return(decimals);
-}
-
-
-/**
- *
- */
 double MartingaleVolume(double losses) {
-   double grid_value = CalculateTPValue(min_lots);                   // minimum grid value
+   double grid_value = GridValue(min_lots);
    double multiplier = MathFloor(MathAbs(losses/grid_value));
-   double aux        = NormalizeDouble(multiplier * min_lots_increment, CalculateDecimals(min_lots_increment));
+   double lots       = NormalizeDouble(multiplier * min_lots_increment, CountDecimals(min_lots_increment));
 
-   if (aux < min_lots)                          aux = min_lots;
-   if (aux > MarketInfo(Symbol(), MODE_MAXLOT)) aux = MarketInfo(Symbol(), MODE_MAXLOT);
-   if (aux < MarketInfo(Symbol(), MODE_MINLOT)) aux = MarketInfo(Symbol(), MODE_MINLOT);
+   if (lots < min_lots)                          lots = min_lots;
+   if (lots > MarketInfo(Symbol(), MODE_MAXLOT)) lots = MarketInfo(Symbol(), MODE_MAXLOT);
+   if (lots < MarketInfo(Symbol(), MODE_MINLOT)) lots = MarketInfo(Symbol(), MODE_MINLOT);
 
    catch("MartingaleVolume()");
-   return(aux);
+   return(lots);
 }
 
 
 /**
  *
  */
-double CalculateTPValue(double volume) {
+double GridValue(double volume) {
    return(grid_size * PipValue(volume));
-}
-
-
-/**
- *
- */
-double CalculateSLValue(double volume) {
-   return(-grid_size * PipValue(volume));
 }
 
 
@@ -423,7 +358,6 @@ double CalculateSLValue(double volume) {
  */
 void Robot() {
    int i, ticket=-1;
-   bool closed;
 
    psar1  =   iSAR(Symbol(), 0, psar_step, psar_maximum, shift  );
    psar2  =   iSAR(Symbol(), 0, psar_step, psar_maximum, shift+1);
@@ -438,53 +372,61 @@ void Robot() {
    if ((100-account_risk)/100 * AccountBalance() > AccountEquity()) {
       // Closing buy orders
       for (i=0; i<=buys-1; i++) {
-         closed = OrderCloseEx(buy_tickets[i], buy_lots[i], MarketInfo(Symbol(), MODE_BID), slippage, Blue, oeFlags, oe);
+         if (!OrderCloseEx(buy_tickets[i], buy_lots[i], Bid, slippage, Blue, oeFlags, oe))
+            return(_NULL(SetLastError(oe.Error(oe))));
       }
       // Closing sell orders
       for (i=0; i<=sells-1; i++) {
-         closed = OrderCloseEx(sell_tickets[i], sell_lots[i], MarketInfo(Symbol(), MODE_ASK), slippage, Red, oeFlags, oe);
+         if (!OrderCloseEx(sell_tickets[i], sell_lots[i], Ask, slippage, Red, oeFlags, oe))
+            return(_NULL(SetLastError(oe.Error(oe))));
       }
       BuyResetAfterClose();
       SellResetAfterClose();
    }
 
    // **************************************************
-   // BUYS==0
+   // BUYS == 0
    // **************************************************
    if (buys == 0) {
-      if (psar1<price1 && psar2>price2)
-         ticket = OrderSendEx(Symbol(), OP_BUY, min_lots, MarketInfo(Symbol(), MODE_ASK), slippage, 0, 0, comment, magic, 0, Blue, oeFlags, oe);
+      if (psar1 < price1) /*&&*/ if (psar2 > price2) {
+         ticket = OrderSendEx(Symbol(), OP_BUY, min_lots, Ask, slippage, 0, 0, comment, magic, 0, Blue, oeFlags, oe);
+         if (ticket <= 0)
+            return(_NULL(SetLastError(oe.Error(oe))));
+      }
    }
 
    // **************************************************
-   // BUYS>=1
+   // BUYS > 0
    // **************************************************
-   if (buys >= 1) {
+   if (buys > 0) {
       // CASE 1 >>> We reach Stop Loss (grid size)
-      if (total_buy_profit < CalculateSLValue(total_buy_lots)) {
-         if (buys<50 && psar1<price1 && psar2>price2) {
-            ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(total_buy_profit), MarketInfo(Symbol(), MODE_ASK), slippage, 0, 0, comment, magic, 0, Blue, oeFlags, oe);
+      if (total_buy_profit < -GridValue(total_buy_lots)) {
+         if (buys < 50 && psar1 < price1 && psar2 > price2) {
+            ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(total_buy_profit), Ask, slippage, 0, 0, comment, magic, 0, Blue, oeFlags, oe);
+            if (ticket <= 0)
+               return(_NULL(SetLastError(oe.Error(oe))));
          }
       }
 
       // CASE 2.1 >>> We reach Take Profit so we activate profit lock
-      if (buy_max_profit==0 && total_buy_profit > CalculateTPValue(buy_lots[0])) {
-         buy_max_profit   = total_buy_profit;
-         buy_close_profit = profit_lock * buy_max_profit;
+      if (buy_max_profit==0 && total_buy_profit > GridValue(min_lots)) {
+         buy_max_profit    = total_buy_profit;
+         buy_locked_profit = profit_lock * buy_max_profit;
       }
 
       // CASE 2.2 >>> Profit locked is updated in real time
       if (buy_max_profit > 0) {
          if (total_buy_profit > buy_max_profit) {
-            buy_max_profit   = total_buy_profit;
-            buy_close_profit = profit_lock * total_buy_profit;
+            buy_max_profit    = total_buy_profit;
+            buy_locked_profit = profit_lock * total_buy_profit;
          }
       }
 
       // CASE 2.3 >>> If profit falls below profit locked we close all orders
-      if (buy_max_profit>0 && buy_close_profit>0 && buy_max_profit>buy_close_profit && total_buy_profit<buy_close_profit) {
+      if (buy_max_profit>0 && buy_locked_profit>0 && buy_max_profit>buy_locked_profit && total_buy_profit<buy_locked_profit) {
          for (i=0; i<=buys-1; i++) {
-            closed = OrderCloseEx(buy_tickets[i], buy_lots[i], MarketInfo(Symbol(), MODE_BID), slippage, Blue, oeFlags, oe);
+            if (!OrderCloseEx(buy_tickets[i], buy_lots[i], Bid, slippage, Blue, oeFlags, oe))
+               return(_NULL(SetLastError(oe.Error(oe))));
          }
          // At this point all orders are closed. Global vars will be updated thanks to UpdateVars() on next start() execution
          BuyResetAfterClose();
@@ -492,42 +434,48 @@ void Robot() {
    }
 
    // **************************************************
-   // SELLS==0
+   // SELLS == 0
    // **************************************************
    if (sells == 0) {
-      if (psar1>price1 && psar2<price2)
-         ticket = OrderSendEx(Symbol(), OP_SELL, min_lots, MarketInfo(Symbol(), MODE_BID), slippage, 0, 0, comment, magic, 0, Red, oeFlags, oe);
+      if (psar1 > price1) /*&&*/ if (psar2 < price2) {
+         ticket = OrderSendEx(Symbol(), OP_SELL, min_lots, Bid, slippage, 0, 0, comment, magic, 0, Red, oeFlags, oe);
+         if (ticket <= 0)
+            return(_NULL(SetLastError(oe.Error(oe))));
+      }
    }
 
    // **************************************************
-   // SELLS>=1
+   // SELLS > 0
    // **************************************************
-   if (sells >= 1) {
+   if (sells > 0) {
       // CASE 1 >>> We reach Stop Loss (grid size)
-      if (total_sell_profit < CalculateSLValue(total_sell_lots)) {
+      if (total_sell_profit < -GridValue(total_sell_lots)) {
          if (sells<50 && psar1>price1 && psar2<price2) {
-            ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(total_sell_profit), MarketInfo(Symbol(), MODE_BID), slippage, 0, 0, comment, magic, 0, Red, oeFlags, oe);
+            ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(total_sell_profit), Bid, slippage, 0, 0, comment, magic, 0, Red, oeFlags, oe);
+            if (ticket <= 0)
+               return(_NULL(SetLastError(oe.Error(oe))));
          }
       }
 
       // CASE 2.1 >>> We reach Take Profit so we activate profit lock
-      if (sell_max_profit==0 && total_sell_profit>CalculateTPValue(sell_lots[0])) {
-         sell_max_profit   = total_sell_profit;
-         sell_close_profit = profit_lock*sell_max_profit;
+      if (sell_max_profit==0 && total_sell_profit > GridValue(min_lots)) {
+         sell_max_profit    = total_sell_profit;
+         sell_locked_profit = profit_lock*sell_max_profit;
       }
 
       // CASE 2.2 >>> Profit locked is updated in real time
       if (sell_max_profit > 0) {
          if (total_sell_profit > sell_max_profit) {
-            sell_max_profit   = total_sell_profit;
-            sell_close_profit = profit_lock*sell_max_profit;
+            sell_max_profit    = total_sell_profit;
+            sell_locked_profit = profit_lock*sell_max_profit;
          }
       }
 
       // CASE 2.3 >>> If profit falls below profit locked we close all orders
-      if (sell_max_profit>0 && sell_close_profit>0 && sell_max_profit>sell_close_profit && total_sell_profit<sell_close_profit) {
+      if (sell_max_profit>0 && sell_locked_profit>0 && sell_max_profit>sell_locked_profit && total_sell_profit<sell_locked_profit) {
          for (i=0; i<=sells-1; i++) {
-            closed = OrderCloseEx(sell_tickets[i], sell_lots[i], MarketInfo(Symbol(), MODE_ASK), slippage, Red, oeFlags, oe);
+            if (!OrderCloseEx(sell_tickets[i], sell_lots[i], Ask, slippage, Red, oeFlags, oe))
+               return(_NULL(SetLastError(oe.Error(oe))));
          }
          // At this point all orders are closed. Global vars will be updated thanks to UpdateVars() on next start() execution
          SellResetAfterClose();
