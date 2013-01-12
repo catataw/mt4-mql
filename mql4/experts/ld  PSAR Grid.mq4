@@ -1,5 +1,5 @@
 /**
- * PSAR Martingale Grid
+ * PSAR Martingale System
  *
  * @copyright  http://www.lifesdream.org/
  */
@@ -12,8 +12,6 @@ int __DEINIT_FLAGS__[];
 
 
 ///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////
-
-extern int    magic                           = 110412;
 
 extern string ____________Common_____________ = "___________________________________";
 extern int    GridSize                        = 40;
@@ -53,6 +51,7 @@ double short.sumProfit;
 double short.maxProfit;
 double short.lockedProfit;
 
+int    magicNo  = 110412;
 double slippage = 0.1;                                               // order slippage
 string comment  = "ld04 PSAR";                                       // order comment
 
@@ -61,10 +60,8 @@ string comment  = "ld04 PSAR";                                       // order co
  *
  */
 int onTick() {
-   UpdateVars();
-   ShowLines();
+   UpdateStatus();
    ShowStatus();
-
    Robot();
    return(catch("onTick()"));
 }
@@ -99,7 +96,7 @@ void SellResetAfterClose() {
 /**
  *
  */
-void UpdateVars() {
+void UpdateStatus() {
    // reset vars
    long.level      = 0;
    long.sumLots    = 0;
@@ -122,7 +119,7 @@ void UpdateVars() {
    // we are going to introduce data from opened orders in arrays
    for (int i=0; i < OrdersTotal(); i++) {
       if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) {
-         if (OrderSymbol()==Symbol()) /*&&*/ if (OrderMagicNumber()==magic) {
+         if (OrderSymbol()==Symbol()) /*&&*/ if (OrderMagicNumber()==magicNo) {
             if (OrderType() == OP_BUY) {
                long.ticket   [long.level] = OrderTicket();
                long.lots     [long.level] = OrderLots();
@@ -145,7 +142,7 @@ void UpdateVars() {
       }
    }
    SortByLots();
-   catch("UpdateVars()");
+   catch("UpdateStatus()");
 }
 
 
@@ -260,34 +257,39 @@ void ShowLines() {
  *
  */
 int ShowStatus() {
+   //if (IsTesting()) /*&&*/ if (!IsVisualMode())
+   //   return(NO_ERROR);
+
    string message = NL +
-                   "\nPSAR Martingale Grid"+
+                   "\nPSAR Martingale System"+
                    "\n"                    +
-                   "\nSETTINGS: "          +
                    "\nGrid size: "         + GridSize +" pips"+
-                   "\nUnit size: "         + DoubleToStr(UnitSize, CountDecimals(UnitSize)) +
+                   "\nUnit size: "         + NumberToStr(UnitSize, ".+") +
+                   "\nIncrement size: "    + NumberToStr(IncrementSize, ".+") +
                    "\nProfit target: "     + DoubleToStr(GridValue(UnitSize), 2) +
                    "\nTrailing stop: "     + TrailingStop.Percent +"%"+
-                   "\nMax. Drawdown: "     + MaxDrawdown.Percent +"%"+
-                   "\nPSAR step: "         + DoubleToStr(PSAR.Step, 0) +
-                   "\nPSAR maximum: "      + DoubleToStr(PSAR.Maximum, 0) +
+                   "\nMax. drawdown: "     + MaxDrawdown.Percent +"%"+
+                   "\nPSAR step: "         + NumberToStr(PSAR.Step, ".1+") +
+                   "\nPSAR maximum: "      + NumberToStr(PSAR.Maximum, ".1+") +
                    "\n"                    +
                    "\nLONG"                +
-                   "\nOpen positions: "    + long.level +
-                   "\nOpen lots: "         + DoubleToStr(long.sumLots, 2) +
+                   "\nOpen orders: "       + long.level +
+                   "\nOpen lots: "         + NumberToStr(long.sumLots, ".1+") +
                    "\nCurrent profit: "    + DoubleToStr(long.sumProfit, 2) +
                    "\nMaximum profit: "    + DoubleToStr(long.maxProfit, 2) +
                    "\nLocked profit: "     + DoubleToStr(long.lockedProfit, 2) +
                    "\n"                    +
                    "\nSHORT"               +
-                   "\nOpen positions: "    + short.level +
-                   "\nOpen lots: "         + DoubleToStr(short.sumLots, 2) +
+                   "\nOpen orders: "       + short.level +
+                   "\nOpen lots: "         + NumberToStr(short.sumLots, ".1+") +
                    "\nCurrent profit: "    + DoubleToStr(short.sumProfit, 2) +
                    "\nMaximum profit: "    + DoubleToStr(short.maxProfit, 2) +
                    "\nLocked profit: "     + DoubleToStr(short.lockedProfit, 2);
    Comment(message);
 
-   catch("ShowData()");
+   ShowLines();
+
+   return(catch("ShowStatus()"));
 }
 
 
@@ -363,7 +365,7 @@ void Robot() {
    // **************************************************
    if (long.level == 0) {
       if (psar1 < Close[1]) /*&&*/ if (psar2 > Close[2]) {
-         ticket = OrderSendEx(Symbol(), OP_BUY, UnitSize, NULL, slippage, 0, 0, comment, magic, 0, Blue, oeFlags, oe);
+         ticket = OrderSendEx(Symbol(), OP_BUY, UnitSize, NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
             return(_NULL(SetLastError(oe.Error(oe))));
          long.startEquity = AccountEquity() - AccountCredit();
@@ -377,7 +379,7 @@ void Robot() {
       // CASE 1 >>> We reach Stop Loss (grid size)
       if (long.sumProfit < -GridValue(long.sumLots)) {
          if (long.level < 50 && psar1 < Close[1] && psar2 > Close[2]) {
-            ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, slippage, 0, 0, comment, magic, 0, Blue, oeFlags, oe);
+            ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
             if (ticket <= 0)
                return(_NULL(SetLastError(oe.Error(oe))));
          }
@@ -403,7 +405,7 @@ void Robot() {
             if (!OrderCloseEx(long.ticket[i], NULL, NULL, slippage, Blue, oeFlags, oe))
                return(_NULL(SetLastError(oe.Error(oe))));
          }
-         // At this point all orders are closed. Global vars will be updated thanks to UpdateVars() on next start() execution
+         // At this point all orders are closed. Global vars will be updated thanks to UpdateStatus() on next start() execution
          BuyResetAfterClose();
       }
    }
@@ -413,7 +415,7 @@ void Robot() {
    // **************************************************
    if (short.level == 0) {
       if (psar1 > Close[1]) /*&&*/ if (psar2 < Close[2]) {
-         ticket = OrderSendEx(Symbol(), OP_SELL, UnitSize, NULL, slippage, 0, 0, comment, magic, 0, Red, oeFlags, oe);
+         ticket = OrderSendEx(Symbol(), OP_SELL, UnitSize, NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
             return(_NULL(SetLastError(oe.Error(oe))));
          short.startEquity = AccountEquity() - AccountCredit();
@@ -427,7 +429,7 @@ void Robot() {
       // CASE 1 >>> We reach Stop Loss (grid size)
       if (short.sumProfit < -GridValue(short.sumLots)) {
          if (short.level < 50 && psar1 > Close[1] && psar2 < Close[2]) {
-            ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, slippage, 0, 0, comment, magic, 0, Red, oeFlags, oe);
+            ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
             if (ticket <= 0)
                return(_NULL(SetLastError(oe.Error(oe))));
          }
@@ -453,7 +455,7 @@ void Robot() {
             if (!OrderCloseEx(short.ticket[i], NULL, NULL, slippage, Red, oeFlags, oe))
                return(_NULL(SetLastError(oe.Error(oe))));
          }
-         // At this point all orders are closed. Global vars will be updated thanks to UpdateVars() on next start() execution
+         // At this point all orders are closed. Global vars will be updated thanks to UpdateStatus() on next start() execution
          SellResetAfterClose();
       }
    }
