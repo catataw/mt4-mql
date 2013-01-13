@@ -1,7 +1,5 @@
 /**
  * PSAR Martingale System
- *
- * @copyright  http://www.lifesdream.org/
  */
 #include <stddefine.mqh>
 int   __INIT_FLAGS__[] = {INIT_PIPVALUE};
@@ -27,29 +25,17 @@ extern double PSAR.Maximum                    = 0.2;
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int    long.ticket   [50];                                           // Ticket
-double long.lots     [50];                                           // Lots
-double long.openPrice[50];                                           // OpenPrice
-double long.profit   [50];                                           // floating Profit
+int    long.ticket   [50], short.ticket   [50];                      // Ticket
+double long.lots     [50], short.lots     [50];                      // Lots
+double long.openPrice[50], short.openPrice[50];                      // OpenPrice
+double long.profit   [50], short.profit   [50];                      // floating Profit
 
-double long.startEquity;
-int    long.level;
-double long.sumLots;
-double long.sumProfit;
-double long.maxProfit;
-double long.lockedProfit;
-
-int    short.ticket   [50];
-double short.lots     [50];
-double short.openPrice[50];
-double short.profit   [50];
-
-double short.startEquity;
-int    short.level;
-double short.sumLots;
-double short.sumProfit;
-double short.maxProfit;
-double short.lockedProfit;
+double long.startEquity,   short.startEquity;
+int    long.level,         short.level;
+double long.sumLots,       short.sumLots;
+double long.sumProfit,     short.sumProfit;
+double long.maxProfit,     short.maxProfit;
+double long.lockedProfit,  short.lockedProfit;
 
 int    magicNo  = 110412;
 double slippage = 0.1;                                               // order slippage
@@ -260,32 +246,34 @@ int ShowStatus() {
    //if (IsTesting()) /*&&*/ if (!IsVisualMode())
    //   return(NO_ERROR);
 
-   string message = NL +
-                   "\nPSAR Martingale System"+
-                   "\n"                    +
-                   "\nGrid size: "         + GridSize +" pips"+
-                   "\nUnit size: "         + NumberToStr(UnitSize, ".+") +
-                   "\nIncrement size: "    + NumberToStr(IncrementSize, ".+") +
-                   "\nProfit target: "     + DoubleToStr(GridValue(UnitSize), 2) +
-                   "\nTrailing stop: "     + TrailingStop.Percent +"%"+
-                   "\nMax. drawdown: "     + MaxDrawdown.Percent +"%"+
-                   "\nPSAR step: "         + NumberToStr(PSAR.Step, ".1+") +
-                   "\nPSAR maximum: "      + NumberToStr(PSAR.Maximum, ".1+") +
-                   "\n"                    +
-                   "\nLONG"                +
-                   "\nOpen orders: "       + long.level +
-                   "\nOpen lots: "         + NumberToStr(long.sumLots, ".1+") +
-                   "\nCurrent profit: "    + DoubleToStr(long.sumProfit, 2) +
-                   "\nMaximum profit: "    + DoubleToStr(long.maxProfit, 2) +
-                   "\nLocked profit: "     + DoubleToStr(long.lockedProfit, 2) +
-                   "\n"                    +
-                   "\nSHORT"               +
-                   "\nOpen orders: "       + short.level +
-                   "\nOpen lots: "         + NumberToStr(short.sumLots, ".1+") +
-                   "\nCurrent profit: "    + DoubleToStr(short.sumProfit, 2) +
-                   "\nMaximum profit: "    + DoubleToStr(short.maxProfit, 2) +
-                   "\nLocked profit: "     + DoubleToStr(short.lockedProfit, 2);
-   Comment(message);
+   string msg;
+   msg = StringConcatenate("PSAR Martingale System",                                NL,
+                                                                                    NL,
+                           "Grid size: "     , GridSize, " pips",                   NL,
+                           "Unit size: "     , NumberToStr(UnitSize, ".+"),         NL,
+                           "Increment size: ", NumberToStr(IncrementSize, ".+"),    NL,
+                           "Profit target: " , DoubleToStr(GridValue(UnitSize), 2), NL,
+                           "Trailing stop: " , TrailingStop.Percent, "%",           NL,
+                           "Max. drawdown: " , MaxDrawdown.Percent, "%",            NL,
+                           "PSAR step: "     , NumberToStr(PSAR.Step, ".1+"),       NL,
+                           "PSAR maximum: "  , NumberToStr(PSAR.Maximum, ".1+"),    NL,
+                                                                                    NL,
+                           "LONG"            ,                                      NL,
+                           "Open orders: "   , long.level,                          NL,
+                           "Open lots: "     , NumberToStr(long.sumLots, ".1+"),    NL,
+                           "Current profit: ", DoubleToStr(long.sumProfit, 2),      NL,
+                           "Maximum profit: ", DoubleToStr(long.maxProfit, 2),      NL,
+                           "Locked profit: " , DoubleToStr(long.lockedProfit, 2),   NL);
+   msg = StringConcatenate(msg,                                                     NL,
+                           "SHORT"           ,                                      NL,
+                           "Open orders: "   , short.level,                         NL,
+                           "Open lots: "     , NumberToStr(short.sumLots, ".1+"),   NL,
+                           "Current profit: ", DoubleToStr(short.sumProfit, 2),     NL,
+                           "Maximum profit: ", DoubleToStr(short.maxProfit, 2),     NL,
+                           "Locked profit: " , DoubleToStr(short.lockedProfit, 2),  NL);
+
+   // 3 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
+   Comment(StringConcatenate(NL, NL, NL, msg));
 
    ShowLines();
 
@@ -460,4 +448,70 @@ void Robot() {
       }
    }
    catch("Robot()");
+}
+
+
+/**
+ * Postprocessing-Hook nach Initialisierung
+ *
+ * @return int - Fehlerstatus
+ */
+int afterInit() {
+   CreateStatusBox();
+   return(last_error);
+}
+
+
+/**
+ * Die Statusbox besteht aus 3 untereinander angeordneten "Quadraten" (Font "Webdings", Zeichen 'g').
+ *
+ * @return int - Fehlerstatus
+ */
+int CreateStatusBox() {
+   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+      return(NO_ERROR);
+
+   int x=0, y[]={33, 148, 210}, fontSize=86;
+   color color.Background = C'248,248,248';                          // Chart-Background-Farbe
+
+
+   // 1. Quadrat
+   string label = StringConcatenate(__NAME__, ".statusbox.1");
+   if (ObjectFind(label) != 0) {
+      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+         return(catch("CreateStatusBox(1)"));
+      //PushChartObject(label);
+   }
+   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
+   ObjectSet(label, OBJPROP_XDISTANCE, x   );
+   ObjectSet(label, OBJPROP_YDISTANCE, y[0]);
+   ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
+
+
+   // 2. Quadrat
+   label = StringConcatenate(__NAME__, ".statusbox.2");
+   if (ObjectFind(label) != 0) {
+      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+         return(catch("CreateStatusBox(2)"));
+      //PushChartObject(label);
+   }
+   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
+   ObjectSet(label, OBJPROP_XDISTANCE, x   );
+   ObjectSet(label, OBJPROP_YDISTANCE, y[1]);
+   ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
+
+
+   // 3. Quadrat (überlappt 2.)
+   label = StringConcatenate(__NAME__, ".statusbox.3");
+   if (ObjectFind(label) != 0) {
+      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+         return(catch("CreateStatusBox(3)"));
+      //PushChartObject(label);
+   }
+   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
+   ObjectSet(label, OBJPROP_XDISTANCE, x   );
+   ObjectSet(label, OBJPROP_YDISTANCE, y[2]);
+   ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
+
+   return(catch("CreateStatusBox(4)"));
 }
