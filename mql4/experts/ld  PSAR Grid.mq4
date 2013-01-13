@@ -28,7 +28,7 @@ extern double PSAR.Maximum                    = 0.2;
 int    long.ticket   [50], short.ticket   [50];                      // Ticket
 double long.lots     [50], short.lots     [50];                      // Lots
 double long.openPrice[50], short.openPrice[50];                      // OpenPrice
-double long.profit   [50], short.profit   [50];                      // floating Profit
+double long.profit   [50], short.profit   [50];                      // floating profit
 
 double long.startEquity,   short.startEquity;
 int    long.level,         short.level;
@@ -37,7 +37,7 @@ double long.sumProfit,     short.sumProfit;
 double long.maxProfit,     short.maxProfit;
 double long.lockedProfit,  short.lockedProfit;
 
-int    magicNo  = 110412;
+int    magicNo  = 110413;
 double slippage = 0.1;                                               // order slippage
 string comment  = "ld04 PSAR";                                       // order comment
 
@@ -47,42 +47,16 @@ string comment  = "ld04 PSAR";                                       // order co
  */
 int onTick() {
    UpdateStatus();
+   Strategy();
    ShowStatus();
-   Robot();
-   return(catch("onTick()"));
+   return(last_error);
 }
 
 
 /**
  *
  */
-void BuyResetAfterClose() {
-   long.maxProfit    = 0;
-   long.lockedProfit = 0;
-   ObjectDelete("line_buy_tp");
-   ObjectDelete("line_buy_ts");
-
-   catch("BuyResetAfterClose()");
-}
-
-
-/**
- *
- */
-void SellResetAfterClose() {
-   short.maxProfit    = 0;
-   short.lockedProfit = 0;
-   ObjectDelete("line_sell_tp");
-   ObjectDelete("line_sell_ts");
-
-   catch("SellResetAfterClose()");
-}
-
-
-/**
- *
- */
-void UpdateStatus() {
+int UpdateStatus() {
    // reset vars
    long.level      = 0;
    long.sumLots    = 0;
@@ -128,14 +102,40 @@ void UpdateStatus() {
       }
    }
    SortByLots();
-   catch("UpdateStatus()");
+   return(catch("UpdateStatus()"));
 }
 
 
 /**
  *
  */
-void SortByLots() {
+int BuyResetAfterClose() {
+   long.maxProfit    = 0;
+   long.lockedProfit = 0;
+   ObjectDelete("line_buy_tp");
+   ObjectDelete("line_buy_ts");
+
+   return(catch("BuyResetAfterClose()"));
+}
+
+
+/**
+ *
+ */
+int SellResetAfterClose() {
+   short.maxProfit    = 0;
+   short.lockedProfit = 0;
+   ObjectDelete("line_sell_tp");
+   ObjectDelete("line_sell_ts");
+
+   return(catch("SellResetAfterClose()"));
+}
+
+
+/**
+ *
+ */
+int SortByLots() {
    int    iTmp;
    double dTmp;
 
@@ -191,14 +191,14 @@ void SortByLots() {
          }
       }
    }
-   catch("SortByLots()");
+   return(catch("SortByLots()"));
 }
 
 
 /**
  *
  */
-void ShowLines() {
+int ShowLines() {
    int units, sumUnits;
    double sumOpenPrice, takeProfit, trailingStop;
 
@@ -235,7 +235,7 @@ void ShowLines() {
          HorizontalLine(trailingStop, "line_sell_ts", Tomato, STYLE_DASH, 1);
       }
    }
-   catch("ShowLines()");
+   return(catch("ShowLines()"));
 }
 
 
@@ -284,7 +284,7 @@ int ShowStatus() {
 /**
  *
  */
-void HorizontalLine(double value, string name, color lineColor, int style, int thickness) {
+int HorizontalLine(double value, string name, color lineColor, int style, int thickness) {
    if (ObjectFind(name) == -1) {
       ObjectCreate(name, OBJ_HLINE, 0, Time[0], value);
       ObjectSet   (name, OBJPROP_STYLE, style    );
@@ -297,7 +297,7 @@ void HorizontalLine(double value, string name, color lineColor, int style, int t
       ObjectSet   (name, OBJPROP_COLOR, lineColor);
       ObjectSet   (name, OBJPROP_WIDTH, thickness);
    }
-   catch("HorizontalLine()");
+   return(catch("HorizontalLine()"));
 }
 
 
@@ -321,7 +321,7 @@ double GridValue(double lots) {
 /**
  *
  */
-void Robot() {
+int Strategy() {
    double psar1 = iSAR(Symbol(), 0, PSAR.Step, PSAR.Maximum, 1);     // Bar 1 (closed bar)
    double psar2 = iSAR(Symbol(), 0, PSAR.Step, PSAR.Maximum, 2);     // Bar 2 (previous bar)
 
@@ -355,7 +355,7 @@ void Robot() {
       if (psar1 < Close[1]) /*&&*/ if (psar2 > Close[2]) {
          ticket = OrderSendEx(Symbol(), OP_BUY, UnitSize, NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
-            return(_NULL(SetLastError(oe.Error(oe))));
+            return(SetLastError(oe.Error(oe)));
          long.startEquity = AccountEquity() - AccountCredit();
       }
    }
@@ -369,7 +369,7 @@ void Robot() {
          if (long.level < 50 && psar1 < Close[1] && psar2 > Close[2]) {
             ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
             if (ticket <= 0)
-               return(_NULL(SetLastError(oe.Error(oe))));
+               return(SetLastError(oe.Error(oe)));
          }
       }
 
@@ -391,7 +391,7 @@ void Robot() {
       if (long.maxProfit>0 && long.lockedProfit>0 && long.maxProfit>long.lockedProfit && long.sumProfit<long.lockedProfit) {
          for (int i=0; i<=long.level-1; i++) {
             if (!OrderCloseEx(long.ticket[i], NULL, NULL, slippage, Blue, oeFlags, oe))
-               return(_NULL(SetLastError(oe.Error(oe))));
+               return(SetLastError(oe.Error(oe)));
          }
          // At this point all orders are closed. Global vars will be updated thanks to UpdateStatus() on next start() execution
          BuyResetAfterClose();
@@ -405,7 +405,7 @@ void Robot() {
       if (psar1 > Close[1]) /*&&*/ if (psar2 < Close[2]) {
          ticket = OrderSendEx(Symbol(), OP_SELL, UnitSize, NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
-            return(_NULL(SetLastError(oe.Error(oe))));
+            return(SetLastError(oe.Error(oe)));
          short.startEquity = AccountEquity() - AccountCredit();
       }
    }
@@ -419,7 +419,7 @@ void Robot() {
          if (short.level < 50 && psar1 > Close[1] && psar2 < Close[2]) {
             ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
             if (ticket <= 0)
-               return(_NULL(SetLastError(oe.Error(oe))));
+               return(SetLastError(oe.Error(oe)));
          }
       }
 
@@ -441,13 +441,13 @@ void Robot() {
       if (short.maxProfit>0 && short.lockedProfit>0 && short.maxProfit>short.lockedProfit && short.sumProfit<short.lockedProfit) {
          for (i=0; i<=short.level-1; i++) {
             if (!OrderCloseEx(short.ticket[i], NULL, NULL, slippage, Red, oeFlags, oe))
-               return(_NULL(SetLastError(oe.Error(oe))));
+               return(SetLastError(oe.Error(oe)));
          }
          // At this point all orders are closed. Global vars will be updated thanks to UpdateStatus() on next start() execution
          SellResetAfterClose();
       }
    }
-   catch("Robot()");
+   return(catch("Strategy()"));
 }
 
 
