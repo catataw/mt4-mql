@@ -14,6 +14,7 @@ int __DEINIT_FLAGS__[];
 extern int    GridSize                        = 40;
 extern double StartLotSize                    = 0.1;
 extern double IncrementSize                   = 0.1;
+
 extern int    TrailingStop.Percent            = 90;
 extern int    MaxDrawdown.Percent             = 100;
 
@@ -24,17 +25,19 @@ extern double PSAR.Maximum                    = 0.2;
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int    long.ticket   [],   short.ticket   [];                        // Ticket
-double long.lots     [],   short.lots     [];                        // Lots
-double long.openPrice[],   short.openPrice[];                        // OpenPrice
+int    long.ticket   [],  short.ticket   [];                         // Ticket
+double long.lots     [],  short.lots     [];                         // Lots
+double long.openPrice[],  short.openPrice[];                         // OpenPrice
 
-double long.startEquity,   short.startEquity;
-int    long.level,         short.level;
-double long.sumLots,       short.sumLots;
-double long.sumProfit,     short.sumProfit;
-double long.maxProfit,     short.maxProfit;
-bool   long.isTakeProfit,  short.isTakeProfit;
-double long.lockedProfit,  short.lockedProfit;
+double long.startEquity,  short.startEquity;
+int    long.level,        short.level;
+double long.sumLots,      short.sumLots;
+double long.sumOpenPrice, short.sumOpenPrice;                        // zur avgOpenPrice-Berechnung
+double long.avgOpenPrice, short.avgOpenPrice;
+double long.sumProfit,    short.sumProfit;
+double long.maxProfit,    short.maxProfit;
+bool   long.isTakeProfit, short.isTakeProfit;
+double long.lockedProfit, short.lockedProfit;
 
 int    magicNo  = 110413;
 double slippage = 0.1;                                               // order slippage
@@ -66,8 +69,13 @@ int UpdateStatus() {
          return(last_error);
       long.sumProfit  = NormalizeDouble(long.sumProfit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
    }
-   if (long.sumProfit  > long.maxProfit)               long.maxProfit     = long.sumProfit;
-   if (GE(long.maxProfit, GridValue(StartLotSize)))  { long.lockedProfit  = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit,  Digits); long.isTakeProfit  = true; }
+   if (long.sumProfit > long.maxProfit)
+      long.maxProfit = long.sumProfit;
+
+   if (GE(long.maxProfit, GridValue(StartLotSize)))  {
+      long.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit,  Digits);
+      long.isTakeProfit = true;
+   }
 
 
    // (2) Short
@@ -76,8 +84,13 @@ int UpdateStatus() {
          return(last_error);
       short.sumProfit = NormalizeDouble(short.sumProfit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
    }
-   if (short.sumProfit > short.maxProfit)              short.maxProfit    = short.sumProfit;
-   if (GE(short.maxProfit, GridValue(StartLotSize))) { short.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits); short.isTakeProfit = true; }
+   if (short.sumProfit > short.maxProfit)
+      short.maxProfit = short.sumProfit;
+
+   if (GE(short.maxProfit, GridValue(StartLotSize))) {
+      short.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
+      short.isTakeProfit = true;
+   }
 
    return(catch("UpdateStatus(3)"));
 }
@@ -158,95 +171,114 @@ int SortTickets() {
  *
  */
 int Strategy() {
-   double psar1 = iSAR(Symbol(), 0, PSAR.Step, PSAR.Maximum, 1);     // Bar[1] (closed bar)
-   double psar2 = iSAR(Symbol(), 0, PSAR.Step, PSAR.Maximum, 2);     // Bar[2] (previous bar)
+   /*
+   // Drawdown control
+   if ((100-MaxDrawdown.Percent)/100 * AccountBalance() > AccountEquity()-AccountCredit()) {
+      int oeFlags=NULL, /*ORDER_EXECUTION*oes[][ORDER_EXECUTION.intSize];
+
+      if (long.level != 0) {
+         if (!OrderMultiClose(long.ticket, slippage, Blue, oeFlags, oes))
+            return(SetLastError(oes.Error(oes, 0)));
+         ResetLongStatus();
+      }
+      if (short.level != 0) {
+         if (!OrderMultiClose(short.ticket, slippage, Red, oeFlags, oes))
+            return(SetLastError(oes.Error(oes, 0)));
+         ResetShortStatus();
+      }
+   }
+   */
+   Strategy.Long();
+   Strategy.Short();
+   return(last_error);
+}
+
+
+/**
+ *
+ */
+int Strategy.Long() {
+   double psar1 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 1);  // Bar[1] (closed bar)
+   double psar2 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 2);  // Bar[2] (previous bar)
 
    int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
 
-
-   /*
-   // (1) Drawdown control
-   if ((100-MaxDrawdown.Percent)/100 * AccountBalance() > AccountEquity()-AccountCredit()) {
-      // Closing buy orders
-      for (int i=0; i<=long.level-1; i++) {
-         if (!OrderCloseEx(long.ticket[i], NULL, NULL, slippage, Blue, oeFlags, oe))
-            return(_NULL(SetLastError(oe.Error(oe))));
-      }
-      // Closing sell orders
-      for (i=0; i<=short.level-1; i++) {
-         if (!OrderCloseEx(short.ticket[i], NULL, NULL, slippage, Red, oeFlags, oe))
-            return(_NULL(SetLastError(oe.Error(oe))));
-      }
-      ResetLongStatus();
-      ResetShortStatus();
-   }
-   */
-
-
-   // (2) LONG
+   // (1) level == 0
    if (long.level == 0) {
-      if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {           // PSAR-Wechsel von oben nach unten (angeblicher Up-Trend)
+      if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {           // PSAR wechselte von oben nach unten (angeblicher Up-Trend)
          long.startEquity = AccountEquity() - AccountCredit();
-
-         ticket = OrderSendEx(Symbol(), OP_BUY, StartLotSize, NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
+         ticket           = OrderSendEx(Symbol(), OP_BUY, StartLotSize, NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
          AddLongOrder(ticket, StartLotSize, oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
       }
-   }
-   else {
-      // (2.1) if lockedProfit is triggered we close everything
-      if (long.isTakeProfit) /*&&*/ if (LE(long.sumProfit, long.lockedProfit)) {
-         if (!OrderMultiClose(long.ticket, slippage, Blue, oeFlags, oes))
-            return(SetLastError(oes.Error(oes, 0)));
-         ResetLongStatus();                                          // long.level ist jetzt 0
-      }
-
-      // (2.2) if StopLoss is reached and PSAR crossed we "double up"
-      // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-      if (long.level != 0) /*&&*/ if (LE(long.sumProfit, -GridValue(long.sumLots))) {
-         if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {        // PSAR-Wechsel von oben nach unten (angeblicher Up-Trend)
-            ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
-            if (ticket <= 0)
-               return(SetLastError(oe.Error(oe)));
-            AddLongOrder(ticket, oe.Lots(oe), oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
-         }
-      }
+      return(catch("Strategy.Long(1)"));
    }
 
+   // (2) if lockedProfit is hit we close everything
+   if (long.isTakeProfit) /*&&*/ if (LE(long.sumProfit, long.lockedProfit)) {
+      if (!OrderMultiClose(long.ticket, slippage, Blue, oeFlags, oes))
+         return(SetLastError(oes.Error(oes, 0)));
+      ResetLongStatus();
+      return(catch("Strategy.Long(2)"));
+   }
 
-   // (3) SHORT
+   // (3) if LossTarget is hit and PSAR crossed we "double up"
+   // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
+   if (LE(long.sumProfit, -GridValue(long.sumLots))) {
+      if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {        // PSAR wechselte von oben nach unten (angeblicher Up-Trend)
+         ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
+         if (ticket <= 0)
+            return(SetLastError(oe.Error(oe)));
+         AddLongOrder(ticket, oe.Lots(oe), oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
+      }
+   }
+   return(catch("Strategy.Long(3)"));
+}
+
+
+/**
+ *
+ */
+int Strategy.Short() {
+   double psar1 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 1);  // Bar[1] (closed bar)
+   double psar2 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 2);  // Bar[2] (previous bar)
+
+   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
+   int ticket;
+
+   // (1) level == 0
    if (short.level == 0) {
-      if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {           // PSAR-Wechsel von unten nach oben (angeblicher Down-Trend)
+      if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {           // PSAR wechselte von unten nach oben (angeblicher Down-Trend)
          short.startEquity = AccountEquity() - AccountCredit();
-
-         ticket = OrderSendEx(Symbol(), OP_SELL, StartLotSize, NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
+         ticket            = OrderSendEx(Symbol(), OP_SELL, StartLotSize, NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
          AddShortOrder(ticket, StartLotSize, oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
       }
+      return(catch("Strategy.Short(1)"));
    }
-   else {
-      // (3.1) if lockedProfit is triggered we close everything
-      if (short.isTakeProfit) /*&&*/ if (LE(short.sumProfit, short.lockedProfit)) {
-         if (!OrderMultiClose(short.ticket, slippage, Red, oeFlags, oes))
-            return(SetLastError(oes.Error(oes, 0)));
-         ResetShortStatus();                                         // short.level ist jetzt 0
-      }
 
-      // (3.2) if StopLoss is reached and PSAR crossed we "double up"
-      // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-      if (short.level != 0) /*&&*/ if (LE(short.sumProfit, -GridValue(short.sumLots))) {
-         if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {        // PSAR-Wechsel von unten nach oben (angeblicher Down-Trend)
-            ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
-            if (ticket <= 0)
-               return(SetLastError(oe.Error(oe)));
-            AddShortOrder(ticket, oe.Lots(oe), oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
-         }
+   // (2) if lockedProfit is hit we close everything
+   if (short.isTakeProfit) /*&&*/ if (LE(short.sumProfit, short.lockedProfit)) {
+      if (!OrderMultiClose(short.ticket, slippage, Red, oeFlags, oes))
+         return(SetLastError(oes.Error(oes, 0)));
+      ResetShortStatus();
+      return(catch("Strategy.Short(2)"));
+   }
+
+   // (3) if LossTarget is hit and PSAR crossed we "double up"
+   // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
+   if (LE(short.sumProfit, -GridValue(short.sumLots))) {
+      if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {        // PSAR wechselte von unten nach oben (angeblicher Down-Trend)
+         ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
+         if (ticket <= 0)
+            return(SetLastError(oe.Error(oe)));
+         AddShortOrder(ticket, oe.Lots(oe), oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
       }
    }
-   return(catch("Strategy()"));
+   return(catch("Strategy.Short(3)"));
 }
 
 
@@ -257,9 +289,8 @@ int Strategy() {
  */
 double MartingaleVolume(double loss) {
    int multiplier = MathAbs(loss)/GridValue(StartLotSize);  // minimale Risikoreduzierung durch systematisches Abrunden
-
-   return(multiplier * IncrementSize);                      // Vielfaches der IncrementSize (Blödsinn)
-}                                                           // Es scheint so, als mußte es irgendwie ein Vielfaches von irgendwas sein.
+   return(multiplier * IncrementSize);                      // Es scheint so, als mußte es irgendwie ein Vielfaches von irgendwas sein.
+}
 
 
 /**
@@ -267,6 +298,52 @@ double MartingaleVolume(double loss) {
  */
 double GridValue(double lots) {
    return(GridSize * PipValue(lots));
+}
+
+
+/**
+ * Fügt den Long-Daten eine weitere Order hinzu.
+ *
+ * @param  int    ticket
+ * @param  double lots
+ * @param  double openPrice
+ * @param  double profit    - PL: profit + commission + swap
+ */
+int AddLongOrder(int ticket, double lots, double openPrice, double profit) {
+   ArrayPushInt   (long.ticket,    ticket   );
+   ArrayPushDouble(long.lots,      lots     );
+   ArrayPushDouble(long.openPrice, openPrice);
+
+   long.level++;
+   long.sumLots       = NormalizeDouble(long.sumLots   + lots,   2);
+   long.sumProfit     = NormalizeDouble(long.sumProfit + profit, 2);
+   long.sumOpenPrice += lots * openPrice;
+   long.avgOpenPrice  = long.sumOpenPrice / long.sumLots;
+
+   return(last_error);
+}
+
+
+/**
+ * Fügt den Short-Daten eine weitere Order hinzu.
+ *
+ * @param  int    ticket
+ * @param  double lots
+ * @param  double openPrice
+ * @param  double profit    - PL: profit + commission + swap
+ */
+int AddShortOrder(int ticket, double lots, double openPrice, double profit) {
+   ArrayPushInt   (short.ticket,    ticket   );
+   ArrayPushDouble(short.lots,      lots     );
+   ArrayPushDouble(short.openPrice, openPrice);
+
+   short.level++;
+   short.sumLots       = NormalizeDouble(short.sumLots   + lots,   2);
+   short.sumProfit     = NormalizeDouble(short.sumProfit + profit, 2);
+   short.sumOpenPrice += lots * openPrice;
+   short.avgOpenPrice  = short.sumOpenPrice / short.sumLots;
+
+   return(last_error);
 }
 
 
@@ -281,6 +358,8 @@ int ResetLongStatus() {
    long.startEquity  = 0;
    long.level        = 0;
    long.sumLots      = 0;
+   long.sumOpenPrice = 0;
+   long.avgOpenPrice = 0;
    long.sumProfit    = 0;
    long.maxProfit    = 0;
    long.isTakeProfit = false;
@@ -288,7 +367,6 @@ int ResetLongStatus() {
 
    if (!IsTesting() || IsVisualMode()) {
       ObjectDelete("line_buy_tp");
-      ObjectDelete("line_buy_ts");
 
       int error = GetLastError();
       if (IsError(error)) /*&&*/ if (error!=ERR_OBJECT_DOES_NOT_EXIST)
@@ -309,58 +387,21 @@ int ResetShortStatus() {
    short.startEquity  = 0;
    short.level        = 0;
    short.sumLots      = 0;
+   short.sumOpenPrice = 0;
+   short.avgOpenPrice = 0;
    short.sumProfit    = 0;
    short.maxProfit    = 0;
    short.isTakeProfit = false;
    short.lockedProfit = 0;
 
    if (!IsTesting() || IsVisualMode()) {
-      ObjectDelete("line_buy_tp");
-      ObjectDelete("line_buy_ts");
+      ObjectDelete("line_sell_tp");
 
       int error = GetLastError();
       if (IsError(error)) /*&&*/ if (error!=ERR_OBJECT_DOES_NOT_EXIST)
          return(catch("ResetLongStatus()", error));
    }
    return(NO_ERROR);
-}
-
-
-/**
- * Fügt den Long-Daten eine weitere Order hinzu.
- *
- * @param  int    ticket
- * @param  double lots
- * @param  double openPrice
- * @param  double profit    - PL: profit + commission + swap
- */
-int AddLongOrder(int ticket, double lots, double openPrice, double profit) {
-   ArrayPushInt   (long.ticket,    ticket   );
-   ArrayPushDouble(long.lots,      lots     );
-   ArrayPushDouble(long.openPrice, openPrice);
-
-   long.level++;
-   long.sumLots   = NormalizeDouble(long.sumLots   + lots,   2);
-   long.sumProfit = NormalizeDouble(long.sumProfit + profit, 2);
-}
-
-
-/**
- * Fügt den Short-Daten eine weitere Order hinzu.
- *
- * @param  int    ticket
- * @param  double lots
- * @param  double openPrice
- * @param  double profit    - PL: profit + commission + swap
- */
-int AddShortOrder(int ticket, double lots, double openPrice, double profit) {
-   ArrayPushInt   (short.ticket,    ticket   );
-   ArrayPushDouble(short.lots,      lots     );
-   ArrayPushDouble(short.openPrice, openPrice);
-
-   short.level++;
-   short.sumLots   = NormalizeDouble(short.sumLots   + lots,   2);
-   short.sumProfit = NormalizeDouble(short.sumProfit + profit, 2);
 }
 
 
@@ -375,31 +416,28 @@ int ShowStatus() {
    msg = StringConcatenate("PSAR Martingale System",                                    NL,
                                                                                         NL,
                            "Grid size: "     , GridSize, " pips",                       NL,
-                           "Start LotSize: ",  NumberToStr(StartLotSize, ".+"),         NL,
+                           "Start LotSize: " , NumberToStr(StartLotSize, ".+"),         NL,
                            "Increment size: ", NumberToStr(IncrementSize, ".+"),        NL,
                            "Profit target: " , DoubleToStr(GridValue(StartLotSize), 2), NL,
                            "Trailing stop: " , TrailingStop.Percent, "%",               NL,
                            "Max. drawdown: " , MaxDrawdown.Percent, "%",                NL,
-                           "PSAR step: "     , NumberToStr(PSAR.Step, ".1+"),           NL,
-                           "PSAR maximum: "  , NumberToStr(PSAR.Maximum, ".1+"),        NL,
                                                                                         NL,
                            "LONG"            ,                                          NL,
                            "Open orders: "   , long.level,                              NL,
                            "Open lots: "     , NumberToStr(long.sumLots, ".1+"),        NL,
                            "Current profit: ", DoubleToStr(long.sumProfit, 2),          NL,
-                           "Maximum profit: ", DoubleToStr(long.maxProfit, 2),          NL);
-   msg = StringConcatenate(msg,                                                         NL,
+                           "Max. profit: "   , DoubleToStr(long.maxProfit, 2),          NL,
+                                                                                        NL,
                            "SHORT"           ,                                          NL,
                            "Open orders: "   , short.level,                             NL,
                            "Open lots: "     , NumberToStr(short.sumLots, ".1+"),       NL,
                            "Current profit: ", DoubleToStr(short.sumProfit, 2),         NL,
-                           "Maximum profit: ", DoubleToStr(short.maxProfit, 2),         NL);
+                           "Max. profit: "   , DoubleToStr(short.maxProfit, 2),         NL);
 
    // 3 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, NL, msg));
 
-   ShowLines();
-
+   ShowProfitTargets();
    return(catch("ShowStatus()"));
 }
 
@@ -407,44 +445,21 @@ int ShowStatus() {
 /**
  *
  */
-int ShowLines() {
-   int units, sumUnits;
-   double sumOpenPrice, takeProfit, trailingStop;
+int ShowProfitTargets() {
+   double distance, takeProfit;
 
    if (long.level > 0) {
-      sumUnits     = 0;
-      sumOpenPrice = 0;
-      for (int i=0; i < long.level; i++) {
-         units         = Round(long.lots[i] / StartLotSize);
-         sumUnits     +=  units;
-         sumOpenPrice += (units * long.openPrice[i]);
-      }
-      takeProfit = (sumOpenPrice + GridSize*Pip) / sumUnits;
+      distance   = GridSize * StartLotSize / long.sumLots;
+      takeProfit = NormalizeDouble(long.avgOpenPrice + distance*Pips, Digits);
       HorizontalLine(takeProfit, "line_buy_tp", DodgerBlue, STYLE_SOLID, 2);
-
-      if (long.lockedProfit > 0) {
-         trailingStop = (sumOpenPrice + long.lockedProfit/PipValue(StartLotSize)*Pip) / sumUnits;
-         HorizontalLine(trailingStop, "line_buy_ts", DodgerBlue, STYLE_DASH, 1);
-      }
    }
 
    if (short.level > 0) {
-      sumUnits     = 0;
-      sumOpenPrice = 0;
-      for (i=0; i < short.level; i++) {
-         units         =  Round(short.lots[i] / StartLotSize);
-         sumUnits     +=  units;
-         sumOpenPrice += (units * short.openPrice[i]);
-      }
-      takeProfit = (sumOpenPrice - GridSize*Pip) / sumUnits;
+      distance   = GridSize * StartLotSize / short.sumLots;
+      takeProfit = NormalizeDouble(short.avgOpenPrice - distance*Pips, Digits);
       HorizontalLine(takeProfit, "line_sell_tp", Tomato, STYLE_SOLID, 2);
-
-      if (short.lockedProfit > 0) {
-         trailingStop = (sumOpenPrice - short.lockedProfit/PipValue(StartLotSize)*Pip) / sumUnits;
-         HorizontalLine(trailingStop, "line_sell_ts", Tomato, STYLE_DASH, 1);
-      }
    }
-   return(catch("ShowLines()"));
+   return(catch("ShowProfitTargets()"));
 }
 
 
