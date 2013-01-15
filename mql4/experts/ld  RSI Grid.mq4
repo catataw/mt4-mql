@@ -17,7 +17,6 @@ extern int    GridSize                        = 70;
 extern double StartLotSize                    = 0.1;
 extern double IncrementSize                   = 0.1;
 
-extern int    ProfitMode                      =   1;
 extern int    TrailingStop.Percent            = 100;
 extern int    MaxDrawdown.Percent             = 100;
 
@@ -78,12 +77,8 @@ int UpdateStatus() {
    if (long.sumProfit > long.maxProfit)
       long.maxProfit = long.sumProfit;
 
-   if      (ProfitMode == 1) factor = 1;
-   else if (long.level == 0) factor = 1;
-   else                      factor = long.level;
-
-   if (GE(long.maxProfit, factor * GridValue(StartLotSize)))  {
-      long.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit,  Digits);
+   if (GE(long.maxProfit, GridValue(StartLotSize)))  {
+      long.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit, Digits);
       long.isTakeProfit = true;
    }
 
@@ -97,11 +92,7 @@ int UpdateStatus() {
    if (short.sumProfit > short.maxProfit)
       short.maxProfit = short.sumProfit;
 
-   if      (ProfitMode  == 1) factor = 1;
-   else if (short.level == 0) factor = 1;
-   else                       factor = short.level;
-
-   if (GE(short.maxProfit, factor * GridValue(StartLotSize))) {
+   if (GE(short.maxProfit, GridValue(StartLotSize))) {
       short.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
       short.isTakeProfit = true;
    }
@@ -424,42 +415,26 @@ int ShowStatus() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
-   string msg, profitTarget, profitTarget.long, profitTarget.short;
-
-   if (ProfitMode == 1) {
-      profitTarget       = StringConcatenate("Profit target: ", DoubleToStr(GridValue(StartLotSize), 2), NL);
-      profitTarget.long  = "";
-      profitTarget.short = "";
-   }
-   else {
-      profitTarget       = "";
-      profitTarget.long  = StringConcatenate("Profit target: ", DoubleToStr(Max(long.level,  1) * GridValue(StartLotSize), 2), NL);
-      profitTarget.short = StringConcatenate("Profit target: ", DoubleToStr(Max(short.level, 1) * GridValue(StartLotSize), 2), NL);
-   }
-
-   msg = StringConcatenate("RSI Martingale System test",                                NL,
-                                                                                        NL,
-                           "Grid size: "     , GridSize, " pips",                       NL,
-                           "Start LotSize: " , NumberToStr(StartLotSize, ".+"),         NL,
-                           "Increment size: ", NumberToStr(IncrementSize, ".+"),        NL,
-                           profitTarget,
-                           "Trailing stop: " , TrailingStop.Percent, "%",               NL,
-                           "Max. drawdown: " , MaxDrawdown.Percent, "%",                NL,
-                           "Profit mode: "   , ProfitMode,                              NL,
-                                                                                        NL,
-                           "LONG"            ,                                          NL,
-                           "Open orders: "   , long.level,                              NL,
-                           "Open lots: "     , NumberToStr(long.sumLots, ".1+"),        NL,
-                           profitTarget.long,
-                           "Current profit: ", DoubleToStr(long.sumProfit, 2),          NL,
-                           "Max. profit: "   , DoubleToStr(long.maxProfit, 2),          NL,
-                                                                                        NL,
-                           "SHORT"           ,                                          NL,
-                           "Open orders: "   , short.level,                             NL,
-                           "Open lots: "     , NumberToStr(short.sumLots, ".1+"),       NL,
-                           profitTarget.short,
-                           "Current profit: ", DoubleToStr(short.sumProfit, 2),         NL,
-                           "Max. profit: "   , DoubleToStr(short.maxProfit, 2),         NL);
+   string msg = StringConcatenate("RSI Martingale System test",                                NL,
+                                                                                               NL,
+                                  "Grid size: "     , GridSize, " pips",                       NL,
+                                  "Start LotSize: " , NumberToStr(StartLotSize, ".+"),         NL,
+                                  "Increment size: ", NumberToStr(IncrementSize, ".+"),        NL,
+                                  "Profit target: " , DoubleToStr(GridValue(StartLotSize), 2), NL,
+                                  "Trailing stop: " , TrailingStop.Percent, "%",               NL,
+                                  "Max. drawdown: " , MaxDrawdown.Percent, "%",                NL,
+                                                                                               NL,
+                                  "LONG"            ,                                          NL,
+                                  "Open orders: "   , long.level,                              NL,
+                                  "Open lots: "     , NumberToStr(long.sumLots, ".1+"),        NL,
+                                  "Current profit: ", DoubleToStr(long.sumProfit, 2),          NL,
+                                  "Max. profit: "   , DoubleToStr(long.maxProfit, 2),          NL,
+                                                                                               NL,
+                                  "SHORT"           ,                                          NL,
+                                  "Open orders: "   , short.level,                             NL,
+                                  "Open lots: "     , NumberToStr(short.sumLots, ".1+"),       NL,
+                                  "Current profit: ", DoubleToStr(short.sumProfit, 2),         NL,
+                                  "Max. profit: "   , DoubleToStr(short.maxProfit, 2),         NL);
 
    // 3 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, NL, msg));
@@ -473,19 +448,16 @@ int ShowStatus() {
  *
  */
 int ShowProfitTargets() {
-   int    factor;
    double distance, takeProfit;
 
    if (long.level > 0) {
-      factor     = ifInt(ProfitMode==1, 1, long.level);
-      distance   = factor * GridSize * StartLotSize / long.sumLots;
+      distance   = GridSize * StartLotSize / long.sumLots;
       takeProfit = NormalizeDouble(long.avgOpenPrice + distance*Pips, Digits);
       HorizontalLine(takeProfit, "line_buy_tp", DodgerBlue, STYLE_SOLID, 2);
    }
 
    if (short.level > 0) {
-      factor     = ifInt(ProfitMode==1, 1, short.level);
-      distance   = factor * GridSize * StartLotSize / short.sumLots;
+      distance   = GridSize * StartLotSize / short.sumLots;
       takeProfit = NormalizeDouble(short.avgOpenPrice - distance*Pips, Digits);
       HorizontalLine(takeProfit, "line_sell_tp", Tomato, STYLE_SOLID, 2);
    }
@@ -576,17 +548,5 @@ int CreateStatusBox() {
 int afterInit() {
    InitStatus();
    CreateStatusBox();
-   return(last_error);
-}
-
-
-/**
- *
- */
-int onDeinit() {
-   double test.duration = (Test.stopMillis-Test.startMillis)/1000.0;    // Sekunden
-   double test.days     = (Test.toDate-Test.fromDate) * 1.0 /DAYS;      // Testzeitraum in Tagen
-
-   //debug("onDeinit()   time="+ DoubleToStr(test.duration, 1) +" sec   days="+ Round(test.days) +"   ("+ DoubleToStr(test.duration/test.days, 3) +" sec/day)");
    return(last_error);
 }

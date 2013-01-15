@@ -73,7 +73,7 @@ int UpdateStatus() {
       long.maxProfit = long.sumProfit;
 
    if (GE(long.maxProfit, GridValue(StartLotSize)))  {
-      long.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit,  Digits);
+      long.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit, Digits);
       long.isTakeProfit = true;
    }
 
@@ -412,27 +412,26 @@ int ShowStatus() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
-   string msg;
-   msg = StringConcatenate("PSAR Martingale System",                                    NL,
-                                                                                        NL,
-                           "Grid size: "     , GridSize, " pips",                       NL,
-                           "Start LotSize: " , NumberToStr(StartLotSize, ".+"),         NL,
-                           "Increment size: ", NumberToStr(IncrementSize, ".+"),        NL,
-                           "Profit target: " , DoubleToStr(GridValue(StartLotSize), 2), NL,
-                           "Trailing stop: " , TrailingStop.Percent, "%",               NL,
-                           "Max. drawdown: " , MaxDrawdown.Percent, "%",                NL,
-                                                                                        NL,
-                           "LONG"            ,                                          NL,
-                           "Open orders: "   , long.level,                              NL,
-                           "Open lots: "     , NumberToStr(long.sumLots, ".1+"),        NL,
-                           "Current profit: ", DoubleToStr(long.sumProfit, 2),          NL,
-                           "Max. profit: "   , DoubleToStr(long.maxProfit, 2),          NL,
-                                                                                        NL,
-                           "SHORT"           ,                                          NL,
-                           "Open orders: "   , short.level,                             NL,
-                           "Open lots: "     , NumberToStr(short.sumLots, ".1+"),       NL,
-                           "Current profit: ", DoubleToStr(short.sumProfit, 2),         NL,
-                           "Max. profit: "   , DoubleToStr(short.maxProfit, 2),         NL);
+   string msg = StringConcatenate("PSAR Martingale System",                                    NL,
+                                                                                               NL,
+                                  "Grid size: "     , GridSize, " pips",                       NL,
+                                  "Start LotSize: " , NumberToStr(StartLotSize, ".+"),         NL,
+                                  "Increment size: ", NumberToStr(IncrementSize, ".+"),        NL,
+                                  "Profit target: " , DoubleToStr(GridValue(StartLotSize), 2), NL,
+                                  "Trailing stop: " , TrailingStop.Percent, "%",               NL,
+                                  "Max. drawdown: " , MaxDrawdown.Percent, "%",                NL,
+                                                                                               NL,
+                                  "LONG"            ,                                          NL,
+                                  "Open orders: "   , long.level,                              NL,
+                                  "Open lots: "     , NumberToStr(long.sumLots, ".1+"),        NL,
+                                  "Current profit: ", DoubleToStr(long.sumProfit, 2),          NL,
+                                  "Max. profit: "   , DoubleToStr(long.maxProfit, 2),          NL,
+                                                                                               NL,
+                                  "SHORT"           ,                                          NL,
+                                  "Open orders: "   , short.level,                             NL,
+                                  "Open lots: "     , NumberToStr(short.sumLots, ".1+"),       NL,
+                                  "Current profit: ", DoubleToStr(short.sumProfit, 2),         NL,
+                                  "Max. profit: "   , DoubleToStr(short.maxProfit, 2),         NL);
 
    // 3 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, NL, msg));
@@ -546,17 +545,5 @@ int CreateStatusBox() {
 int afterInit() {
    InitStatus();
    CreateStatusBox();
-   return(last_error);
-}
-
-
-/**
- *
- */
-int onDeinit() {
-   double test.duration = (Test.stopMillis-Test.startMillis)/1000.0;    // Sekunden
-   double test.days     = (Test.toDate-Test.fromDate) * 1.0 /DAYS;      // Testzeitraum in Tagen
-
-   //debug("onDeinit()   time="+ DoubleToStr(test.duration, 1) +" sec   days="+ Round(test.days) +"   ("+ DoubleToStr(test.duration/test.days, 3) +" sec/day)");
    return(last_error);
 }
