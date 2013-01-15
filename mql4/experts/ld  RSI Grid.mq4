@@ -1,5 +1,7 @@
 /**
- * PSAR Martingale System
+ * RSI Martingale System
+ *
+ * NOTE: Der RSI ist, wenn aufs Wesentliche reduziert, eine andere Darstellung eines Bollinger-Bands und damit ein Momentum- und kein Trend-Indikator.
  */
 #include <stddefine.mqh>
 int   __INIT_FLAGS__[] = {INIT_PIPVALUE};
@@ -11,16 +13,18 @@ int __DEINIT_FLAGS__[];
 
 ///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////
 
-extern int    GridSize                        = 40;
+extern int    GridSize                        = 70;
 extern double StartLotSize                    = 0.1;
 extern double IncrementSize                   = 0.1;
 
+extern int    ProfitMode                      =   1;
 extern int    TrailingStop.Percent            = 100;
 extern int    MaxDrawdown.Percent             = 100;
 
 extern string ___________Indicator___________ = "___________________________________";
-extern double PSAR.Step                       = 0.02;
-extern double PSAR.Maximum                    = 0.2;
+extern int    RSI.Period                      =  7;
+extern double RSI.SignalLevel                 = 20;
+extern int    RSI.Shift                       =  0;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -39,9 +43,9 @@ double long.maxProfit,    short.maxProfit;
 bool   long.isTakeProfit, short.isTakeProfit;
 double long.lockedProfit, short.lockedProfit;
 
-int    magicNo  = 110413;
+int    magicNo  = 50854;
 double slippage = 0.1;                                               // order slippage
-string comment  = "ld04 PSAR";                                       // order comment
+string comment  = "ld02 RSI";                                        // order comment
 
 
 /**
@@ -59,6 +63,8 @@ int onTick() {
  *
  */
 int UpdateStatus() {
+   int factor;
+
    long.sumProfit  = 0;
    short.sumProfit = 0;
 
@@ -67,12 +73,16 @@ int UpdateStatus() {
    for (int i=0; i < long.level; i++) {
       if (!SelectTicket(long.ticket[i], "UpdateStatus(1)"))
          return(last_error);
-      long.sumProfit  = NormalizeDouble(long.sumProfit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
+      long.sumProfit = NormalizeDouble(long.sumProfit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
    }
    if (long.sumProfit > long.maxProfit)
       long.maxProfit = long.sumProfit;
 
-   if (GE(long.maxProfit, GridValue(StartLotSize)))  {
+   if      (ProfitMode == 1) factor = 1;
+   else if (long.level == 0) factor = 1;
+   else                      factor = long.level;
+
+   if (GE(long.maxProfit, factor * GridValue(StartLotSize)))  {
       long.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit,  Digits);
       long.isTakeProfit = true;
    }
@@ -87,11 +97,14 @@ int UpdateStatus() {
    if (short.sumProfit > short.maxProfit)
       short.maxProfit = short.sumProfit;
 
-   if (GE(short.maxProfit, GridValue(StartLotSize))) {
+   if      (ProfitMode  == 1) factor = 1;
+   else if (short.level == 0) factor = 1;
+   else                       factor = short.level;
+
+   if (GE(short.maxProfit, factor * GridValue(StartLotSize))) {
       short.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
       short.isTakeProfit = true;
    }
-
    return(catch("UpdateStatus(3)"));
 }
 
@@ -198,15 +211,15 @@ int Strategy() {
  *
  */
 int Strategy.Long() {
-   double psar1 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 1);  // Bar[1] (closed bar)
-   double psar2 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 2);  // Bar[2] (previous bar)
+   double rsi = iRSI(Symbol(), NULL, RSI.Period, PRICE_CLOSE, RSI.Shift);  // Bar[0] (current unfinished bar)
 
    int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
 
+
    // (1) level == 0
    if (long.level == 0) {
-      if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {           // PSAR wechselte von oben nach unten (angeblicher Up-Trend)
+      if (rsi < 100-RSI.SignalLevel) {                               // RSI liegt "irgendwo" unterm High (um nach TakeProfit sofortigen Wiedereinstieg zu triggern)
          long.startEquity = AccountEquity() - AccountCredit();
          ticket           = OrderSendEx(Symbol(), OP_BUY, StartLotSize, NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
@@ -224,10 +237,10 @@ int Strategy.Long() {
       return(catch("Strategy.Long(2)"));
    }
 
-   // (3) if LossTarget is hit and PSAR crossed we "double up"
+   // (3) if LossTarget is hit and RSI signals we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
    if (LE(long.sumProfit, -GridValue(long.sumLots))) {
-      if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {        // PSAR wechselte von oben nach unten (angeblicher Up-Trend)
+      if (rsi < RSI.SignalLevel) {                                   // RSI crossed low signal line: starkes Down-Momentum
          ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
@@ -242,15 +255,14 @@ int Strategy.Long() {
  *
  */
 int Strategy.Short() {
-   double psar1 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 1);  // Bar[1] (closed bar)
-   double psar2 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 2);  // Bar[2] (previous bar)
+   double rsi = iRSI(Symbol(), NULL, RSI.Period, PRICE_CLOSE, RSI.Shift);  // Bar[0] (current unfinished bar)
 
    int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
 
    // (1) level == 0
    if (short.level == 0) {
-      if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {           // PSAR wechselte von unten nach oben (angeblicher Down-Trend)
+      if (rsi > RSI.SignalLevel) {                                // RSI liegt "irgendwo" überm Low (um nach TakeProfit sofortigen Wiedereinstieg zu triggern)
          short.startEquity = AccountEquity() - AccountCredit();
          ticket            = OrderSendEx(Symbol(), OP_SELL, StartLotSize, NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
@@ -268,10 +280,10 @@ int Strategy.Short() {
       return(catch("Strategy.Short(2)"));
    }
 
-   // (3) if LossTarget is hit and PSAR crossed we "double up"
+   // (3) if LossTarget is hit and RSI signals we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
    if (LE(short.sumProfit, -GridValue(short.sumLots))) {
-      if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {        // PSAR wechselte von unten nach oben (angeblicher Down-Trend)
+      if (rsi > 100-RSI.SignalLevel) {                               // RSI crossed high signal line: starkes Up-Momentum
          ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
@@ -412,25 +424,40 @@ int ShowStatus() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
-   string msg;
-   msg = StringConcatenate("PSAR Martingale System",                                    NL,
+   string msg, profitTarget, profitTarget.long, profitTarget.short;
+
+   if (ProfitMode == 1) {
+      profitTarget       = StringConcatenate("Profit target: ", DoubleToStr(GridValue(StartLotSize), 2), NL);
+      profitTarget.long  = "";
+      profitTarget.short = "";
+   }
+   else {
+      profitTarget       = "";
+      profitTarget.long  = StringConcatenate("Profit target: ", DoubleToStr(Max(long.level,  1) * GridValue(StartLotSize), 2), NL);
+      profitTarget.short = StringConcatenate("Profit target: ", DoubleToStr(Max(short.level, 1) * GridValue(StartLotSize), 2), NL);
+   }
+
+   msg = StringConcatenate("RSI Martingale System test",                                NL,
                                                                                         NL,
                            "Grid size: "     , GridSize, " pips",                       NL,
                            "Start LotSize: " , NumberToStr(StartLotSize, ".+"),         NL,
                            "Increment size: ", NumberToStr(IncrementSize, ".+"),        NL,
-                           "Profit target: " , DoubleToStr(GridValue(StartLotSize), 2), NL,
+                           profitTarget,
                            "Trailing stop: " , TrailingStop.Percent, "%",               NL,
                            "Max. drawdown: " , MaxDrawdown.Percent, "%",                NL,
+                           "Profit mode: "   , ProfitMode,                              NL,
                                                                                         NL,
                            "LONG"            ,                                          NL,
                            "Open orders: "   , long.level,                              NL,
                            "Open lots: "     , NumberToStr(long.sumLots, ".1+"),        NL,
+                           profitTarget.long,
                            "Current profit: ", DoubleToStr(long.sumProfit, 2),          NL,
                            "Max. profit: "   , DoubleToStr(long.maxProfit, 2),          NL,
                                                                                         NL,
                            "SHORT"           ,                                          NL,
                            "Open orders: "   , short.level,                             NL,
                            "Open lots: "     , NumberToStr(short.sumLots, ".1+"),       NL,
+                           profitTarget.short,
                            "Current profit: ", DoubleToStr(short.sumProfit, 2),         NL,
                            "Max. profit: "   , DoubleToStr(short.maxProfit, 2),         NL);
 
@@ -446,16 +473,19 @@ int ShowStatus() {
  *
  */
 int ShowProfitTargets() {
+   int    factor;
    double distance, takeProfit;
 
    if (long.level > 0) {
-      distance   = GridSize * StartLotSize / long.sumLots;
+      factor     = ifInt(ProfitMode==1, 1, long.level);
+      distance   = factor * GridSize * StartLotSize / long.sumLots;
       takeProfit = NormalizeDouble(long.avgOpenPrice + distance*Pips, Digits);
       HorizontalLine(takeProfit, "line_buy_tp", DodgerBlue, STYLE_SOLID, 2);
    }
 
    if (short.level > 0) {
-      distance   = GridSize * StartLotSize / short.sumLots;
+      factor     = ifInt(ProfitMode==1, 1, short.level);
+      distance   = factor * GridSize * StartLotSize / short.sumLots;
       takeProfit = NormalizeDouble(short.avgOpenPrice - distance*Pips, Digits);
       HorizontalLine(takeProfit, "line_sell_tp", Tomato, STYLE_SOLID, 2);
    }
