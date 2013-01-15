@@ -25,23 +25,22 @@ extern double PSAR.Maximum                    = 0.2;
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int    long.ticket   [],  short.ticket   [];                         // Ticket
-double long.lots     [],  short.lots     [];                         // Lots
-double long.openPrice[],  short.openPrice[];                         // OpenPrice
+int    long.ticket   [],    short.ticket   [];                       // Ticket
+double long.lots     [],    short.lots     [];                       // Lots
+double long.openPrice[],    short.openPrice[];                       // OpenPrice
 
-double long.startEquity,  short.startEquity;
-int    long.level,        short.level;
-double long.sumLots,      short.sumLots;
-double long.sumOpenPrice, short.sumOpenPrice;                        // zur avgOpenPrice-Berechnung
-double long.avgOpenPrice, short.avgOpenPrice;
-double long.sumProfit,    short.sumProfit;
-double long.maxProfit,    short.maxProfit;
-bool   long.isTakeProfit, short.isTakeProfit;
-double long.lockedProfit, short.lockedProfit;
+double long.startEquity,    short.startEquity;
+int    long.level,          short.level;
+double long.sumLots,        short.sumLots;
+double long.sumOpenPrice,   short.sumOpenPrice;                      // zur avgOpenPrice-Berechnung
+double long.avgOpenPrice,   short.avgOpenPrice;
+double long.sumProfit,      short.sumProfit;
+double long.maxProfit,      short.maxProfit;
+bool   long.takeProfit,     short.takeProfit;
+double long.trailingProfit, short.trailingProfit;
 
-int    magicNo  = 110413;
-double slippage = 0.1;                                               // order slippage
-string comment  = "ld04 PSAR";                                       // order comment
+int    magicNo = 110413;
+string comment = "ld04 PSAR";                                        // order comment
 
 
 /**
@@ -67,14 +66,13 @@ int UpdateStatus() {
    for (int i=0; i < long.level; i++) {
       if (!SelectTicket(long.ticket[i], "UpdateStatus(1)"))
          return(last_error);
-      long.sumProfit  = NormalizeDouble(long.sumProfit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
+      long.sumProfit = NormalizeDouble(long.sumProfit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
    }
-   if (long.sumProfit > long.maxProfit)
-      long.maxProfit = long.sumProfit;
+   long.maxProfit = MathMax(long.maxProfit, long.sumProfit);
 
    if (GE(long.maxProfit, GridValue(StartLotSize)))  {
-      long.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit, Digits);
-      long.isTakeProfit = true;
+      long.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit, Digits);
+      long.takeProfit     = true;
    }
 
 
@@ -84,14 +82,12 @@ int UpdateStatus() {
          return(last_error);
       short.sumProfit = NormalizeDouble(short.sumProfit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
    }
-   if (short.sumProfit > short.maxProfit)
-      short.maxProfit = short.sumProfit;
+   short.maxProfit = MathMax(short.maxProfit, short.sumProfit);
 
    if (GE(short.maxProfit, GridValue(StartLotSize))) {
-      short.lockedProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
-      short.isTakeProfit = true;
+      short.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
+      short.takeProfit     = true;
    }
-
    return(catch("UpdateStatus(3)"));
 }
 
@@ -177,12 +173,12 @@ int Strategy() {
       int oeFlags=NULL, /*ORDER_EXECUTION*oes[][ORDER_EXECUTION.intSize];
 
       if (long.level != 0) {
-         if (!OrderMultiClose(long.ticket, slippage, Blue, oeFlags, oes))
+         if (!OrderMultiClose(long.ticket, 0.1, Blue, oeFlags, oes))
             return(SetLastError(oes.Error(oes, 0)));
          ResetLongStatus();
       }
       if (short.level != 0) {
-         if (!OrderMultiClose(short.ticket, slippage, Red, oeFlags, oes))
+         if (!OrderMultiClose(short.ticket, 0.1, Red, oeFlags, oes))
             return(SetLastError(oes.Error(oes, 0)));
          ResetShortStatus();
       }
@@ -208,7 +204,7 @@ int Strategy.Long() {
    if (long.level == 0) {
       if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {           // PSAR wechselte von oben nach unten (angeblicher Up-Trend)
          long.startEquity = AccountEquity() - AccountCredit();
-         ticket           = OrderSendEx(Symbol(), OP_BUY, StartLotSize, NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
+         ticket           = OrderSendEx(Symbol(), OP_BUY, StartLotSize, NULL, 0.1, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
          AddLongOrder(ticket, StartLotSize, oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
@@ -216,9 +212,9 @@ int Strategy.Long() {
       return(catch("Strategy.Long(1)"));
    }
 
-   // (2) if lockedProfit is hit we close everything
-   if (long.isTakeProfit) /*&&*/ if (LE(long.sumProfit, long.lockedProfit)) {
-      if (!OrderMultiClose(long.ticket, slippage, Blue, oeFlags, oes))
+   // (2) if trailingProfit is hit we close everything
+   if (long.takeProfit) /*&&*/ if (LE(long.sumProfit, long.trailingProfit)) {
+      if (!OrderMultiClose(long.ticket, 0.1, Blue, oeFlags, oes))
          return(SetLastError(oes.Error(oes, 0)));
       ResetLongStatus();
       return(catch("Strategy.Long(2)"));
@@ -228,7 +224,7 @@ int Strategy.Long() {
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
    if (LE(long.sumProfit, -GridValue(long.sumLots))) {
       if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {        // PSAR wechselte von oben nach unten (angeblicher Up-Trend)
-         ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
+         ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
          AddLongOrder(ticket, oe.Lots(oe), oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
@@ -252,7 +248,7 @@ int Strategy.Short() {
    if (short.level == 0) {
       if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {           // PSAR wechselte von unten nach oben (angeblicher Down-Trend)
          short.startEquity = AccountEquity() - AccountCredit();
-         ticket            = OrderSendEx(Symbol(), OP_SELL, StartLotSize, NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
+         ticket            = OrderSendEx(Symbol(), OP_SELL, StartLotSize, NULL, 0.1, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
          AddShortOrder(ticket, StartLotSize, oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
@@ -260,9 +256,9 @@ int Strategy.Short() {
       return(catch("Strategy.Short(1)"));
    }
 
-   // (2) if lockedProfit is hit we close everything
-   if (short.isTakeProfit) /*&&*/ if (LE(short.sumProfit, short.lockedProfit)) {
-      if (!OrderMultiClose(short.ticket, slippage, Red, oeFlags, oes))
+   // (2) if trailingProfit is hit we close everything
+   if (short.takeProfit) /*&&*/ if (LE(short.sumProfit, short.trailingProfit)) {
+      if (!OrderMultiClose(short.ticket, 0.1, Red, oeFlags, oes))
          return(SetLastError(oes.Error(oes, 0)));
       ResetShortStatus();
       return(catch("Strategy.Short(2)"));
@@ -272,7 +268,7 @@ int Strategy.Short() {
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
    if (LE(short.sumProfit, -GridValue(short.sumLots))) {
       if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {        // PSAR wechselte von unten nach oben (angeblicher Down-Trend)
-         ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, slippage, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
+         ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
          AddShortOrder(ticket, oe.Lots(oe), oe.OpenPrice(oe), oe.Profit(oe) + oe.Commission(oe) + oe.Swap(oe));
@@ -355,15 +351,15 @@ int ResetLongStatus() {
    ArrayResize(long.lots,      0);
    ArrayResize(long.openPrice, 0);
 
-   long.startEquity  = 0;
-   long.level        = 0;
-   long.sumLots      = 0;
-   long.sumOpenPrice = 0;
-   long.avgOpenPrice = 0;
-   long.sumProfit    = 0;
-   long.maxProfit    = 0;
-   long.isTakeProfit = false;
-   long.lockedProfit = 0;
+   long.startEquity    = 0;
+   long.level          = 0;
+   long.sumLots        = 0;
+   long.sumOpenPrice   = 0;
+   long.avgOpenPrice   = 0;
+   long.sumProfit      = 0;
+   long.maxProfit      = 0;
+   long.takeProfit     = false;
+   long.trailingProfit = 0;
 
    if (!IsTesting() || IsVisualMode()) {
       ObjectDelete("line_buy_tp");
@@ -384,15 +380,15 @@ int ResetShortStatus() {
    ArrayResize(short.lots,      0);
    ArrayResize(short.openPrice, 0);
 
-   short.startEquity  = 0;
-   short.level        = 0;
-   short.sumLots      = 0;
-   short.sumOpenPrice = 0;
-   short.avgOpenPrice = 0;
-   short.sumProfit    = 0;
-   short.maxProfit    = 0;
-   short.isTakeProfit = false;
-   short.lockedProfit = 0;
+   short.startEquity    = 0;
+   short.level          = 0;
+   short.sumLots        = 0;
+   short.sumOpenPrice   = 0;
+   short.avgOpenPrice   = 0;
+   short.sumProfit      = 0;
+   short.maxProfit      = 0;
+   short.takeProfit     = false;
+   short.trailingProfit = 0;
 
    if (!IsTesting() || IsVisualMode()) {
       ObjectDelete("line_sell_tp");
@@ -412,26 +408,24 @@ int ShowStatus() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
-   string msg = StringConcatenate("PSAR Martingale System",                                    NL,
-                                                                                               NL,
-                                  "Grid size: "     , GridSize, " pips",                       NL,
-                                  "Start LotSize: " , NumberToStr(StartLotSize, ".+"),         NL,
-                                  "Increment size: ", NumberToStr(IncrementSize, ".+"),        NL,
-                                  "Profit target: " , DoubleToStr(GridValue(StartLotSize), 2), NL,
-                                  "Trailing stop: " , TrailingStop.Percent, "%",               NL,
-                                  "Max. drawdown: " , MaxDrawdown.Percent, "%",                NL,
-                                                                                               NL,
-                                  "LONG"            ,                                          NL,
-                                  "Open orders: "   , long.level,                              NL,
-                                  "Open lots: "     , NumberToStr(long.sumLots, ".1+"),        NL,
-                                  "Current profit: ", DoubleToStr(long.sumProfit, 2),          NL,
-                                  "Max. profit: "   , DoubleToStr(long.maxProfit, 2),          NL,
-                                                                                               NL,
-                                  "SHORT"           ,                                          NL,
-                                  "Open orders: "   , short.level,                             NL,
-                                  "Open lots: "     , NumberToStr(short.sumLots, ".1+"),       NL,
-                                  "Current profit: ", DoubleToStr(short.sumProfit, 2),         NL,
-                                  "Max. profit: "   , DoubleToStr(short.maxProfit, 2),         NL);
+   string msg = StringConcatenate("PSAR Martingale Grid",                                          NL,
+                                                                                                   NL,
+                                  "Grid size: "     ,     GridSize, " pips",                       NL,
+                                  "Start lot size: ",     NumberToStr(StartLotSize, ".+"),         NL,
+                                  "Increment lot size: ", NumberToStr(IncrementSize, ".+"),        NL,
+                                  "Profit target: " ,     DoubleToStr(GridValue(StartLotSize), 2), NL,
+                                  "Trailing stop: " ,     TrailingStop.Percent, "%",               NL,
+                                  "Max. drawdown: " ,     MaxDrawdown.Percent, "%",                NL,
+                                                                                                   NL,
+                                  "LONG: "          ,     long.level,                              NL,
+                                  "Open lots: "     ,     NumberToStr(long.sumLots, ".1+"),        NL,
+                                  "Current profit: ",     DoubleToStr(long.sumProfit, 2),          NL,
+                                  "Max. profit: "   ,     DoubleToStr(long.maxProfit, 2),          NL,
+                                                                                                   NL,
+                                  "SHORT: "         ,     short.level,                             NL,
+                                  "Open lots: "     ,     NumberToStr(short.sumLots, ".1+"),       NL,
+                                  "Current profit: ",     DoubleToStr(short.sumProfit, 2),         NL,
+                                  "Max. profit: "   ,     DoubleToStr(short.maxProfit, 2),         NL);
 
    // 3 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, NL, msg));
@@ -483,7 +477,7 @@ int HorizontalLine(double value, string name, color lineColor, int style, int th
 
 
 /**
- * Die Statusbox besteht aus 3 untereinander angeordneten "Quadraten" (Font "Webdings", Zeichen 'g').
+ * Die Statusbox besteht aus untereinander angeordneten Quadraten (Font "Webdings", Zeichen 'g').
  *
  * @return int - Fehlerstatus
  */
@@ -491,49 +485,23 @@ int CreateStatusBox() {
    if (IsTesting()) /*&&*/ if (!IsVisualMode())
       return(NO_ERROR);
 
-   int x=0, y[]={33, 148, 187}, fontSize=86;
-   color color.Background = C'248,248,248';                          // Chart-Background-Farbe
+   int x=0, y[]={32, 142}, fontSize=83, rectangels=ArraySize(y);
+   color  bgColor = C'248,248,248';                                  // entspricht Chart-Background
+   string label;
 
-
-   // 1. Quadrat
-   string label = StringConcatenate(__NAME__, ".statusbox.1");
-   if (ObjectFind(label) != 0) {
-      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
-         return(catch("CreateStatusBox(1)"));
-      //PushChartObject(label);
+   for (int i=0; i < rectangels; i++) {
+      label = StringConcatenate(__NAME__, ".statusbox."+ (i+1));
+      if (ObjectFind(label) != 0) {
+         if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+            return(catch("CreateStatusBox(1)"));
+         PushChartObject(label);
+      }
+      ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
+      ObjectSet(label, OBJPROP_XDISTANCE, x   );
+      ObjectSet(label, OBJPROP_YDISTANCE, y[i]);
+      ObjectSetText(label, "g", fontSize, "Webdings", bgColor);
    }
-   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
-   ObjectSet(label, OBJPROP_XDISTANCE, x   );
-   ObjectSet(label, OBJPROP_YDISTANCE, y[0]);
-   ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
-
-
-   // 2. Quadrat
-   label = StringConcatenate(__NAME__, ".statusbox.2");
-   if (ObjectFind(label) != 0) {
-      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
-         return(catch("CreateStatusBox(2)"));
-      //PushChartObject(label);
-   }
-   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
-   ObjectSet(label, OBJPROP_XDISTANCE, x   );
-   ObjectSet(label, OBJPROP_YDISTANCE, y[1]);
-   ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
-
-
-   // 3. Quadrat (überlappt 2.)
-   label = StringConcatenate(__NAME__, ".statusbox.3");
-   if (ObjectFind(label) != 0) {
-      if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
-         return(catch("CreateStatusBox(3)"));
-      //PushChartObject(label);
-   }
-   ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
-   ObjectSet(label, OBJPROP_XDISTANCE, x   );
-   ObjectSet(label, OBJPROP_YDISTANCE, y[2]);
-   ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
-
-   return(catch("CreateStatusBox(4)"));
+   return(catch("CreateStatusBox(2)"));
 }
 
 
