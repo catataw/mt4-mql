@@ -1,5 +1,5 @@
 /**
- * RSI Martingale System
+ * RSI Martingale Grid
  *
  * Der RSI ist im Wesentlichen eine andere Darstellung eines Bollinger-Bands, also ein Momentum-Indikator.
  */
@@ -41,6 +41,9 @@ double long.sumProfit,      short.sumProfit;
 double long.maxProfit,      short.maxProfit;
 bool   long.takeProfit,     short.takeProfit;
 double long.trailingProfit, short.trailingProfit;
+double long.lossTarget,     short.lossTarget;                        // Martingale-Trigger
+
+double profitTarget;                                                 // TakeProfit-Trigger (Long/Short im Moment noch identisch)
 
 int    magicNo = 50854;
 string comment = "ld02 RSI";                                         // order comment
@@ -73,9 +76,9 @@ int UpdateStatus() {
    }
    long.maxProfit = MathMax(long.maxProfit, long.sumProfit);
 
-   if (GE(long.maxProfit, GridValue(StartLotSize)))  {
-      long.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit, Digits);
+   if (GE(long.maxProfit, profitTarget))  {
       long.takeProfit     = true;
+      long.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit, Digits);
    }
 
 
@@ -87,9 +90,9 @@ int UpdateStatus() {
    }
    short.maxProfit = MathMax(short.maxProfit, short.sumProfit);
 
-   if (GE(short.maxProfit, GridValue(StartLotSize))) {
-      short.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
+   if (GE(short.maxProfit, profitTarget)) {
       short.takeProfit     = true;
+      short.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
    }
    return(catch("UpdateStatus(3)"));
 }
@@ -203,7 +206,7 @@ int Strategy.Long() {
    int ticket;
 
 
-   // (1) level == 0
+   // (1) Start
    if (long.level == 0) {
       if (rsi < 100-RSI.SignalLevel) {                               // RSI liegt "irgendwo" unterm High (um nach TakeProfit sofortigen Wiedereinstieg zu triggern)
          long.startEquity = AccountEquity() - AccountCredit();
@@ -215,17 +218,17 @@ int Strategy.Long() {
       return(catch("Strategy.Long(1)"));
    }
 
-   // (2) if trailingProfit is hit we close everything
-   if (long.takeProfit) /*&&*/ if (LE(long.sumProfit, long.trailingProfit)) {
+   // (2) TakeProfit: if trailingProfit is hit we close everything
+   if (long.takeProfit) /*&&*/ if (long.sumProfit <= long.trailingProfit) {
       if (!OrderMultiClose(long.ticket, 0.1, Blue, oeFlags, oes))
          return(SetLastError(oes.Error(oes, 0)));
       ResetLongStatus();
       return(catch("Strategy.Long(2)"));
    }
 
-   // (3) if LossTarget is hit and RSI signals we "double up"
+   // (3) Martingale: if LossTarget is hit and RSI signals we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-   if (LE(long.sumProfit, -GridValue(long.sumLots))) {
+   if (long.sumProfit <= long.lossTarget) {
       if (rsi < RSI.SignalLevel) {                                   // RSI crossed low signal line: starkes Down-Momentum
          ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
@@ -246,7 +249,7 @@ int Strategy.Short() {
    int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
 
-   // (1) level == 0
+   // (1) Start
    if (short.level == 0) {
       if (rsi > RSI.SignalLevel) {                                // RSI liegt "irgendwo" überm Low (um nach TakeProfit sofortigen Wiedereinstieg zu triggern)
          short.startEquity = AccountEquity() - AccountCredit();
@@ -258,17 +261,17 @@ int Strategy.Short() {
       return(catch("Strategy.Short(1)"));
    }
 
-   // (2) if trailingProfit is hit we close everything
-   if (short.takeProfit) /*&&*/ if (LE(short.sumProfit, short.trailingProfit)) {
+   // (2) TakeProfit: if trailingProfit is hit we close everything
+   if (short.takeProfit) /*&&*/ if (short.sumProfit <= short.trailingProfit) {
       if (!OrderMultiClose(short.ticket, 0.1, Red, oeFlags, oes))
          return(SetLastError(oes.Error(oes, 0)));
       ResetShortStatus();
       return(catch("Strategy.Short(2)"));
    }
 
-   // (3) if LossTarget is hit and RSI signals we "double up"
+   // (3) Martingale: if LossTarget is hit and RSI signals we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-   if (LE(short.sumProfit, -GridValue(short.sumLots))) {
+   if (short.sumProfit <= short.lossTarget) {
       if (rsi > 100-RSI.SignalLevel) {                               // RSI crossed high signal line: starkes Up-Momentum
          ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
@@ -286,16 +289,9 @@ int Strategy.Short() {
  * - entsprechend unvermeidbarer Martingale-Tod
  */
 double MartingaleVolume(double loss) {
-   int multiplier = MathAbs(loss)/GridValue(StartLotSize);  // minimale Risikoreduzierung durch systematisches Abrunden
+   loss = MathAbs(loss);
+   int multiplier = loss / profitTarget;                    // minimale Martingale-Reduktion durch systematisches Abrunden
    return(multiplier * IncrementSize);                      // Es scheint so, als mußte es irgendwie ein Vielfaches von irgendwas sein.
-}
-
-
-/**
- *
- */
-double GridValue(double lots) {
-   return(GridSize * PipValue(lots));
 }
 
 
@@ -317,6 +313,7 @@ int AddLongOrder(int ticket, double lots, double openPrice, double profit) {
    long.sumProfit     = NormalizeDouble(long.sumProfit + profit, 2);
    long.sumOpenPrice += lots * openPrice;
    long.avgOpenPrice  = long.sumOpenPrice / long.sumLots;
+   long.lossTarget    = -GridSize * PipValue(long.sumLots);
 
    return(last_error);
 }
@@ -340,6 +337,7 @@ int AddShortOrder(int ticket, double lots, double openPrice, double profit) {
    short.sumProfit     = NormalizeDouble(short.sumProfit + profit, 2);
    short.sumOpenPrice += lots * openPrice;
    short.avgOpenPrice  = short.sumOpenPrice / short.sumLots;
+   short.lossTarget    = -GridSize * PipValue(short.sumLots);
 
    return(last_error);
 }
@@ -362,6 +360,7 @@ int ResetLongStatus() {
    long.maxProfit      = 0;
    long.takeProfit     = false;
    long.trailingProfit = 0;
+   long.lossTarget     = 0;
 
    if (!IsTesting() || IsVisualMode()) {
       ObjectDelete("line_buy_tp");
@@ -391,6 +390,7 @@ int ResetShortStatus() {
    short.maxProfit      = 0;
    short.takeProfit     = false;
    short.trailingProfit = 0;
+   short.lossTarget     = 0;
 
    if (!IsTesting() || IsVisualMode()) {
       ObjectDelete("line_sell_tp");
@@ -415,7 +415,7 @@ int ShowStatus() {
                                   "Grid size: "     ,     GridSize, " pips",                       NL,
                                   "Start lot size: ",     NumberToStr(StartLotSize, ".+"),         NL,
                                   "Increment lot size: ", NumberToStr(IncrementSize, ".+"),        NL,
-                                  "Profit target: " ,     DoubleToStr(GridValue(StartLotSize), 2), NL,
+                                  "Profit target: " ,     DoubleToStr(profitTarget, 2),            NL,
                                   "Trailing stop: " ,     TrailingStop.Percent, "%",               NL,
                                   "Max. drawdown: " ,     MaxDrawdown.Percent, "%",                NL,
                                                                                                    NL,
@@ -432,7 +432,7 @@ int ShowStatus() {
    // 3 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, NL, msg));
 
-   ShowProfitTargets();
+   ShowTargets();
    return(catch("ShowStatus()"));
 }
 
@@ -440,7 +440,7 @@ int ShowStatus() {
 /**
  *
  */
-int ShowProfitTargets() {
+int ShowTargets() {
    double distance, takeProfit;
 
    if (long.level > 0) {
@@ -454,7 +454,7 @@ int ShowProfitTargets() {
       takeProfit = NormalizeDouble(short.avgOpenPrice - distance*Pips, Digits);
       HorizontalLine(takeProfit, "line_sell_tp", Tomato, STYLE_SOLID, 2);
    }
-   return(catch("ShowProfitTargets()"));
+   return(catch("ShowTargets()"));
 }
 
 
@@ -515,5 +515,6 @@ int CreateStatusBox() {
 int afterInit() {
    InitStatus();
    CreateStatusBox();
+   profitTarget = NormalizeDouble(GridSize * PipValue(StartLotSize), 2);
    return(last_error);
 }
