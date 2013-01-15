@@ -1,7 +1,7 @@
 /**
  * RSI Martingale System
  *
- * NOTE: Der RSI ist, wenn aufs Wesentliche reduziert, eine andere Darstellung eines Bollinger-Bands und damit ein Momentum- und kein Trend-Indikator.
+ * Der RSI ist im Wesentlichen eine andere Darstellung eines Bollinger-Bands, also ein Momentum-Indikator.
  */
 #include <stddefine.mqh>
 int   __INIT_FLAGS__[] = {INIT_PIPVALUE};
@@ -514,18 +514,6 @@ int HorizontalLine(double value, string name, color lineColor, int style, int th
 
 
 /**
- * Postprocessing-Hook nach Initialisierung
- *
- * @return int - Fehlerstatus
- */
-int afterInit() {
-   InitStatus();
-   CreateStatusBox();
-   return(last_error);
-}
-
-
-/**
  * Die Statusbox besteht aus 3 untereinander angeordneten "Quadraten" (Font "Webdings", Zeichen 'g').
  *
  * @return int - Fehlerstatus
@@ -577,4 +565,28 @@ int CreateStatusBox() {
    ObjectSetText(label, "g", fontSize, "Webdings", color.Background);
 
    return(catch("CreateStatusBox(4)"));
+}
+
+
+/**
+ * Postprocessing-Hook nach Initialisierung
+ *
+ * @return int - Fehlerstatus
+ */
+int afterInit() {
+   InitStatus();
+   CreateStatusBox();
+   return(last_error);
+}
+
+
+/**
+ *
+ */
+int onDeinit() {
+   double test.duration = (Test.stopMillis-Test.startMillis)/1000.0;    // Sekunden
+   double test.days     = (Test.toDate-Test.fromDate) * 1.0 /DAYS;      // Testzeitraum in Tagen
+
+   //debug("onDeinit()   time="+ DoubleToStr(test.duration, 1) +" sec   days="+ Round(test.days) +"   ("+ DoubleToStr(test.duration/test.days, 3) +" sec/day)");
+   return(last_error);
 }
