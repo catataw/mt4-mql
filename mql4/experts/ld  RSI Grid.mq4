@@ -65,9 +65,9 @@ int Strategy.Long() {
       return(catch("Strategy.Long(2)"));
    }
 
-   // (3) Martingale: if LossTarget is hit and RSI signals we "double up"
+   // (3) Martingale: if targetLoss is hit and RSI signals we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-   if (long.sumProfit <= long.lossTarget) {
+   if (long.sumProfit <= long.targetLoss) {
       if (rsi < RSI.SignalLevel) {                                         // RSI crossed low signal line: starkes Down-Momentum
          ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
@@ -108,9 +108,9 @@ int Strategy.Short() {
       return(catch("Strategy.Short(2)"));
    }
 
-   // (3) Martingale: if LossTarget is hit and RSI signals we "double up"
+   // (3) Martingale: if targetLoss is hit and RSI signals we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-   if (short.sumProfit <= short.lossTarget) {
+   if (short.sumProfit <= short.targetLoss) {
       if (rsi > 100-RSI.SignalLevel) {                                     // RSI crossed high signal line: starkes Up-Momentum
          ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
