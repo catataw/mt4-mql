@@ -51,7 +51,7 @@ int UpdateStatus() {
    }
    long.maxProfit = MathMax(long.maxProfit, long.sumProfit);
 
-   if (GE(long.maxProfit, targetProfit))  {
+   if (long.maxProfit >= targetProfit)  {
       long.takeProfit     = true;
       long.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit, Digits);
    }
@@ -64,7 +64,7 @@ int UpdateStatus() {
    }
    short.maxProfit = MathMax(short.maxProfit, short.sumProfit);
 
-   if (GE(short.maxProfit, targetProfit)) {
+   if (short.maxProfit >= targetProfit) {
       short.takeProfit     = true;
       short.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
    }
