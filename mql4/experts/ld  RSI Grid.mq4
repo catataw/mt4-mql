@@ -29,7 +29,7 @@ extern int    RSI.Shift                       =  0;
 
 
 int    magicNo = 50854;
-string comment = "ld02 RSI";                                         // order comment
+string comment = "ld RSI";                                           // order comment
 string ea.name = "RSI Martingale Grid";                              // ShowStatus() EA name
 
 #include <Martingale/expert.mq4>

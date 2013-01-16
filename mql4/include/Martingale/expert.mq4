@@ -75,77 +75,6 @@ int UpdateStatus() {
 /**
  *
  */
-int InitStatus() {
-   ResetLongStatus();
-   ResetShortStatus();
-
-   for (int i=0; i < OrdersTotal(); i++) {
-      if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) {
-         if (OrderSymbol()==Symbol()) /*&&*/ if (OrderMagicNumber()==magicNo) {
-            if (OrderType() == OP_BUY ) AddLongOrder (OrderTicket(), OrderLots(), OrderOpenPrice(), OrderProfit() + OrderCommission() + OrderSwap());
-            if (OrderType() == OP_SELL) AddShortOrder(OrderTicket(), OrderLots(), OrderOpenPrice(), OrderProfit() + OrderCommission() + OrderSwap());
-         }
-      }
-   }
-   SortTickets();
-   return(catch("InitStatus()"));
-}
-
-
-/**
- *
- */
-int SortTickets() {
-   int    tmpTicket, i1;
-   double tmpLots, tmpOpenPrice;
-
-   // Long
-   for (int i=0; i < long.level-1; i++) {
-      i1 = 1;
-      // we have at least 2 tickets: i1 - erstes Ticket, j2 - zweites Ticket
-      for (int j2=i+1; j2 < long.level; j2++) {
-         if (long.ticket[i1] > long.ticket[j2]) {
-            tmpTicket          = long.ticket   [i1];
-            tmpLots            = long.lots     [i1];
-            tmpOpenPrice       = long.openPrice[i1];
-
-            long.ticket   [i1] = long.ticket   [j2];
-            long.lots     [i1] = long.lots     [j2];
-            long.openPrice[i1] = long.openPrice[j2];
-
-            long.ticket   [j2] = tmpTicket;
-            long.lots     [j2] = tmpLots;
-            long.openPrice[j2] = tmpOpenPrice;
-         }
-      }
-   }
-
-   // Short
-   for (i=0; i < short.level-1; i++) {
-      // we have at least 2 tickets: i1 - erstes Ticket, j2 - zweites Ticket
-      for (j2=i+1; j2 < short.level; j2++) {
-         if (short.ticket[i1] > short.ticket[j2]) {
-            tmpTicket           = short.ticket   [i1];
-            tmpLots             = short.lots     [i1];
-            tmpOpenPrice        = short.openPrice[i1];
-
-            short.ticket   [i1] = short.ticket   [j2];
-            short.lots     [i1] = short.lots     [j2];
-            short.openPrice[i1] = short.openPrice[j2];
-
-            short.ticket   [j2] = tmpTicket;
-            short.lots     [j2] = tmpLots;
-            short.openPrice[j2] = tmpOpenPrice;
-         }
-      }
-   }
-   return(catch("SortTickets()"));
-}
-
-
-/**
- *
- */
 int Strategy() {
    /*
    // Drawdown control
@@ -417,4 +346,75 @@ int afterInit() {
    CreateStatusBox();
    targetProfit = TargetProfit();
    return(last_error);
+}
+
+
+/**
+ *
+ */
+int InitStatus() {
+   ResetLongStatus();
+   ResetShortStatus();
+
+   for (int i=0; i < OrdersTotal(); i++) {
+      if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) {
+         if (OrderSymbol()==Symbol()) /*&&*/ if (OrderMagicNumber()==magicNo) {
+            if (OrderType() == OP_BUY ) AddLongOrder (OrderTicket(), OrderLots(), OrderOpenPrice(), OrderProfit() + OrderCommission() + OrderSwap());
+            if (OrderType() == OP_SELL) AddShortOrder(OrderTicket(), OrderLots(), OrderOpenPrice(), OrderProfit() + OrderCommission() + OrderSwap());
+         }
+      }
+   }
+   SortTickets();
+   return(catch("InitStatus()"));
+}
+
+
+/**
+ *
+ */
+int SortTickets() {
+   int    tmpTicket, i1;
+   double tmpLots, tmpOpenPrice;
+
+   // Long
+   for (int i=0; i < long.level-1; i++) {
+      i1 = 1;
+      // we have at least 2 tickets: i1 - erstes Ticket, j2 - zweites Ticket
+      for (int j2=i+1; j2 < long.level; j2++) {
+         if (long.ticket[i1] > long.ticket[j2]) {
+            tmpTicket          = long.ticket   [i1];
+            tmpLots            = long.lots     [i1];
+            tmpOpenPrice       = long.openPrice[i1];
+
+            long.ticket   [i1] = long.ticket   [j2];
+            long.lots     [i1] = long.lots     [j2];
+            long.openPrice[i1] = long.openPrice[j2];
+
+            long.ticket   [j2] = tmpTicket;
+            long.lots     [j2] = tmpLots;
+            long.openPrice[j2] = tmpOpenPrice;
+         }
+      }
+   }
+
+   // Short
+   for (i=0; i < short.level-1; i++) {
+      // we have at least 2 tickets: i1 - erstes Ticket, j2 - zweites Ticket
+      for (j2=i+1; j2 < short.level; j2++) {
+         if (short.ticket[i1] > short.ticket[j2]) {
+            tmpTicket           = short.ticket   [i1];
+            tmpLots             = short.lots     [i1];
+            tmpOpenPrice        = short.openPrice[i1];
+
+            short.ticket   [i1] = short.ticket   [j2];
+            short.lots     [i1] = short.lots     [j2];
+            short.openPrice[i1] = short.openPrice[j2];
+
+            short.ticket   [j2] = tmpTicket;
+            short.lots     [j2] = tmpLots;
+            short.openPrice[j2] = tmpOpenPrice;
+         }
+      }
+   }
+   return(catch("SortTickets()"));
 }
