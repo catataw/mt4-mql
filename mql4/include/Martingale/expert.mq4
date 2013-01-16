@@ -195,7 +195,7 @@ int ResetLongStatus() {
    long.trailingProfit = 0;
    long.targetLoss     = 0;
 
-   if (!IsTesting() || IsVisualMode()) {
+   if (IsChart) {
       ObjectDelete(__NAME__ +".ProfitTarget.long");
 
       int error = GetLastError();
@@ -225,7 +225,7 @@ int ResetShortStatus() {
    short.trailingProfit = 0;
    short.targetLoss     = 0;
 
-   if (!IsTesting() || IsVisualMode()) {
+   if (IsChart) {
       ObjectDelete(__NAME__ +".ProfitTarget.short");
 
       int error = GetLastError();
@@ -240,7 +240,7 @@ int ResetShortStatus() {
  *
  */
 int ShowStatus() {
-   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+   if (!IsChart)
       return(NO_ERROR);
 
    string msg = StringConcatenate(ea.name,                                                   NL,
@@ -313,7 +313,7 @@ int HorizontalLine(string label, double value, color lineColor, int style, int t
  * @return int - Fehlerstatus
  */
 int CreateStatusBox() {
-   if (IsTesting()) /*&&*/ if (!IsVisualMode())
+   if (!IsChart)
       return(NO_ERROR);
 
    int x=0, y[]={32, 142}, fontSize=83, rectangels=ArraySize(y);
