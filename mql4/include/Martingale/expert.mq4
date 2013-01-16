@@ -31,7 +31,7 @@ double  targetProfit;                                                // TakeProf
 int onTick() {
    UpdateStatus();
    Strategy();
-   ShowStatus();
+   //RecordEquity(true);
    return(last_error);
 }
 
@@ -337,19 +337,6 @@ int CreateStatusBox() {
 
 
 /**
- * Postprocessing-Hook nach Initialisierung
- *
- * @return int - Fehlerstatus
- */
-int afterInit() {
-   InitStatus();
-   CreateStatusBox();
-   targetProfit = TargetProfit();
-   return(last_error);
-}
-
-
-/**
  *
  */
 int InitStatus() {
@@ -417,4 +404,140 @@ int SortTickets() {
       }
    }
    return(catch("SortTickets()"));
+}
+
+
+/**
+ * Zeichnet die Equity-Kurve des Tests auf.
+ *
+ * @param  bool collectTicks - TRUE:  nur komplette Bars werden geschrieben (Ticks einer Bar werden gesammelt und zwischengespeichert)
+ *                             FALSE: jeder einzelne Tick wird geschrieben
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool RecordEquity(bool collectTicks) {
+   if (!IsTesting())
+      return(true);
+
+   // (1) Filehandle holen
+   static int hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
+   if (!hFile) {
+      string symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), comment);
+      string description = ea.name;
+      hFile = History.OpenFile(symbol, description, digits, PERIOD_H4, FILE_READ|FILE_WRITE);
+      if (hFile <= 0)
+         return(false);
+   }
+
+   // (2) Daten zusammenstellen
+   double value = AccountEquity()-AccountCredit();
+
+
+   static datetime barTime, nextBarTime, period;
+   bool   barExists [1];
+   int    bar, iNull[1];
+   double data[5];
+
+
+   // (3) Ticks sammeln: nur komplette Bars schreiben
+   if (collectTicks) {
+      if (Tick.Time >= nextBarTime) {
+         bar = History.FindBar(hFile, Tick.Time, barExists);                  // bei bereits gesammelten Ticks (nextBarTime != 0) immer 1 zu klein, da die noch ungeschriebene
+                                                                              // letzte Bar für FindBar() nicht sichtbar ist
+         if (!nextBarTime) {
+            if (barExists[0]) {                                               // erste Initialisierung
+               if (!History.ReadBar(hFile, bar, iNull, data))                 // ggf. vorhandene Bar einlesen (von vorherigem Abbruch)
+                  return(false);
+               data[BAR_H] = MathMax(data[BAR_H], value);                     // Open bleibt unverändert
+               data[BAR_L] = MathMin(data[BAR_L], value);
+               data[BAR_C] = value;
+               data[BAR_V]++;
+            }
+            else {
+               data[BAR_O] = value;
+               data[BAR_H] = value;
+               data[BAR_L] = value;
+               data[BAR_C] = value;
+               data[BAR_V] = 1;
+            }
+            period = History.FilePeriod(hFile)*MINUTES;
+         }
+         else {                                                               // letzte Bar komplett, muß an den Offset 'bar' geschrieben werden (nicht bar-1),
+            if (!History.WriteBar(hFile, bar, barTime, data, HST_FILL_GAPS))  // da die ungeschriebene letzte Bar für FindBar() nicht sichtbar ist
+               return(false);
+            data[BAR_O] = value;                                              // Re-Initialisierung
+            data[BAR_H] = value;
+            data[BAR_L] = value;
+            data[BAR_C] = value;
+            data[BAR_V] = 1;
+         }
+         barTime     = Tick.Time - Tick.Time%period;
+         nextBarTime = barTime + period;
+      }
+      else {
+         data[BAR_H] = MathMax(data[BAR_H], value);                           // Open bleibt unverändert
+         data[BAR_L] = MathMin(data[BAR_L], value);
+         data[BAR_C] = value;
+         data[BAR_V]++;
+      }
+      return(true);
+   }
+
+
+   // (4) Ticks nicht sammeln: keine ungeschriebenen Ticks => nur den aktuellen Tick schreiben
+   if (!barTime)
+      return(History.AddTick(hFile, Tick.Time, value, NULL));
+
+
+   // (5) ungeschriebene und aktuellen Tick schreiben
+   bar = History.FindBar(hFile, barTime, barExists);
+
+   if (Tick.Time - Tick.Time%period == barTime) {                          // aktueller Tick gehört zur ungeschriebenen Bar und wird integriert
+      data[BAR_H] = MathMax(data[BAR_H], value);                           // Open bleibt unverändert
+      data[BAR_L] = MathMin(data[BAR_L], value);
+      data[BAR_C] = value;
+      data[BAR_V]++;
+      if (!History.WriteBar(hFile, bar, barTime, data, HST_FILL_GAPS))
+         return(false);
+   }
+   else if (History.WriteBar(hFile, bar, barTime, data, HST_FILL_GAPS)) {  // ungeschriebene Bar und aktueller Tick werden getrennt geschrieben
+      if (!History.AddTick(hFile, Tick.Time, value, NULL)) return(false);
+   }
+   else return(false);
+
+   barTime     = 0;                                                        // für Wechsel von collectTicks (TRUE|FALSE) immer zurücksetzen
+   nextBarTime = 0;
+   return(true);
+}
+
+
+/**
+ * Unterdrückt unnütze Compilerwarnungen.
+ */
+void DummyCalls() {
+   RecordEquity(NULL);
+}
+
+
+/**
+ * Postprocessing-Hook nach Initialisierung
+ *
+ * @return int - Fehlerstatus
+ */
+int afterInit() {
+   InitStatus();
+   CreateStatusBox();
+   targetProfit = TargetProfit();
+   return(last_error);
+}
+
+
+/**
+ * Postprocessing-Hook nach Deinitialisierung
+ *
+ * @return int - Fehlerstatus
+ */
+int afterDeinit() {
+   CloseFiles(false);
+   return(NO_ERROR);
 }

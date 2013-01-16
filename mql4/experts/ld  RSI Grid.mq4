@@ -7,6 +7,7 @@
 int   __INIT_FLAGS__[] = {INIT_PIPVALUE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
+#include <history.mqh>
 
 #include <core/expert.mqh>
 
@@ -28,9 +29,11 @@ extern int    RSI.Shift                       =  0;
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int    magicNo = 50854;
-string comment = "ld RSI";                                           // order comment
-string ea.name = "RSI Martingale Grid";                              // ShowStatus() EA name
+#define STRATEGY_ID  105                                             // eindeutige ID der Strategie (Bereich 101-1023)
+
+int     magicNo = 50854;
+string  comment = "M.RSI";                                           // order comment
+string  ea.name = "RSI Martingale Grid";                             // ShowStatus() EA name
 
 #include <Martingale/expert.mq4>
 

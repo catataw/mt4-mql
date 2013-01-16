@@ -5,6 +5,7 @@
 int   __INIT_FLAGS__[] = {INIT_PIPVALUE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
+#include <history.mqh>
 
 #include <core/expert.mqh>
 
@@ -25,9 +26,11 @@ extern double PSAR.Maximum                    = 0.2;
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int    magicNo = 110413;
-string comment = "ld PSAR";                                          // order comment
-string ea.name = "PSAR Martingale Grid";                             // ShowStatus() EA name
+#define STRATEGY_ID  104                                             // eindeutige ID der Strategie (Bereich 101-1023)
+
+int     magicNo = 110413;
+string  comment = "M.PSAR";                                          // order comment
+string  ea.name = "PSAR Martingale Grid";                            // ShowStatus() EA name
 
 #include <Martingale/expert.mq4>
 
