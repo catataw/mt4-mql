@@ -37,7 +37,6 @@ int onTick() {
    Strategy();
 
    bool writeEveryTick = false;
-
    RecordEquity(writeEveryTick);
 
    return(last_error);
@@ -462,7 +461,7 @@ bool RecordEquity(bool writeEveryTick) {
    if (!hFile) {
       string symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), comment);
       string description = ea.name;
-      hFile = History.OpenFile(symbol, description, digits, PERIOD_H4, FILE_READ|FILE_WRITE);
+      hFile = History.OpenFile(symbol, description, digits, PERIOD_H1, FILE_READ|FILE_WRITE);
       if (hFile <= 0)
          return(false);
    }
@@ -471,22 +470,24 @@ bool RecordEquity(bool writeEveryTick) {
    double value = AccountEquity()-AccountCredit();
 
 
-   static datetime barTime, nextBarTime, period;
-   bool   barExists [1];
-   int    bar, iNull[1];
+   static datetime barTime, nextBarTime;
+   static int      filePeriod;
+   int    offset, iNulls[1];
+   bool   barExists[1];
    double data[5];
 
 
    // (3) Ticks zwischenspeichern und nur komplette Bars schreiben
    if (!writeEveryTick) {
       if (Tick.Time >= nextBarTime) {
-         bar = History.FindBar(hFile, Tick.Time, barExists);                  // bei bereits gesammelten Ticks (nextBarTime != 0) immer 1 zu klein, da die noch ungeschriebene
-                                                                              // letzte Bar für FindBar() nicht sichtbar ist
+         offset = History.FindBar(hFile, Tick.Time, barExists);                  // bei bereits gespeicherten Ticks (nextBarTime != 0) immer 1 zu klein, da die ungeschriebene
+                                                                                 // Bar für FindBar() noch nicht sichtbar ist
          if (!nextBarTime) {
-            if (barExists[0]) {                                               // erste Initialisierung
-               if (!History.ReadBar(hFile, bar, iNull, data))                 // ggf. vorhandene Bar einlesen (von vorherigem Abbruch)
+            if (barExists[0]) {                                                  // erste Initialisierung
+               if (!History.ReadBar(hFile, offset, iNulls, data))                // ggf. vorhandene Bar einlesen (von vorherigem Abbruch)
                   return(false);
-               data[BAR_H] = MathMax(data[BAR_H], value);                     // Open bleibt unverändert
+             //data[BAR_O] = ...                                                 // unverändert
+               data[BAR_H] = MathMax(data[BAR_H], value);
                data[BAR_L] = MathMin(data[BAR_L], value);
                data[BAR_C] = value;
                data[BAR_V]++;
@@ -498,22 +499,23 @@ bool RecordEquity(bool writeEveryTick) {
                data[BAR_C] = value;
                data[BAR_V] = 1;
             }
-            period = History.FilePeriod(hFile)*MINUTES;
+            filePeriod = History.FilePeriod(hFile)*MINUTES;
          }
-         else {                                                               // letzte Bar komplett, muß an den Offset 'bar' geschrieben werden (nicht bar-1),
-            if (!History.WriteBar(hFile, bar, barTime, data, HST_FILL_GAPS))  // da die ungeschriebene letzte Bar für FindBar() nicht sichtbar ist
+         else {                                                                  // letzte Bar komplett, muß nach 'offset' geschrieben werden (nicht offset-1),
+            if (!History.WriteBar(hFile, offset, barTime, data, HST_FILL_GAPS))  // da die ungeschriebene Bar für FindBar() noch nicht sichtbar ist
                return(false);
-            data[BAR_O] = value;                                              // Re-Initialisierung
+            data[BAR_O] = value;                                                 // Re-Initialisierung
             data[BAR_H] = value;
             data[BAR_L] = value;
             data[BAR_C] = value;
             data[BAR_V] = 1;
          }
-         barTime     = Tick.Time - Tick.Time%period;
-         nextBarTime = barTime + period;
+         barTime     = Tick.Time - Tick.Time%filePeriod;
+         nextBarTime = barTime + filePeriod;
       }
       else {
-         data[BAR_H] = MathMax(data[BAR_H], value);                           // Open bleibt unverändert
+       //data[BAR_O] = ...                                                       // unverändert
+         data[BAR_H] = MathMax(data[BAR_H], value);
          data[BAR_L] = MathMin(data[BAR_L], value);
          data[BAR_C] = value;
          data[BAR_V]++;
@@ -522,28 +524,31 @@ bool RecordEquity(bool writeEveryTick) {
    }
 
 
-   // (4) jeden einzelnen Tick sofort schreiben
+   // (4) falls keine zwischengespeicherten Ticks vorhanden sind, nur den aktuellen Tick schreiben
    if (!barTime)
       return(History.AddTick(hFile, Tick.Time, value, NULL));
 
 
-   // (5) ungeschriebene und aktuellen Tick schreiben
-   bar = History.FindBar(hFile, barTime, barExists);
+   // (5) barTime und nextBarTime sind gesetzt: zwischengespeicherte und aktuellen Tick schreiben
+   offset = History.FindBar(hFile, barTime, barExists);
 
-   if (Tick.Time - Tick.Time%period == barTime) {                          // aktueller Tick gehört zur ungeschriebenen Bar und wird integriert
-      data[BAR_H] = MathMax(data[BAR_H], value);                           // Open bleibt unverändert
+   if (Tick.Time < nextBarTime) {                                                // aktueller Tick gehört zur zwischengespeicherten Bar und wird in sie integriert
+    //data[BAR_O] = ...                                                          // Open unverändert
+      data[BAR_H] = MathMax(data[BAR_H], value);
       data[BAR_L] = MathMin(data[BAR_L], value);
       data[BAR_C] = value;
       data[BAR_V]++;
-      if (!History.WriteBar(hFile, bar, barTime, data, HST_FILL_GAPS))
+      if (!History.WriteBar(hFile, offset, barTime, data, HST_FILL_GAPS))        // beide werden zusammen geschrieben
          return(false);
    }
-   else if (History.WriteBar(hFile, bar, barTime, data, HST_FILL_GAPS)) {  // ungeschriebene Bar und aktueller Tick werden getrennt geschrieben
-      if (!History.AddTick(hFile, Tick.Time, value, NULL)) return(false);
+   else {
+      if (!History.WriteBar(hFile, offset, barTime, data, HST_FILL_GAPS))        // beide werden getrennt geschrieben
+         return(false);
+      if (!History.AddTick(hFile, Tick.Time, value, NULL))
+         return(false);
    }
-   else return(false);
 
-   barTime     = 0;                                                        // für Wechsel von writeEveryTick (TRUE|FALSE) immer zurücksetzen
+   barTime     = 0;                                                              // writeEveryTick ist TRUE: für möglichen Wechsel immer zurücksetzen
    nextBarTime = 0;
-   return(true);
+   return(true);                                                                 // TODO: writeEveryTick läßt sich beschleunigen, wenn beide Werte nicht zurückgesetzt werden
 }
