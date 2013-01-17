@@ -19,7 +19,7 @@ double  long.breakeven,         short.breakeven;
 double  long.startEquity,       short.startEquity;
 double  long.profit,            short.profit;
 double  long.maxProfit,         short.maxProfit;
-//double long.profitTarget,     short.profitTarget;
+//      long.profitTarget,      short.profitTarget;
 double  long.profitTargetPrice, short.profitTargetPrice;
 double  long.lossTarget,        short.lossTarget;                    // Martingale-Trigger
 double  long.lossTargetPrice,   short.lossTargetPrice;

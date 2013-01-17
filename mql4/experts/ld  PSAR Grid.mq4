@@ -65,7 +65,7 @@ int Strategy.Long() {
       return(catch("Strategy.Long(2)"));
    }
 
-   // (3) Martingale if lossTarget is hit and PSAR crosses
+   // (3) Martingale if lossTarget is hit and PSAR signals
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
    if (long.profit <= long.lossTarget) {
       if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {        // PSAR wechselte von oben nach unten (angeblicher Up-Trend)
@@ -109,7 +109,7 @@ int Strategy.Short() {
       return(catch("Strategy.Short(2)"));
    }
 
-   // (3) Martingale if lossTarget is hit and PSAR crosses
+   // (3) Martingale if lossTarget is hit and PSAR signals
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
    if (short.profit <= short.lossTarget) {
       if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {        // PSAR wechselte von unten nach oben (angeblicher Down-Trend)
