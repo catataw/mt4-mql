@@ -35,7 +35,11 @@ double  profitTarget;                                                // TakeProf
 int onTick() {
    UpdateStatus();
    Strategy();
-   //RecordEquity(true);
+
+   bool writeEveryTick = false;
+
+   RecordEquity(writeEveryTick);
+
    return(last_error);
 }
 
@@ -411,14 +415,45 @@ int SortTickets() {
 
 
 /**
+ * Postprocessing-Hook nach Initialisierung
+ *
+ * @return int - Fehlerstatus
+ */
+int afterInit() {
+   InitStatus();
+   profitTarget = ProfitTarget();
+   return(last_error);
+}
+
+
+/**
+ * Postprocessing-Hook nach Deinitialisierung
+ *
+ * @return int - Fehlerstatus
+ */
+int afterDeinit() {
+   History.CloseFiles(false);
+   return(NO_ERROR);
+}
+
+
+/**
+ * Unterdrückt unnütze Compilerwarnungen.
+ */
+void DummyCalls() {
+   RecordEquity(NULL);
+}
+
+
+/**
  * Zeichnet die Equity-Kurve des Tests auf.
  *
- * @param  bool collectTicks - TRUE:  nur komplette Bars werden geschrieben (Ticks einer Bar werden gesammelt und zwischengespeichert)
- *                             FALSE: jeder einzelne Tick wird geschrieben
+ * @param  bool writeEveryTick - TRUE:  jeder einzelne Tick wird sofort geschrieben
+ *                               FALSE: nur komplette Bars werden geschrieben (Ticks einer Bar werden zwischengespeichert)
  *
  * @return bool - Erfolgsstatus
  */
-bool RecordEquity(bool collectTicks) {
+bool RecordEquity(bool writeEveryTick) {
    if (!IsTesting())
       return(true);
 
@@ -442,8 +477,8 @@ bool RecordEquity(bool collectTicks) {
    double data[5];
 
 
-   // (3) Ticks sammeln: nur komplette Bars schreiben
-   if (collectTicks) {
+   // (3) Ticks zwischenspeichern und nur komplette Bars schreiben
+   if (!writeEveryTick) {
       if (Tick.Time >= nextBarTime) {
          bar = History.FindBar(hFile, Tick.Time, barExists);                  // bei bereits gesammelten Ticks (nextBarTime != 0) immer 1 zu klein, da die noch ungeschriebene
                                                                               // letzte Bar für FindBar() nicht sichtbar ist
@@ -487,7 +522,7 @@ bool RecordEquity(bool collectTicks) {
    }
 
 
-   // (4) Ticks nicht sammeln: keine ungeschriebenen Ticks => nur den aktuellen Tick schreiben
+   // (4) jeden einzelnen Tick sofort schreiben
    if (!barTime)
       return(History.AddTick(hFile, Tick.Time, value, NULL));
 
@@ -508,38 +543,7 @@ bool RecordEquity(bool collectTicks) {
    }
    else return(false);
 
-   barTime     = 0;                                                        // für Wechsel von collectTicks (TRUE|FALSE) immer zurücksetzen
+   barTime     = 0;                                                        // für Wechsel von writeEveryTick (TRUE|FALSE) immer zurücksetzen
    nextBarTime = 0;
    return(true);
-}
-
-
-/**
- * Unterdrückt unnütze Compilerwarnungen.
- */
-void DummyCalls() {
-   RecordEquity(NULL);
-}
-
-
-/**
- * Postprocessing-Hook nach Initialisierung
- *
- * @return int - Fehlerstatus
- */
-int afterInit() {
-   InitStatus();
-   profitTarget = ProfitTarget();
-   return(last_error);
-}
-
-
-/**
- * Postprocessing-Hook nach Deinitialisierung
- *
- * @return int - Fehlerstatus
- */
-int afterDeinit() {
-   CloseFiles(false);
-   return(NO_ERROR);
 }
