@@ -67,7 +67,7 @@ int Strategy.Long() {
 
    // (3) Martingale: if targetLoss is hit and PSAR crossed we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-   if (long.sumProfit <= long.targetLoss) {
+   if (long.sumProfit <= long.lossTarget) {
       if (psar2 > Close[2]) /*&&*/ if (Close[1] > psar1) {        // PSAR wechselte von oben nach unten (angeblicher Up-Trend)
          ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
@@ -111,7 +111,7 @@ int Strategy.Short() {
 
    // (3) Martingale: if targetLoss is hit and PSAR crossed we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-   if (short.sumProfit <= short.targetLoss) {
+   if (short.sumProfit <= short.lossTarget) {
       if (psar2 < Close[2]) /*&&*/ if (Close[1] < psar1) {        // PSAR wechselte von unten nach oben (angeblicher Down-Trend)
          ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)

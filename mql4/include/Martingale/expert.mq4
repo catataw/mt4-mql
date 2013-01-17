@@ -7,22 +7,25 @@
 string  directionDescr[] = {"undefined", "Long", "Short"};
 
 
-int     long.ticket   [],    short.ticket   [];                      // Ticket
-double  long.lots     [],    short.lots     [];                      // Lots
-double  long.openPrice[],    short.openPrice[];                      // OpenPrice
+int     long.ticket   [],       short.ticket   [];                   // Ticket
+double  long.lots     [],       short.lots     [];                   // Lots
+double  long.openPrice[],       short.openPrice[];                   // OpenPrice
 
-double  long.startEquity,    short.startEquity;
-int     long.level,          short.level;
-double  long.sumLots,        short.sumLots;
-double  long.sumOpenPrice,   short.sumOpenPrice;                     // für avgOpenPrice-Berechnung
-double  long.avgOpenPrice,   short.avgOpenPrice;
-double  long.sumProfit,      short.sumProfit;
-double  long.maxProfit,      short.maxProfit;
-bool    long.takeProfit,     short.takeProfit;
-double  long.trailingProfit, short.trailingProfit;
-double  long.targetLoss,     short.targetLoss;                       // Martingale-Trigger
+double  long.startEquity,       short.startEquity;
+int     long.level,             short.level;
+double  long.sumLots,           short.sumLots;
+double  long.sumOpenPrice,      short.sumOpenPrice;                  // für avgOpenPrice-Berechnung
+double  long.avgOpenPrice,      short.avgOpenPrice;
+double  long.sumProfit,         short.sumProfit;
+double  long.maxProfit,         short.maxProfit;
+bool    long.takeProfit,        short.takeProfit;
+double  long.trailingProfit,    short.trailingProfit;
+//double long.profitTarget,     short.profitTarget;
+double  long.profitTargetPrice, short.profitTargetPrice;
+double  long.lossTarget,        short.lossTarget;                    // Martingale-Trigger
+double  long.lossTargetPrice,   short.lossTargetPrice;
 
-double  targetProfit;                                                // TakeProfit-Trigger (Long/Short im Moment noch identisch)
+double  profitTarget;                                                // TakeProfit-Trigger (zur Zeit für Long/Short gleich)
 
 
 /**
@@ -51,7 +54,7 @@ int UpdateStatus() {
    }
    long.maxProfit = MathMax(long.maxProfit, long.sumProfit);
 
-   if (long.maxProfit >= targetProfit)  {
+   if (long.maxProfit >= profitTarget)  {
       long.takeProfit     = true;
       long.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit, Digits);
    }
@@ -64,7 +67,7 @@ int UpdateStatus() {
    }
    short.maxProfit = MathMax(short.maxProfit, short.sumProfit);
 
-   if (short.maxProfit >= targetProfit) {
+   if (short.maxProfit >= profitTarget) {
       short.takeProfit     = true;
       short.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
    }
@@ -102,7 +105,7 @@ int Strategy() {
 /**
  *
  */
-double TargetProfit() {
+double ProfitTarget() {
    return(NormalizeDouble(GridSize * PipValue(StartLotSize), 2));
 }
 
@@ -110,11 +113,11 @@ double TargetProfit() {
 /**
  *
  */
-double TargetLoss(int direction) {
+double LossTarget(int direction) {
    if (direction == D_LONG ) return(NormalizeDouble(-GridSize * PipValue(long.sumLots ), 2));
    if (direction == D_SHORT) return(NormalizeDouble(-GridSize * PipValue(short.sumLots), 2));
 
-   return(_NULL(catch("TargetLoss()   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_NULL(catch("LossTarget()   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
@@ -125,8 +128,8 @@ double TargetLoss(int direction) {
  */
 double MartingaleVolume(double loss) {
    loss = MathAbs(loss);
-   int multiplier = loss / targetProfit;                    // minimale Martingale-Reduktion durch systematisches Abrunden
-   return(multiplier * IncrementSize);                      // Es scheint so, als mußte es irgendwie ein Vielfaches von irgendwas sein.
+   int multiplier = loss / profitTarget;                             // minimale Martingale-Reduktion durch systematisches Abrunden
+   return(multiplier * IncrementSize);                               // Es scheint so, als mußte es irgendwie ein Vielfaches von irgendwas sein.
 }
 
 
@@ -144,11 +147,13 @@ int AddLongOrder(int ticket, double lots, double openPrice, double profit) {
    ArrayPushDouble(long.openPrice, openPrice);
 
    long.level++;
-   long.sumLots       = NormalizeDouble(long.sumLots   + lots,   2);
-   long.sumProfit     = NormalizeDouble(long.sumProfit + profit, 2);
-   long.sumOpenPrice += lots * openPrice;
-   long.avgOpenPrice  = long.sumOpenPrice / long.sumLots;
-   long.targetLoss    = TargetLoss(D_LONG);
+   long.sumLots           = NormalizeDouble(long.sumLots   + lots,   2);
+   long.sumProfit         = NormalizeDouble(long.sumProfit + profit, 2);
+   long.sumOpenPrice     += lots * openPrice;
+   long.avgOpenPrice      = long.sumOpenPrice / long.sumLots;
+   long.profitTargetPrice = long.avgOpenPrice + StartLotSize/long.sumLots * GridSize*Pips;
+   long.lossTarget        = LossTarget(D_LONG);
+   long.lossTargetPrice   = long.avgOpenPrice - GridSize*Pips;
    return(last_error);
 }
 
@@ -167,11 +172,13 @@ int AddShortOrder(int ticket, double lots, double openPrice, double profit) {
    ArrayPushDouble(short.openPrice, openPrice);
 
    short.level++;
-   short.sumLots       = NormalizeDouble(short.sumLots   + lots,   2);
-   short.sumProfit     = NormalizeDouble(short.sumProfit + profit, 2);
-   short.sumOpenPrice += lots * openPrice;
-   short.avgOpenPrice  = short.sumOpenPrice / short.sumLots;
-   short.targetLoss    = TargetLoss(D_SHORT);
+   short.sumLots           = NormalizeDouble(short.sumLots   + lots,   2);
+   short.sumProfit         = NormalizeDouble(short.sumProfit + profit, 2);
+   short.sumOpenPrice     += lots * openPrice;
+   short.avgOpenPrice      = short.sumOpenPrice / short.sumLots;
+   short.profitTargetPrice = short.avgOpenPrice - StartLotSize/short.sumLots * GridSize*Pips;
+   short.lossTarget        = LossTarget(D_SHORT);
+   short.lossTargetPrice   = short.avgOpenPrice + GridSize*Pips;
    return(last_error);
 }
 
@@ -184,16 +191,18 @@ int ResetLongStatus() {
    ArrayResize(long.lots,      0);
    ArrayResize(long.openPrice, 0);
 
-   long.startEquity    = 0;
-   long.level          = 0;
-   long.sumLots        = 0;
-   long.sumOpenPrice   = 0;
-   long.avgOpenPrice   = 0;
-   long.sumProfit      = 0;
-   long.maxProfit      = 0;
-   long.takeProfit     = false;
-   long.trailingProfit = 0;
-   long.targetLoss     = 0;
+   long.startEquity       = 0;
+   long.level             = 0;
+   long.sumLots           = 0;
+   long.sumOpenPrice      = 0;
+   long.avgOpenPrice      = 0;
+   long.sumProfit         = 0;
+   long.maxProfit         = 0;
+   long.takeProfit        = false;
+   long.trailingProfit    = 0;
+   long.profitTargetPrice = 0;
+   long.lossTarget        = 0;
+   long.lossTargetPrice   = 0;
 
    if (IsChart) {
       ObjectDelete(__NAME__ +".ProfitTarget.long");
@@ -214,16 +223,18 @@ int ResetShortStatus() {
    ArrayResize(short.lots,      0);
    ArrayResize(short.openPrice, 0);
 
-   short.startEquity    = 0;
-   short.level          = 0;
-   short.sumLots        = 0;
-   short.sumOpenPrice   = 0;
-   short.avgOpenPrice   = 0;
-   short.sumProfit      = 0;
-   short.maxProfit      = 0;
-   short.takeProfit     = false;
-   short.trailingProfit = 0;
-   short.targetLoss     = 0;
+   short.startEquity       = 0;
+   short.level             = 0;
+   short.sumLots           = 0;
+   short.sumOpenPrice      = 0;
+   short.avgOpenPrice      = 0;
+   short.sumProfit         = 0;
+   short.maxProfit         = 0;
+   short.takeProfit        = false;
+   short.trailingProfit    = 0;
+   short.profitTargetPrice = 0;
+   short.lossTarget        = 0;
+   short.lossTargetPrice   = 0;
 
    if (IsChart) {
       ObjectDelete(__NAME__ +".ProfitTarget.short");
@@ -248,7 +259,7 @@ int ShowStatus() {
                                   "Grid size: "         , GridSize, " pips",                 NL,
                                   "Start lot size: "    , NumberToStr(StartLotSize, ".+"),   NL,
                                   "Increment lot size: ", NumberToStr(IncrementSize, ".+"),  NL,
-                                  "Target profit: "     , DoubleToStr(targetProfit, 2),      NL,
+                                  "Profit target: "     , DoubleToStr(profitTarget, 2),      NL,
                                   "Trailing stop: "     , TrailingStop.Percent, "%",         NL,
                                   "Max. drawdown: "     , MaxDrawdown.Percent, "%",          NL,
                                                                                              NL,
@@ -274,19 +285,8 @@ int ShowStatus() {
  *
  */
 int ShowTargets() {
-   double distance, price;
-
-   if (long.level > 0) {
-      distance = GridSize * StartLotSize / long.sumLots;
-      price    = NormalizeDouble(long.avgOpenPrice + distance*Pips, Digits);
-      HorizontalLine(__NAME__ +".ProfitTarget.long", price, DodgerBlue, STYLE_SOLID, 1);
-   }
-
-   if (short.level > 0) {
-      distance = GridSize * StartLotSize / short.sumLots;
-      price    = NormalizeDouble(short.avgOpenPrice - distance*Pips, Digits);
-      HorizontalLine(__NAME__ +".ProfitTarget.short", price, Tomato, STYLE_SOLID, 1);
-   }
+   if (long.level  > 0) HorizontalLine(__NAME__ +".ProfitTarget.long",  long.profitTargetPrice,  DodgerBlue, STYLE_SOLID, 1);
+   if (short.level > 0) HorizontalLine(__NAME__ +".ProfitTarget.short", short.profitTargetPrice, Tomato,     STYLE_SOLID, 1);
    return(catch("ShowTargets()"));
 }
 
@@ -527,7 +527,7 @@ void DummyCalls() {
 int afterInit() {
    InitStatus();
    CreateStatusBox();
-   targetProfit = TargetProfit();
+   profitTarget = ProfitTarget();
    return(last_error);
 }
 

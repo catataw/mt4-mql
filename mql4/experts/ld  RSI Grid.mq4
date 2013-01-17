@@ -70,7 +70,7 @@ int Strategy.Long() {
 
    // (3) Martingale: if targetLoss is hit and RSI signals we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-   if (long.sumProfit <= long.targetLoss) {
+   if (long.sumProfit <= long.lossTarget) {
       if (rsi < RSI.SignalLevel) {                                         // RSI crossed low signal line: starkes Down-Momentum
          ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
@@ -113,7 +113,7 @@ int Strategy.Short() {
 
    // (3) Martingale: if targetLoss is hit and RSI signals we "double up"
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
-   if (short.sumProfit <= short.targetLoss) {
+   if (short.sumProfit <= short.lossTarget) {
       if (rsi > 100-RSI.SignalLevel) {                                     // RSI crossed high signal line: starkes Up-Momentum
          ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.sumProfit), NULL, 0.1, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
@@ -122,4 +122,18 @@ int Strategy.Short() {
       }
    }
    return(catch("Strategy.Short(3)"));
+}
+
+
+
+/**
+ * 2011.09.01-2011.12.01 GBPUSD,M5::ld  RSI Grid::onDeinit()   time=41.1 sec   days=91   (0.452 sec/day) - Original-Orderfunktionen
+ *                       GBPUSD,M5::ld  RSI Grid::onDeinit()   time=34.7 sec   days=91   (0.382 sec/day) - virtuelle Orderfunktionen: 18% schneller
+ *
+ */
+int onDeinit() {
+   double test.duration = (Test.stopMillis-Test.startMillis)/1000.0;
+   double test.days     = (Test.toDate-Test.fromDate) * 1.0 /DAYS;
+   debug("onDeinit()   time="+ DoubleToStr(test.duration, 1) +" sec   days="+ Round(test.days) +"   ("+ DoubleToStr(test.duration/test.days, 3) +" sec/day)");
+   return(last_error);
 }
