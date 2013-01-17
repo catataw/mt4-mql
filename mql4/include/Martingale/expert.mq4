@@ -11,19 +11,20 @@ int     long.ticket   [],       short.ticket   [];                   // Ticket
 double  long.lots     [],       short.lots     [];                   // Lots
 double  long.openPrice[],       short.openPrice[];                   // OpenPrice
 
-double  long.startEquity,       short.startEquity;
 int     long.level,             short.level;
 double  long.sumLots,           short.sumLots;
-double  long.sumOpenPrice,      short.sumOpenPrice;                  // für avgOpenPrice-Berechnung
-double  long.avgOpenPrice,      short.avgOpenPrice;
-double  long.sumProfit,         short.sumProfit;
+double  long.sumOpenPrice,      short.sumOpenPrice;                  // für Breakeven-Berechnung
+double  long.breakeven,         short.breakeven;
+
+double  long.startEquity,       short.startEquity;
+double  long.profit,            short.profit;
 double  long.maxProfit,         short.maxProfit;
-bool    long.takeProfit,        short.takeProfit;
-double  long.trailingProfit,    short.trailingProfit;
 //double long.profitTarget,     short.profitTarget;
 double  long.profitTargetPrice, short.profitTargetPrice;
 double  long.lossTarget,        short.lossTarget;                    // Martingale-Trigger
 double  long.lossTargetPrice,   short.lossTargetPrice;
+bool    long.takeProfit,        short.takeProfit;                    // ProfitTarget erreicht
+double  long.trailingProfit,    short.trailingProfit;
 
 double  profitTarget;                                                // TakeProfit-Trigger (zur Zeit für Long/Short gleich)
 
@@ -43,16 +44,16 @@ int onTick() {
  *
  */
 int UpdateStatus() {
-   long.sumProfit  = 0;
-   short.sumProfit = 0;
+   long.profit  = 0;
+   short.profit = 0;
 
    // (1) Long
    for (int i=0; i < long.level; i++) {
       if (!SelectTicket(long.ticket[i], "UpdateStatus(1)"))
          return(last_error);
-      long.sumProfit = NormalizeDouble(long.sumProfit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
+      long.profit = NormalizeDouble(long.profit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
    }
-   long.maxProfit = MathMax(long.maxProfit, long.sumProfit);
+   long.maxProfit = MathMax(long.maxProfit, long.profit);
 
    if (long.maxProfit >= profitTarget)  {
       long.takeProfit     = true;
@@ -63,9 +64,9 @@ int UpdateStatus() {
    for (i=0; i < short.level; i++) {
       if (!SelectTicket(short.ticket[i], "UpdateStatus(2)"))
          return(last_error);
-      short.sumProfit = NormalizeDouble(short.sumProfit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
+      short.profit = NormalizeDouble(short.profit + OrderProfit() + OrderCommission() + OrderSwap(), 2);
    }
-   short.maxProfit = MathMax(short.maxProfit, short.sumProfit);
+   short.maxProfit = MathMax(short.maxProfit, short.profit);
 
    if (short.maxProfit >= profitTarget) {
       short.takeProfit     = true;
@@ -147,13 +148,13 @@ int AddLongOrder(int ticket, double lots, double openPrice, double profit) {
    ArrayPushDouble(long.openPrice, openPrice);
 
    long.level++;
-   long.sumLots           = NormalizeDouble(long.sumLots   + lots,   2);
-   long.sumProfit         = NormalizeDouble(long.sumProfit + profit, 2);
+   long.sumLots           = NormalizeDouble(long.sumLots + lots, 2);
    long.sumOpenPrice     += lots * openPrice;
-   long.avgOpenPrice      = long.sumOpenPrice / long.sumLots;
-   long.profitTargetPrice = long.avgOpenPrice + StartLotSize/long.sumLots * GridSize*Pips;
+   long.breakeven         = long.sumOpenPrice / long.sumLots;
+   long.profit            = NormalizeDouble(long.profit + profit, 2);
+   long.profitTargetPrice = long.breakeven + StartLotSize/long.sumLots * GridSize*Pips;
    long.lossTarget        = LossTarget(D_LONG);
-   long.lossTargetPrice   = long.avgOpenPrice - GridSize*Pips;
+   long.lossTargetPrice   = long.breakeven - GridSize*Pips;
    return(last_error);
 }
 
@@ -172,13 +173,13 @@ int AddShortOrder(int ticket, double lots, double openPrice, double profit) {
    ArrayPushDouble(short.openPrice, openPrice);
 
    short.level++;
-   short.sumLots           = NormalizeDouble(short.sumLots   + lots,   2);
-   short.sumProfit         = NormalizeDouble(short.sumProfit + profit, 2);
+   short.sumLots           = NormalizeDouble(short.sumLots + lots, 2);
    short.sumOpenPrice     += lots * openPrice;
-   short.avgOpenPrice      = short.sumOpenPrice / short.sumLots;
-   short.profitTargetPrice = short.avgOpenPrice - StartLotSize/short.sumLots * GridSize*Pips;
+   short.breakeven         = short.sumOpenPrice / short.sumLots;
+   short.profit            = NormalizeDouble(short.profit + profit, 2);
+   short.profitTargetPrice = short.breakeven - StartLotSize/short.sumLots * GridSize*Pips;
    short.lossTarget        = LossTarget(D_SHORT);
-   short.lossTargetPrice   = short.avgOpenPrice + GridSize*Pips;
+   short.lossTargetPrice   = short.breakeven + GridSize*Pips;
    return(last_error);
 }
 
@@ -191,26 +192,19 @@ int ResetLongStatus() {
    ArrayResize(long.lots,      0);
    ArrayResize(long.openPrice, 0);
 
-   long.startEquity       = 0;
    long.level             = 0;
    long.sumLots           = 0;
    long.sumOpenPrice      = 0;
-   long.avgOpenPrice      = 0;
-   long.sumProfit         = 0;
+   long.breakeven         = 0;
+
+   long.startEquity       = 0;
+   long.profit            = 0;
    long.maxProfit         = 0;
-   long.takeProfit        = false;
-   long.trailingProfit    = 0;
    long.profitTargetPrice = 0;
    long.lossTarget        = 0;
    long.lossTargetPrice   = 0;
-
-   if (IsChart) {
-      ObjectDelete(__NAME__ +".ProfitTarget.long");
-
-      int error = GetLastError();
-      if (IsError(error)) /*&&*/ if (error!=ERR_OBJECT_DOES_NOT_EXIST)
-         return(catch("ResetLongStatus()", error));
-   }
+   long.takeProfit        = false;
+   long.trailingProfit    = 0;
    return(NO_ERROR);
 }
 
@@ -223,27 +217,49 @@ int ResetShortStatus() {
    ArrayResize(short.lots,      0);
    ArrayResize(short.openPrice, 0);
 
-   short.startEquity       = 0;
    short.level             = 0;
    short.sumLots           = 0;
    short.sumOpenPrice      = 0;
-   short.avgOpenPrice      = 0;
-   short.sumProfit         = 0;
+   short.breakeven         = 0;
+
+   short.startEquity       = 0;
+   short.profit            = 0;
    short.maxProfit         = 0;
-   short.takeProfit        = false;
-   short.trailingProfit    = 0;
    short.profitTargetPrice = 0;
    short.lossTarget        = 0;
    short.lossTargetPrice   = 0;
-
-   if (IsChart) {
-      ObjectDelete(__NAME__ +".ProfitTarget.short");
-
-      int error = GetLastError();
-      if (IsError(error)) /*&&*/ if (error!=ERR_OBJECT_DOES_NOT_EXIST)
-         return(catch("ResetLongStatus()", error));
-   }
+   short.takeProfit        = false;
+   short.trailingProfit    = 0;
    return(NO_ERROR);
+}
+
+
+/**
+ * Die Statusbox besteht aus untereinander angeordneten Quadraten (Font "Webdings", Zeichen 'g').
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool CreateStatusBox() {
+   if (!IsChart)
+      return(false);
+
+   int x=0, y[]={32, 142}, fontSize=83, rectangels=ArraySize(y);
+   color  bgColor = C'248,248,248';                                  // entspricht Chart-Background
+   string label;
+
+   for (int i=0; i < rectangels; i++) {
+      label = StringConcatenate(__NAME__, ".statusbox."+ (i+1));
+      if (ObjectFind(label) != 0) {
+         if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
+            return(_false(catch("CreateStatusBox(1)")));
+         PushChartObject(label);
+      }
+      ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
+      ObjectSet(label, OBJPROP_XDISTANCE, x   );
+      ObjectSet(label, OBJPROP_YDISTANCE, y[i]);
+      ObjectSetText(label, "g", fontSize, "Webdings", bgColor);
+   }
+   return(!catch("CreateStatusBox(2)"));
 }
 
 
@@ -253,6 +269,11 @@ int ResetShortStatus() {
 int ShowStatus() {
    if (!IsChart)
       return(NO_ERROR);
+
+   static bool statusBox;
+   if (!statusBox)
+      statusBox = CreateStatusBox(/*lines*/);      // TODO: Zeilenanzahl der Statusbox bei Änderung dynamisch anpassen
+
 
    string msg = StringConcatenate(ea.name,                                                   NL,
                                                                                              NL,
@@ -265,12 +286,12 @@ int ShowStatus() {
                                                                                              NL,
                                   "LONG: "              , long.level,                        NL,
                                   "Open lots: "         , NumberToStr(long.sumLots, ".1+"),  NL,
-                                  "Current profit: "    , DoubleToStr(long.sumProfit, 2),    NL,
+                                  "Profit: "            , DoubleToStr(long.profit, 2),       NL,
                                   "Max. profit: "       , DoubleToStr(long.maxProfit, 2),    NL,
                                                                                              NL,
                                   "SHORT: "             , short.level,                       NL,
                                   "Open lots: "         , NumberToStr(short.sumLots, ".1+"), NL,
-                                  "Current profit: "    , DoubleToStr(short.sumProfit, 2),   NL,
+                                  "Profit: "            , DoubleToStr(short.profit, 2),      NL,
                                   "Max. profit: "       , DoubleToStr(short.maxProfit, 2),   NL);
 
    // 3 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
@@ -282,57 +303,39 @@ int ShowStatus() {
 
 
 /**
- *
+ * Aufruf nur aus ShowStatus()
  */
 int ShowTargets() {
-   if (long.level  > 0) HorizontalLine(__NAME__ +".ProfitTarget.long",  long.profitTargetPrice,  DodgerBlue, STYLE_SOLID, 1);
-   if (short.level > 0) HorizontalLine(__NAME__ +".ProfitTarget.short", short.profitTargetPrice, Tomato,     STYLE_SOLID, 1);
-   return(catch("ShowTargets()"));
+   static int last.long.level=-1, last.short.level=-1;
+
+   if (long.level != last.long.level) {
+      if (long.level == 0)  ObjectDeleteSilent(__NAME__ +".ProfitTarget.long", "ShowTargets(1)");
+      else                  HorizontalLine    (__NAME__ +".ProfitTarget.long", long.profitTargetPrice, DodgerBlue, STYLE_SOLID, 1);
+      last.long.level = long.level;
+   }
+   if (short.level != last.short.level) {
+      if (short.level == 0) ObjectDeleteSilent(__NAME__ +".ProfitTarget.short", "ShowTargets(2)");
+      else                  HorizontalLine    (__NAME__ +".ProfitTarget.short", short.profitTargetPrice, Tomato, STYLE_SOLID, 1);
+      last.short.level = short.level;
+   }
+   return(catch("ShowTargets(3)"));
 }
 
 
 /**
- *
+ * Aufruf nur aus ShowTargets()
  */
 int HorizontalLine(string label, double value, color lineColor, int style, int thickness) {
-   if (ObjectFind(label) != 0)
+   if (ObjectFind(label) != 0) {
       ObjectCreate(label, OBJ_HLINE, 0, Time[0], value);
-
+      PushChartObject(label);
+   }
    ObjectSet(label, OBJPROP_PRICE1, value    );
    ObjectSet(label, OBJPROP_STYLE , style    );
    ObjectSet(label, OBJPROP_COLOR , lineColor);
    ObjectSet(label, OBJPROP_WIDTH , thickness);
    ObjectSet(label, OBJPROP_BACK  , true     );
    return(catch("HorizontalLine()"));
-}
-
-
-/**
- * Die Statusbox besteht aus untereinander angeordneten Quadraten (Font "Webdings", Zeichen 'g').
- *
- * @return int - Fehlerstatus
- */
-int CreateStatusBox() {
-   if (!IsChart)
-      return(NO_ERROR);
-
-   int x=0, y[]={32, 142}, fontSize=83, rectangels=ArraySize(y);
-   color  bgColor = C'248,248,248';                                  // entspricht Chart-Background
-   string label;
-
-   for (int i=0; i < rectangels; i++) {
-      label = StringConcatenate(__NAME__, ".statusbox."+ (i+1));
-      if (ObjectFind(label) != 0) {
-         if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
-            return(catch("CreateStatusBox(1)"));
-         PushChartObject(label);
-      }
-      ObjectSet(label, OBJPROP_CORNER, CORNER_TOP_LEFT);
-      ObjectSet(label, OBJPROP_XDISTANCE, x   );
-      ObjectSet(label, OBJPROP_YDISTANCE, y[i]);
-      ObjectSetText(label, "g", fontSize, "Webdings", bgColor);
-   }
-   return(catch("CreateStatusBox(2)"));
 }
 
 
@@ -526,7 +529,6 @@ void DummyCalls() {
  */
 int afterInit() {
    InitStatus();
-   CreateStatusBox();
    profitTarget = ProfitTarget();
    return(last_error);
 }
