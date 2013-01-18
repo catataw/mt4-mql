@@ -130,10 +130,10 @@ int Strategy.Short() {
  * 2011.09.01-2011.12.01 GBPUSD,M5::ld  RSI Grid::onDeinit()   time=41.1 sec   days=91   (0.452 sec/day) - Original-Orderfunktionen
  *                       GBPUSD,M5::ld  RSI Grid::onDeinit()   time=34.7 sec   days=91   (0.382 sec/day) - virtuelle Orderfunktionen: 18% schneller
  *
- */
 int onDeinit() {
    double test.duration = (Test.stopMillis-Test.startMillis)/1000.0;
    double test.days     = (Test.toDate-Test.fromDate) * 1.0 /DAYS;
    debug("onDeinit()   time="+ DoubleToStr(test.duration, 1) +" sec   days="+ Round(test.days) +"   ("+ DoubleToStr(test.duration/test.days, 3) +" sec/day)");
    return(last_error);
 }
+ */
