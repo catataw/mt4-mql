@@ -504,7 +504,9 @@ bool WriteHistory(int hHst, datetime tickTime, double tickValue, bool tickByTick
    if (!tickByTick) {
       if (tickTime >= nextBarTime) {
          offset = History.FindBar(hFile, tickTime, barExists);                   // bei bereits gespeicherten Ticks (nextBarTime != 0) immer 1 zu klein, da die ungeschriebene
-                                                                                 // Bar für FindBar() noch nicht sichtbar ist
+         if (offset < 0)                                                         // Bar für FindBar() noch nicht sichtbar ist
+            return(_false(SetLastError(hstlib_GetLastError())));
+
          if (!nextBarTime) {
             if (barExists[0]) {                                                  // erste Initialisierung
                if (!History.ReadBar(hFile, offset, iNulls, data))                // ggf. vorhandene Bar einlesen (von vorherigem Abbruch)
@@ -553,6 +555,8 @@ bool WriteHistory(int hHst, datetime tickTime, double tickValue, bool tickByTick
 
    // (4) barTime und nextBarTime sind gesetzt: zwischengespeicherte und aktuellen Tick schreiben
    offset = History.FindBar(hFile, barTime, barExists);
+   if (offset < 0)
+      return(_false(SetLastError(hstlib_GetLastError())));
 
    if (tickTime < nextBarTime) {                                                 // aktueller Tick gehört zur zwischengespeicherten Bar und wird in sie integriert
     //data[BAR_O] = ...                                                          // Open unverändert
