@@ -479,8 +479,8 @@ int GetHistory(string symbol, string description, int digits) {
  * @param  int      hHst       - History-Handle des Symbols, wie von GetHistory() zurückgegeben
  * @param  datetime time       - Zeitpunkt des Ticks
  * @param  double   value      - Datenwert
- * @param  bool     tickByTick - TRUE:  jeder einzelne Tick wird sofort geschrieben (langsam)
- *                               FALSE: nur komplette Bars werden geschrieben (schneller; Ticks einer Bar werden zwischengespeichert)
+ * @param  bool     tickByTick - TRUE:  Ticks werden sofort geschrieben (langsam)
+ *                               FALSE: Ticks werden zwischengespeichert und jeweils beim nächsten onBarOpen-Event geschrieben (schneller)
  * @return bool - Erfolgsstatus
  */
 bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
@@ -489,7 +489,7 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
    // Dateihandles holen
 
 
-   int timeframe=PERIOD_H1, timeframeSecs=timeframe*MINUTES;
+   int period = PERIOD_H1;
 
 
    // (1) Filehandle holen
@@ -497,20 +497,17 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
    if (!hFile) {
       string symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), comment);
       string description = ea.name;
-      hFile = History.OpenFile(symbol, description, digits, timeframe, FILE_READ|FILE_WRITE);
+      hFile = History.OpenFile(symbol, description, digits, period, FILE_READ|FILE_WRITE);
       if (hFile <= 0)
          return(false);
    }
 
 
-   // requirements:
-   // -------------
-   //  hFile:         bei jedem Aufruf
-   //  timeframeSecs: bei jedem BarOpen
+   // requirements: hFile
 
 
    static datetime ticks.barOpenTime, ticks.barCloseTime;                        // Barbeginn und -ende der zwischengespeicherten Ticks
-   int    offset, iNulls[1];
+   int    offset, iNulls[1], periodSecs;
    bool   barExists[1];
    double data[5];
 
@@ -552,8 +549,9 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
             data[BAR_C] = value;
             data[BAR_V] = 1;
          }
-         ticks.barOpenTime  = time - time%timeframeSecs;
-         ticks.barCloseTime = ticks.barOpenTime + timeframeSecs;
+         periodSecs         = hf.Period(hFile) * MINUTES;
+         ticks.barOpenTime  = time - time % periodSecs;
+         ticks.barCloseTime = ticks.barOpenTime + periodSecs;
       }
       else {
          // (2.2) Tick gehört zur zwischengespeicherten Bar
