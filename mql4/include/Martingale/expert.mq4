@@ -473,14 +473,22 @@ int GetHistory(string symbol, string description, int digits) {
 }
 
 
+// Daten einzelner History-Sets
+int    h.hHst       [];                   // History-Handle = Arrayindex, wenn Handle offen; kleiner/gleich 0, wenn Handle geschlossen/ungültig
+int    h.hHst.valid = -1;                 // zuletzt validiertes History-Handle (um nicht bei jedem Funktionsaufruf das übergebene Handle auf Gültigkeit prüfen zu müssen)
+string h.symbol     [];                   // Symbol
+string h.description[];                   // Symbolbeschreibung
+int    h.digits     [];                   // Symboldigits
+
+
 /**
- * Fügt der kompletten History eines Symbols einen Tick hinzu. Der Tick wird als letzter Tick (Close) der entsprechenden Bars gespeichert.
+ * Fügt der History eines Symbols einen Tick hinzu. Der Tick wird in allen Timeframes als letzter Tick (Close) der entsprechenden Bars gespeichert.
  *
- * @param  int      hHst       - History-Handle des Symbols, wie von GetHistory() zurückgegeben
+ * @param  int      hHst       - History-Handle des Symbols; @see GetHistory()
  * @param  datetime time       - Zeitpunkt des Ticks
  * @param  double   value      - Datenwert
- * @param  bool     tickByTick - TRUE:  Ticks werden sofort geschrieben (langsam)
- *                               FALSE: Ticks werden zwischengespeichert und jeweils beim nächsten onBarOpen-Event geschrieben (schneller)
+ * @param  bool     tickByTick - TRUE:  der Tick wird sofort geschrieben (langsam)
+ *                               FALSE: Ticks werden zwischengespeichert und nur beim BarOpen-Event geschrieben (schneller)
  * @return bool - Erfolgsstatus
  */
 bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
@@ -488,8 +496,24 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
 
    // Dateihandles holen
 
+   // Tick je Dateihandle speichern/schreiben
 
-   int period = PERIOD_H1;
+
+   static int hFile, hFiles[], period, sizeOfPeriods, periods[]={PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30, PERIOD_H1, PERIOD_H4, PERIOD_D1/*, PERIOD_W1, PERIOD_MN1*/};
+   if (!sizeOfPeriods) {
+      sizeOfPeriods = ArraySize(periods);
+      ArrayResize    (hFiles, sizeOfPeriods);
+      ArrayInitialize(hFiles,             0);
+   }
+
+   for (int i=0; i < sizeOfPeriods; i++) {
+      period = periods[i];
+      hFile  = hFiles [i]
+      if (!hFile) {
+      }
+   }
+
+
 
 
    // (1) Filehandle holen
@@ -497,7 +521,9 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
    if (!hFile) {
       string symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), comment);
       string description = ea.name;
-      hFile = History.OpenFile(symbol, description, digits, period, FILE_READ|FILE_WRITE);
+
+      //HistoryFile.Open(string symbol, string description, int digits, int timeframe, int mode);
+      hFile = HistoryFile.Open(symbol, description, digits, period, FILE_READ|FILE_WRITE);
       if (hFile <= 0)
          return(false);
    }
@@ -597,4 +623,3 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
    ticks.barCloseTime = 0;
    return(true);                                // TODO: !!! tickByTick ließe sich beschleunigen, wenn beide nicht zurückgesetzt werden und die Logik geändert wird
 }
-
