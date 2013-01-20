@@ -444,41 +444,132 @@ bool RecordEquity() {
 
    static int hHst;
    if (!hHst) {
-      hHst = GetHistory(NULL, NULL, NULL);
-      if (hHst <= 0)                                   { hHst = 0; return(false); }
-    //if (IsTesting()) /*&&*/ if (!ResetHistory(hHst)) { hHst = 0; return(false); }
+      string symbol = StringConcatenate(ifString(IsTesting(), "_", ""), comment);
+
+      hHst = FindHistory(symbol);
+      if (hHst > 0) {
+         if (!ResetHistory(hHst))
+            return(false);
+      }
+      else if (__STATUS_ERROR) {
+         return(false);
+      }
+      else {
+         hHst = CreateHistory(symbol, ea.name, 2);
+         if (hHst <= 0)
+            return(false);
+      }
    }
-   return(History.AddTick(hHst, Tick.Time, AccountEquity()-AccountCredit(), false));
+
+   double value = AccountEquity() - AccountCredit();
+   return(History.AddTick(hHst, Tick.Time, value, false));
+}
+
+
+#include <history.mq4>
+
+
+// Daten einzelner History-Sets
+int    h.hHst       [];                   // History-Handle: Arrayindex, wenn Handle gültig; kleiner/gleich 0, wenn Handle geschlossen/ungültig
+int    h.hHst.valid = -1;                 // das zuletzt benutzte gültige Handle (um ein übergebenes Handle nicht ständig neu validieren zu müssen)
+string h.symbol     [];                   // Symbol
+string h.description[];                   // Symbolbeschreibung
+int    h.digits     [];                   // Symboldigits
+int    h.hFile      [][9];                // HistoryFile-Handles des Sets je Timeframe
+int    h.periods    [] = {PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30, PERIOD_H1, PERIOD_H4, PERIOD_D1, PERIOD_W1, PERIOD_MN1};
+
+
+/**
+ * Erzeugt für das angegebene Symbol eine neue History und gibt deren Handle zurück. Existiert für das angegebene Symbol bereits eine History,
+ * wird sie gelöscht. Offene History-Handles für dasselbe Symbol werden geschlossen.
+ *
+ * @param  string symbol      - Symbol
+ * @param  string description - Beschreibung des Symbols
+ * @param  int    digits      - Digits der Datenreihe
+ *
+ * @return int - History-Handle oder 0, falls ein Fehler auftrat
+ */
+int CreateHistory(string symbol, string description, int digits) {
+   int size = Max(ArraySize(h.hHst), 1);                             // ersten Index überspringen (0 ist kein gültiges Handle)
+   h.ResizeArrays(size+1);
+
+   // (1) neuen History-Datensatz erstellen
+   h.hHst       [size] = size;
+   h.symbol     [size] = symbol;
+   h.description[size] = description;
+   h.digits     [size] = digits;
+
+   int sizeOfPeriods = ArraySize(h.periods);
+
+   for (int i=0; i < sizeOfPeriods; i++) {
+      int hFile = HistoryFile.Open(symbol, description, digits, h.periods[i], FILE_READ|FILE_WRITE);
+      if (hFile <= 0)
+         return(_ZERO(h.ResizeArrays(size)));                        // interne Arrays auf Ausgangszustand zurücksetzen
+      h.hFile[size][i] = hFile;
+   }
+
+   // (2) offene History-Handles desselben Symbols schließen
+   for (i=size-1; i > 0; i--) {                                      // erstes (immer ungültiges) und letztes (gerade erzeugtes) Handle überspringen
+      if (h.symbol[i] == symbol) {
+         if (h.hHst[i] > 0)
+            h.hHst[i] = -1;
+      }
+   }
+
+   h.hHst.valid = size;
+   return(size);
 }
 
 
 /**
- * Gibt ein Handle für die History des angegebenen Symbols zurück. Über das Handle kann das gesamte FileSet der History des Symbols
- * angesprochen werden.
+ * Setzt die Größe der internen History-Datenarrays auf den angegebenen Wert.
  *
- * @param  string symbol      - Symbol
- * @param  string description - Beschreibung des Symbols (falls die History neu erstellt wird)
- * @param  int    digits      - Digits der Datenreihe    (falls die History neu erstellt wird)
+ * @param  int size - neue Größe
  *
- * @return int - History-Handle oder 0, falls ein Fehler auftrat
+ * @return int - neue Größe der Arrays
  */
-int GetHistory(string symbol, string description, int digits) {
-   static string symbols[];
-
-   int i = SearchStringArray(symbols, symbol);
-   if (i == -1) {
-      //CreateHistory();
+/*private*/ int h.ResizeArrays(int size) {
+   if (size != ArraySize(h.hHst)) {
+      ArrayResize(h.hHst,        size);
+      ArrayResize(h.symbol,      size);
+      ArrayResize(h.description, size);
+      ArrayResize(h.digits,      size);
+      ArrayResize(h.hFile,       size);
    }
-   return(1);
+   return(size);
 }
 
 
-// Daten einzelner History-Sets
-int    h.hHst       [];                   // History-Handle = Arrayindex, wenn Handle offen; kleiner/gleich 0, wenn Handle geschlossen/ungültig
-int    h.hHst.valid = -1;                 // zuletzt validiertes History-Handle (um nicht bei jedem Funktionsaufruf das übergebene Handle auf Gültigkeit prüfen zu müssen)
-string h.symbol     [];                   // Symbol
-string h.description[];                   // Symbolbeschreibung
-int    h.digits     [];                   // Symboldigits
+/**
+ * Sucht die History des angegebenen Symbols und gibt ein Handle für sie zurück.
+ *
+ * @param  string symbol - Symbol
+ *
+ * @return int - History-Handle oder 0, falls keine History gefunden wurde oder ein Fehler auftrat
+ */
+int FindHistory(string symbol) {
+   int size = ArraySize(h.hHst);
+
+   for (int i=size-1; i > 0; i--) {                // Schleife, da es mehrere Handles je Symbol (jedoch nur ein offenes: das letzte) geben kann
+      if (h.symbol[i] == symbol) {                 // auf Index 0 kann kein gültiges Handle liegen
+         if (h.hHst[i] > 0)
+            return(h.hHst[i]);
+      }
+   }
+   return(0);
+}
+
+
+/**
+ * Setzt die angegebene History zurück. Alle gespeicherten Kursreihen werden gelöscht.
+ *
+ * @param  int hHst - History-Handle
+ *
+ * @return bool - Erfolgsstatus
+ */
+bool ResetHistory(int hHst) {
+   return(!catch("ResetHistory()", ERR_FUNCTION_NOT_IMPLEMENTED));
+}
 
 
 /**
@@ -493,46 +584,26 @@ int    h.digits     [];                   // Symboldigits
  */
 bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
    // Validierung
+   if (hHst <= 0)                    return(_false(catch("History.AddTick(1)   invalid parameter hHst = "+ hHst, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   if (hHst != h.hHst.valid) {
+      if (hHst >= ArraySize(h.hHst)) return(_false(catch("History.AddTick(2)   invalid parameter hHst = "+ hHst, ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (h.hHst[hHst] == 0)         return(_false(catch("History.AddTick(3)   invalid parameter hHst = "+ hHst +" (unknown handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      if (h.hHst[hHst] <  0)         return(_false(catch("History.AddTick(4)   invalid parameter hHst = "+ hHst +" (closed handle)", ERR_INVALID_FUNCTION_PARAMVALUE)));
+      h.hHst.valid = hHst;
+   }
+   if (time <= 0)                    return(_false(catch("History.AddTick(5)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
+
+
+
+
 
    // Dateihandles holen
+   int hFile = h.hFile[hHst][0];
+
+
 
    // Tick je Dateihandle speichern/schreiben
-
-
-   static int hFile, hFiles[], period, sizeOfPeriods, periods[]={PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30, PERIOD_H1, PERIOD_H4, PERIOD_D1/*, PERIOD_W1, PERIOD_MN1*/};
-   if (!sizeOfPeriods) {
-      sizeOfPeriods = ArraySize(periods);
-      ArrayResize    (hFiles, sizeOfPeriods);
-      ArrayInitialize(hFiles,             0);
-   }
-
-   for (int i=0; i < sizeOfPeriods; i++) {
-      period = periods[i];
-      hFile  = hFiles [i]
-      if (!hFile) {
-      }
-   }
-
-
-
-
-   // (1) Filehandle holen
-   static int hFile, hFileM1, hFileM5, hFileM15, hFileM30, hFileH1, hFileH4, hFileD1, digits=2;
-   if (!hFile) {
-      string symbol      = StringConcatenate(ifString(IsTesting(), "_", ""), comment);
-      string description = ea.name;
-
-      //HistoryFile.Open(string symbol, string description, int digits, int timeframe, int mode);
-      hFile = HistoryFile.Open(symbol, description, digits, period, FILE_READ|FILE_WRITE);
-      if (hFile <= 0)
-         return(false);
-   }
-
-
-   // requirements: hFile
-
-
-   static datetime ticks.barOpenTime, ticks.barCloseTime;                        // Barbeginn und -ende der zwischengespeicherten Ticks
+   static datetime ticks.barOpenTime, ticks.barCloseTime;                        // Barbeginn und -ende zwischengespeicherter Ticks
    int    offset, iNulls[1], periodSecs;
    bool   barExists[1];
    double data[5];
@@ -544,7 +615,7 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
          // (2.1) Tick gehört zu neuer Bar
          offset = HistoryFile.FindBar(hFile, time, barExists);                   // offset ist bei vorhandenen ungeschriebenen Ticks (ticks.barCloseTime != 0) immer um 1
          if (offset < 0)                                                         // zu klein, da die Bar dieser Ticks ebenfalls noch nicht geschrieben ist.
-            return(_false(SetLastError(hstlib_GetLastError())));
+            return(false);
 
          if (ticks.barCloseTime == 0) {
             // ticks.barOpen/CloseTime sind nicht gesetzt: Bar-Initialisierung für ersten zwischenzuspeichernden Tick
@@ -599,7 +670,7 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
    // (4) ticks.barOpen/CloseTime sind gesetzt (tickByTick wechselte zur Laufzeit): zwischengespeicherte und aktuellen Tick schreiben
    offset = HistoryFile.FindBar(hFile, ticks.barOpenTime, barExists);
    if (offset < 0)
-      return(_false(SetLastError(hstlib_GetLastError())));
+      return(false);
 
    if (time < ticks.barCloseTime) {
       // (4.1) Tick gehört zur zwischengespeicherten Bar
@@ -622,4 +693,39 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
    ticks.barOpenTime  = 0;                                                       // tickByTick ist TRUE: Variablen für möglichen Laufzeit-Wechsel zurücksetzen
    ticks.barCloseTime = 0;
    return(true);                                // TODO: !!! tickByTick ließe sich beschleunigen, wenn beide nicht zurückgesetzt werden und die Logik geändert wird
+}
+
+
+/**
+ * Unterdrückt unnütze Compilerwarnungen.
+ */
+void DummyCalls() {
+   CreateHistory(NULL, NULL, NULL);
+   FindHistory(NULL);
+   hf.Bars(NULL);
+   hf.DbVersion(NULL);
+   hf.Description(NULL);
+   hf.Digits(NULL);
+   hf.From(NULL);
+   hf.Header(NULL, iNulls);
+   hf.Name(NULL);
+   hf.Period(NULL);
+   hf.PrevDbVersion(NULL);
+   hf.Read(NULL);
+   hf.Size(NULL);
+   hf.Symbol(NULL);
+   hf.To(NULL);
+   hf.Version(NULL);
+   hf.Write(NULL);
+   History.CloseFiles(NULL);
+   HistoryFile.AddTick(NULL, NULL, NULL, NULL);
+   HistoryFile.Close(NULL);
+   HistoryFile.FindBar(NULL, NULL, bNulls);
+   HistoryFile.InsertBar(NULL, NULL, NULL, dNulls, NULL);
+   HistoryFile.MoveBars(NULL, NULL, NULL);
+   HistoryFile.Open(NULL, NULL, NULL, NULL, NULL);
+   HistoryFile.ReadBar(NULL, NULL, iNulls, dNulls);
+   HistoryFile.UpdateBar(NULL, NULL, NULL);
+   HistoryFile.WriteBar(NULL, NULL, NULL, dNulls, NULL);
+   HistoryFile.WriteCachedBar(NULL);
 }

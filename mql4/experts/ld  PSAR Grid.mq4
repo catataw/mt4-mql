@@ -29,7 +29,7 @@ extern double PSAR.Maximum                    = 0.2;
 #define STRATEGY_ID  104                                             // eindeutige ID der Strategie (Bereich 101-1023)
 
 int     magicNo = 110413;
-string  comment = "M.PSAR";                                          // order comment
+string  comment = "MG.PSAR";                                         // order comment
 string  ea.name = "PSAR Martingale Grid";                            // ShowStatus() EA name
 
 #include <Martingale/expert.mq4>
