@@ -7,15 +7,9 @@
 int   __INIT_FLAGS__[] = {INIT_PIPVALUE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
-//#include <history.mqh>
+#include <history.mqh>
 
 #include <core/expert.mqh>
-
-
-#import "history.ex4"
-   int    hstlib_init(int type, string name, int whereami, bool isChart, bool isOfflineChart, int _iCustom, int initFlags, int uninitializeReason);
-   int    hstlib_deinit(int deinitFlags, int uninitializeReason);
-#import
 
 
 ///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////

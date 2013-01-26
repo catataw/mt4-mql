@@ -466,9 +466,6 @@ bool RecordEquity() {
 }
 
 
-#include <history.mq4>
-
-
 // Daten einzelner History-Sets
 int    h.hHst       [];                   // History-Handle: Arrayindex, wenn Handle gültig; kleiner/gleich 0, wenn Handle geschlossen/ungültig
 int    h.hHst.valid = -1;                 // das zuletzt benutzte gültige Handle (um ein übergebenes Handle nicht ständig neu validieren zu müssen)
@@ -593,106 +590,12 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
    }
    if (time <= 0)                    return(_false(catch("History.AddTick(5)   invalid parameter time = "+ time, ERR_INVALID_FUNCTION_PARAMVALUE)));
 
-
-
-
-
-   // Dateihandles holen
-   int hFile = h.hFile[hHst][0];
-
-
-
-   // Tick je Dateihandle speichern/schreiben
-   static datetime ticks.barOpenTime, ticks.barCloseTime;                        // Barbeginn und -ende zwischengespeicherter Ticks
-   int    offset, iNulls[1], periodSecs;
-   bool   barExists[1];
-   double data[5];
-
-
-   if (!tickByTick) {
-      // (2) Ticks werden zwischengespeichert
-      if (time >= ticks.barCloseTime) {
-         // (2.1) Tick gehört zu neuer Bar
-         offset = HistoryFile.FindBar(hFile, time, barExists);                   // offset ist bei vorhandenen ungeschriebenen Ticks (ticks.barCloseTime != 0) immer um 1
-         if (offset < 0)                                                         // zu klein, da die Bar dieser Ticks ebenfalls noch nicht geschrieben ist.
-            return(false);
-
-         if (ticks.barCloseTime == 0) {
-            // ticks.barOpen/CloseTime sind nicht gesetzt: Bar-Initialisierung für ersten zwischenzuspeichernden Tick
-            if (barExists[0]) {
-               if (!HistoryFile.ReadBar(hFile, offset, iNulls, data))            // ggf. vorhandene Bar einlesen (von vorherigem Abbruch)
-                  return(false);
-             //data[BAR_O] = ...                                                 // unverändert
-               data[BAR_H] = MathMax(data[BAR_H], value);
-               data[BAR_L] = MathMin(data[BAR_L], value);
-               data[BAR_C] = value;
-               data[BAR_V]++;
-            }
-            else {
-               data[BAR_O] = value;                                              // neue Bar beginnen
-               data[BAR_H] = value;
-               data[BAR_L] = value;
-               data[BAR_C] = value;
-               data[BAR_V] = 1;
-            }
-         }
-         else {
-            // ticks.barOpen/CloseTime sind gesetzt: Bar komplett                               // An 'offset' schreiben (nicht offset-1), da die ungeschriebene Bar
-            if (!HistoryFile.WriteBar(hFile, offset, ticks.barOpenTime, data, HST_FILL_GAPS))   // für FindBar() nicht sichtbar war.
-               return(false);
-            data[BAR_O] = value;                                                 // neue Bar beginnen
-            data[BAR_H] = value;
-            data[BAR_L] = value;
-            data[BAR_C] = value;
-            data[BAR_V] = 1;
-         }
-         periodSecs         = hf.Period(hFile) * MINUTES;
-         ticks.barOpenTime  = time - time % periodSecs;
-         ticks.barCloseTime = ticks.barOpenTime + periodSecs;
-      }
-      else {
-         // (2.2) Tick gehört zur zwischengespeicherten Bar
-       //data[BAR_O] = ...                                                       // unverändert
-         data[BAR_H] = MathMax(data[BAR_H], value);
-         data[BAR_L] = MathMin(data[BAR_L], value);
-         data[BAR_C] = value;
-         data[BAR_V]++;
-      }
-      return(true);
-   }
-
-
-   // (3) tickByTick=TRUE: falls keine zwischengespeicherten Ticks vorhanden sind, nur den aktuellen Tick schreiben
-   if (!ticks.barOpenTime)
-      return(HistoryFile.AddTick(hFile, time, value, NULL));
-
-
-   // (4) ticks.barOpen/CloseTime sind gesetzt (tickByTick wechselte zur Laufzeit): zwischengespeicherte und aktuellen Tick schreiben
-   offset = HistoryFile.FindBar(hFile, ticks.barOpenTime, barExists);
-   if (offset < 0)
-      return(false);
-
-   if (time < ticks.barCloseTime) {
-      // (4.1) Tick gehört zur zwischengespeicherten Bar
-    //data[BAR_O] = ...                                                          // Open unverändert
-      data[BAR_H] = MathMax(data[BAR_H], value);
-      data[BAR_L] = MathMin(data[BAR_L], value);
-      data[BAR_C] = value;
-      data[BAR_V]++;
-      if (!HistoryFile.WriteBar(hFile, offset, ticks.barOpenTime, data, HST_FILL_GAPS))
+   // Dateihandles bis D1 (=> 7) holen und Tick jeweils hinzufügen
+   for (int i=0; i < 7; i++) {
+      if (!HistoryFile.AddTick(h.hFile[hHst][i], time, value, HST_CACHE_TICKS))
          return(false);
    }
-   else {
-      // (4.2) Tick gehört zu neuer Bar: gespeicherte Ticks und neuer Tick werden getrennt geschrieben
-      if (!HistoryFile.WriteBar(hFile, offset, ticks.barOpenTime, data, HST_FILL_GAPS))
-         return(false);
-      if (!HistoryFile.AddTick(hFile, time, value, NULL))
-         return(false);
-   }
-
-   ticks.barOpenTime  = 0;                                                       // tickByTick ist TRUE: Variablen für möglichen Laufzeit-Wechsel zurücksetzen
-   ticks.barCloseTime = 0;
-   return(true);                                // TODO: !!! tickByTick ließe sich beschleunigen, wenn beide nicht zurückgesetzt werden und die Logik geändert wird
+   return(true);
 }
 
 
@@ -702,30 +605,5 @@ bool History.AddTick(int hHst, datetime time, double value, bool tickByTick) {
 void DummyCalls() {
    CreateHistory(NULL, NULL, NULL);
    FindHistory(NULL);
-   hf.Bars(NULL);
-   hf.DbVersion(NULL);
-   hf.Description(NULL);
-   hf.Digits(NULL);
-   hf.From(NULL);
-   hf.Header(NULL, iNulls);
-   hf.Name(NULL);
-   hf.Period(NULL);
-   hf.PrevDbVersion(NULL);
-   hf.Read(NULL);
-   hf.Size(NULL);
-   hf.Symbol(NULL);
-   hf.To(NULL);
-   hf.Version(NULL);
-   hf.Write(NULL);
    History.CloseFiles(NULL);
-   HistoryFile.AddTick(NULL, NULL, NULL, NULL);
-   HistoryFile.Close(NULL);
-   HistoryFile.FindBar(NULL, NULL, bNulls);
-   HistoryFile.InsertBar(NULL, NULL, NULL, dNulls, NULL);
-   HistoryFile.MoveBars(NULL, NULL, NULL);
-   HistoryFile.Open(NULL, NULL, NULL, NULL, NULL);
-   HistoryFile.ReadBar(NULL, NULL, iNulls, dNulls);
-   HistoryFile.UpdateBar(NULL, NULL, NULL);
-   HistoryFile.WriteBar(NULL, NULL, NULL, dNulls, NULL);
-   HistoryFile.WriteCachedBar(NULL);
 }
