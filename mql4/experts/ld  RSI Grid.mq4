@@ -24,7 +24,6 @@ extern int    MaxDrawdown.Percent             = 100;
 extern string ___________Indicator___________ = "___________________________________";
 extern int    RSI.Period                      =  7;
 extern double RSI.SignalLevel                 = 20;
-extern int    RSI.Shift                       =  0;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -42,7 +41,7 @@ string  ea.name = "RSI Martingale Grid";                             // ShowStat
  *
  */
 int Strategy.Long() {
-   double rsi = iRSI(Symbol(), NULL, RSI.Period, PRICE_CLOSE, RSI.Shift);  // Bar[0] (current unfinished bar)
+   double rsi = iRSI(Symbol(), NULL, RSI.Period, PRICE_CLOSE, 0);    // Bar[0]: current unfinished bar
 
    int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
@@ -50,7 +49,7 @@ int Strategy.Long() {
 
    // (1) Start
    if (long.level == 0) {
-      if (rsi < 100-RSI.SignalLevel) {                                     // RSI liegt "irgendwo" unterm High (um nach TakeProfit sofortigen Wiedereinstieg zu triggern)
+      if (rsi < 100-RSI.SignalLevel) {                               // RSI liegt "irgendwo" unterm High (um nach TakeProfit sofortigen Wiedereinstieg zu triggern)
          long.startEquity = AccountEquity() - AccountCredit();
          ticket           = OrderSendEx(Symbol(), OP_BUY, StartLotSize, NULL, 0.1, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
@@ -71,7 +70,7 @@ int Strategy.Long() {
    // (3) Martingale if lossTarget is hit and RSI signals
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
    if (long.profit <= long.lossTarget) {
-      if (rsi < RSI.SignalLevel) {                                         // RSI crossed low signal line: starkes Down-Momentum
+      if (rsi < RSI.SignalLevel) {                                   // RSI crossed low signal line: starkes Down-Momentum
          ticket = OrderSendEx(Symbol(), OP_BUY, MartingaleVolume(long.profit), NULL, 0.1, 0, 0, comment, magicNo, 0, Blue, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
@@ -86,14 +85,14 @@ int Strategy.Long() {
  *
  */
 int Strategy.Short() {
-   double rsi = iRSI(Symbol(), NULL, RSI.Period, PRICE_CLOSE, RSI.Shift);  // Bar[0] (current unfinished bar)
+   double rsi = iRSI(Symbol(), NULL, RSI.Period, PRICE_CLOSE, 0);    // Bar[0]: current unfinished bar
 
    int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
 
    // (1) Start
    if (short.level == 0) {
-      if (rsi > RSI.SignalLevel) {                                         // RSI liegt "irgendwo" überm Low (um nach TakeProfit sofortigen Wiedereinstieg zu triggern)
+      if (rsi > RSI.SignalLevel) {                                   // RSI liegt "irgendwo" überm Low (um nach TakeProfit sofortigen Wiedereinstieg zu triggern)
          short.startEquity = AccountEquity() - AccountCredit();
          ticket            = OrderSendEx(Symbol(), OP_SELL, StartLotSize, NULL, 0.1, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
@@ -114,7 +113,7 @@ int Strategy.Short() {
    // (3) Martingale if lossTarget is hit and RSI signals
    // Tödlich: Martingale-Spirale, da mehrere neue Orders während derselben Bar geöffnet werden können
    if (short.profit <= short.lossTarget) {
-      if (rsi > 100-RSI.SignalLevel) {                                     // RSI crossed high signal line: starkes Up-Momentum
+      if (rsi > 100-RSI.SignalLevel) {                               // RSI crossed high signal line: starkes Up-Momentum
          ticket = OrderSendEx(Symbol(), OP_SELL, MartingaleVolume(short.profit), NULL, 0.1, 0, 0, comment, magicNo, 0, Red, oeFlags, oe);
          if (ticket <= 0)
             return(SetLastError(oe.Error(oe)));
