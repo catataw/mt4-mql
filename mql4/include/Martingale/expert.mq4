@@ -426,20 +426,24 @@ bool RecordEquity() {
       hHst = FindHistory(symbol);
       if (hHst > 0) {
          if (!ResetHistory(hHst))
-            return(false);
-      }
-      else if (__STATUS_ERROR) {
-         return(false);
+            return(!SetLastError(hstlib_GetLastError()));
       }
       else {
+         int error = hstlib_GetLastError();
+         if (IsError(error))
+            return(!SetLastError(error));
+
          hHst = CreateHistory(symbol, ea.name, 2);
          if (hHst <= 0)
-            return(false);
+            return(!SetLastError(hstlib_GetLastError()));
       }
    }
 
    double value = AccountEquity() - AccountCredit();
-   return(History.AddTick(hHst, Tick.Time, value, HST_CACHE_TICKS));
+
+   if (History.AddTick(hHst, Tick.Time, value, HST_CACHE_TICKS))
+      return(true);
+   return(!SetLastError(hstlib_GetLastError()));
 }
 
 
