@@ -274,7 +274,6 @@ int ShowStatus() {
    if (!statusBox)
       statusBox = CreateStatusBox(/*lines*/);      // TODO: Zeilenanzahl der Statusbox bei Änderung dynamisch anpassen
 
-
    string msg = StringConcatenate(ea.name,                                                   NL,
                                                                                              NL,
                                   "Grid size: "         , GridSize, " pips",                 NL,
