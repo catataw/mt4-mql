@@ -243,11 +243,11 @@ bool CreateStatusBox() {
    if (!IsChart)
       return(false);
 
-   int x=0, y[]={32, 142}, fontSize=83, rectangels=ArraySize(y);
+   int x=0, y[]={32, 142}, fontSize=83, rectangles=ArraySize(y);
    color  bgColor = C'248,248,248';                                  // entspricht Chart-Background
    string label;
 
-   for (int i=0; i < rectangels; i++) {
+   for (int i=0; i < rectangles; i++) {
       label = StringConcatenate(__NAME__, ".statusbox."+ (i+1));
       if (ObjectFind(label) != 0) {
          if (!ObjectCreate(label, OBJ_LABEL, 0, 0, 0))
