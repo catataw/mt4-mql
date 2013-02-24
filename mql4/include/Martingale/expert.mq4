@@ -2,9 +2,9 @@
  * Martingale Grid EA
  */
 
-#define D_LONG       1                                               // Trade-Directions
-#define D_SHORT      2
-string  directionDescr[] = {"undefined", "Long", "Short"};
+#define D_LONG             OP_LONG                                   // Trade-Directions: 0
+#define D_SHORT            OP_SHORT                                  //                   1
+string  directionDescr[] = {"Long", "Short"};
 
 
 int     long.ticket   [],       short.ticket   [];                   // Ticket
