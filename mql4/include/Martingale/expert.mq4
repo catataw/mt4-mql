@@ -128,8 +128,7 @@ double LossTarget(int direction) {
  * - entsprechend unvermeidbarer Martingale-Tod
  */
 double MartingaleVolume(double loss) {
-   loss = MathAbs(loss);
-   int multiplier = loss / profitTarget;                             // minimale Martingale-Reduktion durch systematisches Abrunden
+   int multiplier = MathAbs(loss) / profitTarget;                    // minimale Martingale-Reduktion durch systematisches Abrunden
    return(multiplier * IncrementSize);                               // Es scheint so, als muﬂte es irgendwie ein Vielfaches von irgendwas sein.
 }
 
