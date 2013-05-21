@@ -5,8 +5,6 @@
 int   __INIT_FLAGS__[] = {INIT_PIPVALUE};
 int __DEINIT_FLAGS__[];
 #include <stdlib.mqh>
-#include <history.mqh>
-
 #include <core/expert.mqh>
 
 
