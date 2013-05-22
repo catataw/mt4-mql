@@ -41,7 +41,7 @@ string  ea.name = "RSI Martingale Grid";                             // ShowStat
 int Strategy.Long() {
    double rsi = iRSI(Symbol(), NULL, RSI.Period, PRICE_CLOSE, 0);    // Bar[0]: current unfinished bar
 
-   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
+   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeByteBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
 
 
@@ -85,7 +85,7 @@ int Strategy.Long() {
 int Strategy.Short() {
    double rsi = iRSI(Symbol(), NULL, RSI.Period, PRICE_CLOSE, 0);    // Bar[0]: current unfinished bar
 
-   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
+   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeByteBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
 
    // (1) Start

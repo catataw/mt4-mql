@@ -40,7 +40,7 @@ int Strategy.Long() {
    double psar1 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 1);  // Bar[1] (closed bar)
    double psar2 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 2);  // Bar[2] (previous bar)
 
-   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
+   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeByteBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
 
    // (1) Start
@@ -84,7 +84,7 @@ int Strategy.Short() {
    double psar1 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 1);  // Bar[1] (closed bar)
    double psar2 = iSAR(Symbol(), NULL, PSAR.Step, PSAR.Maximum, 2);  // Bar[2] (previous bar)
 
-   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeBuffer(oe, ORDER_EXECUTION.size);
+   int oeFlags=NULL, /*ORDER_EXECUTION*/oe[], /*ORDER_EXECUTION*/oes[][ORDER_EXECUTION.intSize]; if (!ArraySize(oe)) InitializeByteBuffer(oe, ORDER_EXECUTION.size);
    int ticket;
 
    // (1) Start
