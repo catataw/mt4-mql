@@ -263,11 +263,15 @@ bool CreateStatusBox() {
 
 
 /**
+ * Zeigt den aktuellen Laufzeitstatus an.
  *
+ * @param  int error - anzuzeigender Fehler
+ *
+ * @return int - derselbe Fehler oder der aktuelle Fehlerstatus, falls kein Fehler übergeben wurde
  */
-int ShowStatus() {
+int ShowStatus(int error=NO_ERROR) {
    if (!IsChart)
-      return(NO_ERROR);
+      return(error);
 
    static bool statusBox;
    if (!statusBox)
@@ -295,15 +299,18 @@ int ShowStatus() {
    // 3 Zeilen Abstand nach oben für Instrumentanzeige und ggf. vorhandene Legende
    Comment(StringConcatenate(NL, NL, NL, msg));
 
-   ShowTargets();
-   return(catch("ShowStatus()"));
+   ShowStatus.ShowTargets();
+
+   if (!catch("ShowStatus()"))
+      return(error);
+   return(last_error);
 }
 
 
 /**
  * Aufruf nur aus ShowStatus()
  */
-int ShowTargets() {
+int ShowStatus.ShowTargets() {
    static int last.long.level=-1, last.short.level=-1;
 
    if (long.level != last.long.level) {
@@ -316,7 +323,7 @@ int ShowTargets() {
       else                  HorizontalLine    (__NAME__ +".ProfitTarget.short", short.profitTargetPrice, Tomato, STYLE_SOLID, 1);
       last.short.level = short.level;
    }
-   return(catch("ShowTargets(3)"));
+   return(catch("ShowStatus.ShowTargets()"));
 }
 
 
