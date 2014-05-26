@@ -431,16 +431,16 @@ bool RecordEquity() {
       hHst = FindHistory(symbol);
       if (hHst > 0) {
          if (!ResetHistory(hHst))
-            return(!SetLastError(history_GetLastError()));
+            return(!SetLastError(history.GetLastError()));
       }
       else {
-         int error = history_GetLastError();
+         int error = history.GetLastError();
          if (IsError(error))
             return(!SetLastError(error));
 
          hHst = CreateHistory(symbol, ea.name, 2);
          if (hHst <= 0)
-            return(!SetLastError(history_GetLastError()));
+            return(!SetLastError(history.GetLastError()));
       }
    }
 
@@ -448,7 +448,7 @@ bool RecordEquity() {
 
    if (History.AddTick(hHst, Tick.Time, value, HST_CACHE_TICKS))
       return(true);
-   return(!SetLastError(history_GetLastError()));
+   return(!SetLastError(history.GetLastError()));
 }
 
 

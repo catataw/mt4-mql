@@ -4,8 +4,9 @@
 #include <stddefine.mqh>
 int   __INIT_FLAGS__[] = {INIT_PIPVALUE};
 int __DEINIT_FLAGS__[];
-#include <stdlib.mqh>
 #include <core/expert.mqh>
+#include <stdlib.mqh>
+#include <structs/pewa/ORDER_EXECUTION.mqh>
 
 
 ///////////////////////////////////////////////////////////////////// Konfiguration /////////////////////////////////////////////////////////////////////
