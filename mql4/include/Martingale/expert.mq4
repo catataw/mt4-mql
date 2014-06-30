@@ -57,7 +57,7 @@ int UpdateStatus() {
 
    if (long.maxProfit >= profitTarget)  {
       long.takeProfit     = true;
-      long.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * long.maxProfit, Digits);
+      long.trailingProfit = NormalizeDouble(TrailingStop.Percent/100. * long.maxProfit, Digits);
    }
 
    // (2) Short
@@ -70,7 +70,7 @@ int UpdateStatus() {
 
    if (short.maxProfit >= profitTarget) {
       short.takeProfit     = true;
-      short.trailingProfit = NormalizeDouble(TrailingStop.Percent/100.0 * short.maxProfit, Digits);
+      short.trailingProfit = NormalizeDouble(TrailingStop.Percent/100. * short.maxProfit, Digits);
    }
    return(catch("UpdateStatus(3)"));
 }
