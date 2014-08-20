@@ -421,8 +421,8 @@ int SortTickets() {
  * @return bool - Erfolgsstatus
  */
 bool RecordEquity() {
-   if (__STATUS_ERROR) return(false);
-   if (!IsTesting())   return( true);
+   if (IsLastError()) return(false);
+   if (!IsTesting())  return( true);
 
    static int hHst;
    if (!hHst) {
