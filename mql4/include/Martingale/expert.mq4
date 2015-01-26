@@ -118,7 +118,7 @@ double LossTarget(int direction) {
    if (direction == D_LONG ) return(NormalizeDouble(-GridSize * PipValue(long.sumLots ), 2));
    if (direction == D_SHORT) return(NormalizeDouble(-GridSize * PipValue(short.sumLots), 2));
 
-   return(_NULL(catch("LossTarget()   illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
+   return(_NULL(catch("LossTarget()  illegal parameter direction = "+ direction, ERR_INVALID_FUNCTION_PARAMVALUE)));
 }
 
 
