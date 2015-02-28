@@ -5,6 +5,7 @@
 int   __INIT_FLAGS__[] = {INIT_PIPVALUE};
 int __DEINIT_FLAGS__[];
 #include <core/expert.mqh>
+#include <stdfunctions.mqh>
 #include <stdlib.mqh>
 #include <structs/pewa/ORDER_EXECUTION.mqh>
 
