@@ -239,7 +239,7 @@ int ResetShortStatus() {
  * @return bool - Erfolgsstatus
  */
 bool CreateStatusBox() {
-   if (!IsChart)
+   if (!__CHART)
       return(false);
 
    int x=0, y[]={32, 142}, fontSize=83, rectangles=ArraySize(y);
@@ -270,7 +270,7 @@ bool CreateStatusBox() {
  * @return int - derselbe Fehler oder der aktuelle Fehlerstatus, falls kein Fehler übergeben wurde
  */
 int ShowStatus(int error=NO_ERROR) {
-   if (!IsChart)
+   if (!__CHART)
       return(error);
 
    static bool statusBox;
