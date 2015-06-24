@@ -428,9 +428,9 @@ bool RecordEquity() {
    if (!hHst) {
       string symbol = StringConcatenate(ifString(IsTesting(), "_", ""), comment);
 
-      hHst = FindHistory(symbol);
+      hHst = HistorySet.FindBySymbol(symbol);
       if (hHst > 0) {
-         if (!ResetHistory(hHst))
+         if (!HistorySet.Reset(hHst))
             return(!SetLastError(history.GetLastError()));
       }
       else {
@@ -438,7 +438,7 @@ bool RecordEquity() {
          if (IsError(error))
             return(!SetLastError(error));
 
-         hHst = CreateHistory(symbol, ea.name, 2);
+         hHst = HistorySet.Create(symbol, ea.name, 2);
          if (hHst <= 0)
             return(!SetLastError(history.GetLastError()));
       }
@@ -446,7 +446,7 @@ bool RecordEquity() {
 
    double value = AccountEquity() - AccountCredit();
 
-   if (History.AddTick(hHst, Tick.Time, value, HST_CACHE_TICKS))
+   if (HistorySet.AddTick(hHst, Tick.Time, value, HST_CACHE_TICKS))
       return(true);
    return(!SetLastError(history.GetLastError()));
 }
@@ -470,6 +470,6 @@ int afterInit() {
  * @return int - Fehlerstatus
  */
 int afterDeinit() {
-   History.CloseFiles(false);
+   history.CloseFiles(false);
    return(NO_ERROR);
 }
