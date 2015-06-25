@@ -424,29 +424,23 @@ bool RecordEquity() {
    if (IsLastError()) return(false);
    if (!IsTesting())  return( true);
 
-   static int hHst;
-   if (!hHst) {
-      string symbol = StringConcatenate(ifString(IsTesting(), "_", ""), comment);
+   static int hHSet;
+   if (!hHSet) {
+      string symbol = ifString(IsTesting(), "_", "") + comment;
 
-      hHst = HistorySet.FindBySymbol(symbol);
-      if (hHst > 0) {
-         if (!HistorySet.Reset(hHst))
-            return(!SetLastError(history.GetLastError()));
-      }
-      else {
-         int error = history.GetLastError();
-         if (IsError(error))
-            return(!SetLastError(error));
+      hHSet = HistorySet.FindBySymbol(symbol);
+      if (!hHSet) return(!SetLastError(history.GetLastError()));
 
-         hHst = HistorySet.Create(symbol, ea.name, 2);
-         if (hHst <= 0)
-            return(!SetLastError(history.GetLastError()));
+      if (hHSet == -1) {
+         hHSet = HistorySet.Create(symbol, ea.name, 2);
+         if (hHSet <= 0) return(!SetLastError(history.GetLastError()));
       }
+      else if (!HistorySet.Reset(hHSet)) return(!SetLastError(history.GetLastError()));
    }
 
    double value = AccountEquity() - AccountCredit();
 
-   if (HistorySet.AddTick(hHst, Tick.Time, value, HST_CACHE_TICKS))
+   if (HistorySet.AddTick(hHSet, Tick.Time, value, HST_CACHE_TICKS))
       return(true);
    return(!SetLastError(history.GetLastError()));
 }
