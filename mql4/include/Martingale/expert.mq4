@@ -424,23 +424,23 @@ bool RecordEquity() {
    if (IsLastError()) return(false);
    if (!IsTesting())  return( true);
 
-   static int hHSet;
-   if (!hHSet) {
+   static int hSet;
+   if (!hSet) {
       string symbol = ifString(IsTesting(), "_", "") + comment;
 
-      hHSet = HistorySet.FindBySymbol(symbol);
-      if (!hHSet) return(!SetLastError(history.GetLastError()));
+      hSet = HistorySet.FindBySymbol(symbol);
+      if (!hSet) return(!SetLastError(history.GetLastError()));
 
-      if (hHSet == -1) {
-         hHSet = HistorySet.Create(symbol, ea.name, 2);
-         if (hHSet <= 0) return(!SetLastError(history.GetLastError()));
+      if (hSet == -1) {
+         hSet = HistorySet.Create.Old(symbol, ea.name, 2);
+         if (hSet <= 0) return(!SetLastError(history.GetLastError()));
       }
-      else if (!HistorySet.Reset(hHSet)) return(!SetLastError(history.GetLastError()));
+      else if (!HistorySet.Reset(hSet)) return(!SetLastError(history.GetLastError()));
    }
 
    double value = AccountEquity() - AccountCredit();
 
-   if (HistorySet.AddTick(hHSet, Tick.Time, value, HST_CACHE_TICKS))
+   if (HistorySet.AddTick(hSet, Tick.Time, value, HST_COLLECT_TICKS))
       return(true);
    return(!SetLastError(history.GetLastError()));
 }
