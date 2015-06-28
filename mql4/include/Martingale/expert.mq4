@@ -426,15 +426,13 @@ bool RecordEquity() {
 
    static int hSet;
    if (!hSet) {
-      string symbol = ifString(IsTesting(), "_", "") + comment;
+      string symbol      = ifString(IsTesting(), "_", "") + comment;
+      string description = __NAME__;
+      int    digits      = 2;
+      int    format      = 400;
 
-      hSet = HistorySet.FindBySymbol(symbol);
+      hSet = HistorySet.Create(symbol, description, digits, format);
       if (!hSet) return(!SetLastError(history.GetLastError()));
-
-      if (hSet == -1) {
-         hSet = HistorySet.Create.Old(symbol, ea.name, 2);
-         if (hSet <= 0) return(!SetLastError(history.GetLastError()));
-      }
    }
 
    double value = AccountEquity() - AccountCredit();
