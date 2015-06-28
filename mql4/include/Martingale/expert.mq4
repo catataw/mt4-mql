@@ -435,7 +435,6 @@ bool RecordEquity() {
          hSet = HistorySet.Create.Old(symbol, ea.name, 2);
          if (hSet <= 0) return(!SetLastError(history.GetLastError()));
       }
-      else if (!HistorySet.Reset(hSet)) return(!SetLastError(history.GetLastError()));
    }
 
    double value = AccountEquity() - AccountCredit();
