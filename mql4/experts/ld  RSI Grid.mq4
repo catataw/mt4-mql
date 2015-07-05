@@ -26,6 +26,7 @@ extern double RSI.SignalLevel                 = 20;
 #include <stdfunctions.mqh>
 #include <functions/InitializeByteBuffer.mqh>
 #include <stdlib.mqh>
+#include <history.mqh>
 #include <structs/pewa/ORDER_EXECUTION.mqh>
 
 
