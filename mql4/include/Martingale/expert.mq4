@@ -27,6 +27,19 @@ bool    long.takeProfit,        short.takeProfit;                    // ProfitTa
 double  long.trailingProfit,    short.trailingProfit;
 
 double  profitTarget;                                                // TakeProfit-Trigger (zur Zeit für Long/Short gleich)
+int     equity.hSet;
+
+
+/**
+ * Postprocessing-Hook nach Initialisierung
+ *
+ * @return int - Fehlerstatus
+ */
+int afterInit() {
+   InitStatus();
+   profitTarget = ProfitTarget();
+   return(last_error);
+}
 
 
 /**
@@ -421,46 +434,31 @@ int SortTickets() {
  * @return bool - Erfolgsstatus
  */
 bool RecordEquity() {
-   if (IsLastError()) return(false);
-   if (!IsTesting())  return( true);
-
-   static int hSet;
-   if (!hSet) {
+   if (!equity.hSet) {
       string symbol      = ifString(IsTesting(), "_", "") + comment;
       string description = __NAME__;
       int    digits      = 2;
       int    format      = 400;
 
-      hSet = HistorySet.Create(symbol, description, digits, format);
-      if (!hSet) return(!SetLastError(history.GetLastError()));
+      equity.hSet = HistorySet.Create(symbol, description, digits, format);
+      if (!equity.hSet) return(!SetLastError(history.GetLastError()));
    }
 
    double value = AccountEquity() - AccountCredit();
 
-   if (HistorySet.AddTick(hSet, Tick.Time, value, HST_COLLECT_TICKS))
-      return(true);
-   return(!SetLastError(history.GetLastError()));
+   if (!HistorySet.AddTick(equity.hSet, Tick.Time, value, HST_COLLECT_TICKS)) return(!SetLastError(history.GetLastError()));
+
+   return(true);
 }
 
 
 /**
- * Postprocessing-Hook nach Initialisierung
- *
  * @return int - Fehlerstatus
  */
-int afterInit() {
-   InitStatus();
-   profitTarget = ProfitTarget();
-   return(last_error);
-}
-
-
-/**
- * Postprocessing-Hook nach Deinitialisierung
- *
- * @return int - Fehlerstatus
- */
-int afterDeinit() {
-   history.CloseFiles(false);
+int onDeinit() {
+   if (equity.hSet != 0) {
+      if (!HistorySet.Close(equity.hSet)) return(!SetLastError(history.GetLastError()));
+      equity.hSet = NULL;
+   }
    return(NO_ERROR);
 }
