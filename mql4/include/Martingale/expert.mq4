@@ -439,8 +439,9 @@ bool RecordEquity() {
       string description = __NAME__;
       int    digits      = 2;
       int    format      = 400;
+      bool   synthetic   = true;
 
-      equity.hSet = HistorySet.Create(symbol, description, digits, format);
+      equity.hSet = HistorySet.Create(symbol, description, digits, format, synthetic);
       if (!equity.hSet) return(!SetLastError(history.GetLastError()));
    }
 
