@@ -23,6 +23,7 @@ extern double PSAR.Maximum                    = 0.2;
 #include <core/expert.mqh>
 #include <stdfunctions.mqh>
 #include <functions/InitializeByteBuffer.mqh>
+#include <functions/JoinStrings.mqh>
 #include <stdlib.mqh>
 #include <history.mqh>
 #include <structs/pewa/ORDER_EXECUTION.mqh>
