@@ -439,9 +439,9 @@ bool RecordEquity() {
       string description = __NAME__;
       int    digits      = 2;
       int    format      = 400;
-      bool   synthetic   = true;
+      string server      = "MyFX-Synthetic";
 
-      equity.hSet = HistorySet.Create(symbol, description, digits, format, synthetic);
+      equity.hSet = HistorySet.Create(symbol, description, digits, format, server);
       if (!equity.hSet) return(!SetLastError(history.GetLastError()));
    }
 
