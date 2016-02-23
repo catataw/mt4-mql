@@ -447,7 +447,7 @@ bool RecordEquity() {
 
    double value = AccountEquity() - AccountCredit();
 
-   if (!HistorySet.AddTick(equity.hSet, Tick.Time, value, HST_COLLECT_TICKS)) return(!SetLastError(history.GetLastError()));
+   if (!HistorySet.AddTick(equity.hSet, TimeFXT(), value, HST_COLLECT_TICKS)) return(!SetLastError(history.GetLastError()));
 
    return(true);
 }
