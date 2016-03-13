@@ -27,7 +27,6 @@ bool    long.takeProfit,        short.takeProfit;                    // ProfitTa
 double  long.trailingProfit,    short.trailingProfit;
 
 double  profitTarget;                                                // TakeProfit-Trigger (zur Zeit für Long/Short gleich)
-int     equity.hSet;
 
 
 /**
@@ -48,7 +47,6 @@ int afterInit() {
 int onTick() {
    UpdateStatus();
    Strategy();
-   RecordEquity();
    return(last_error);
 }
 
@@ -425,41 +423,4 @@ int SortTickets() {
       }
    }
    return(catch("SortTickets()"));
-}
-
-
-/**
- * Zeichnet die Equity-Kurve des Tests auf.
- *
- * @return bool - Erfolgsstatus
- */
-bool RecordEquity() {
-   if (!equity.hSet) {
-      string symbol      = ifString(IsTesting(), "_", "") + comment;
-      string description = __NAME__;
-      int    digits      = 2;
-      int    format      = 400;
-      string server      = "MyFX-Synthetic";
-
-      equity.hSet = HistorySet.Create(symbol, description, digits, format, server);
-      if (!equity.hSet) return(!SetLastError(history.GetLastError()));
-   }
-
-   double value = AccountEquity() - AccountCredit();
-
-   if (!HistorySet.AddTick(equity.hSet, TimeFXT(), value, HST_COLLECT_TICKS)) return(!SetLastError(history.GetLastError()));
-
-   return(true);
-}
-
-
-/**
- * @return int - Fehlerstatus
- */
-int onDeinit() {
-   if (equity.hSet != 0) {
-      if (!HistorySet.Close(equity.hSet)) return(!SetLastError(history.GetLastError()));
-      equity.hSet = NULL;
-   }
-   return(NO_ERROR);
 }
