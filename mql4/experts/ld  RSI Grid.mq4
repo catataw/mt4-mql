@@ -35,7 +35,7 @@ extern double RSI.SignalLevel                 = 20;
 
 int     magicNo = 50854;
 string  comment = "MG.RSI";                                          // order comment
-string  ea.name = "RSI Martingale Grid";                             // ShowStatus() EA name
+string  ea.name = "RSI Martingale Grid";                             // EA-Name für ShowStatus()
 
 #include <Martingale/expert.mq4>
 

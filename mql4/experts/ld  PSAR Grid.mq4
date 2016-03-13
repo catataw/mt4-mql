@@ -33,7 +33,7 @@ extern double PSAR.Maximum                    = 0.2;
 
 int     magicNo = 110413;
 string  comment = "MG.PSAR";                                         // order comment
-string  ea.name = "PSAR Martingale Grid";                            // ShowStatus() EA name
+string  ea.name = "PSAR Martingale Grid";                            // EA-Name für ShowStatus()
 
 #include <Martingale/expert.mq4>
 
