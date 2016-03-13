@@ -14,7 +14,7 @@ extern double IncrementSize                   = 0.1;
 extern int    TrailingStop.Percent            = 100;
 extern int    MaxDrawdown.Percent             = 100;
 
-extern string ___________Indicator___________ = "___________________________________";
+extern string ___________Indicator___________ = "";
 extern double PSAR.Step                       = 0.02;
 extern double PSAR.Maximum                    = 0.2;
 

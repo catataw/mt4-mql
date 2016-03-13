@@ -16,7 +16,7 @@ extern double IncrementSize                   = 0.1;
 extern int    TrailingStop.Percent            = 100;
 extern int    MaxDrawdown.Percent             = 100;
 
-extern string ___________Indicator___________ = "___________________________________";
+extern string ___________Indicator___________ = "";
 extern int    RSI.Period                      =  7;
 extern double RSI.SignalLevel                 = 20;
 
