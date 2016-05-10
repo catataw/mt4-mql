@@ -28,7 +28,7 @@ extern double RSI.SignalLevel                 = 20;
 #include <functions/JoinStrings.mqh>
 #include <stdlib.mqh>
 #include <history.mqh>
-#include <structs/myfx/ORDER_EXECUTION.mqh>
+#include <structs/myfx/OrderExecution.mqh>
 
 
 #define STRATEGY_ID  105                                             // eindeutige ID der Strategie (Bereich 101-1023)
