@@ -24,7 +24,6 @@ extern double RSI.SignalLevel                 = 20;
 
 #include <core/expert.mqh>
 #include <stdfunctions.mqh>
-#include <functions/InitializeByteBuffer.mqh>
 #include <functions/JoinStrings.mqh>
 #include <stdlib.mqh>
 #include <history.mqh>
