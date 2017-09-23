@@ -25,7 +25,7 @@ extern double PSAR.Maximum                    = 0.2;
 #include <functions/JoinStrings.mqh>
 #include <stdlib.mqh>
 #include <history.mqh>
-#include <structs/myfx/OrderExecution.mqh>
+#include <structs/xtrade/OrderExecution.mqh>
 
 
 #define STRATEGY_ID  104                                             // eindeutige ID der Strategie (Bereich 101-1023)
